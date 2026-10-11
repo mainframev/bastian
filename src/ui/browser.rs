@@ -6,7 +6,7 @@ use jiff::tz::TimeZone;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
@@ -29,19 +29,22 @@ const HELP: &[(&str, &str)] = &[
     ("q", "quit"),
 ];
 
-/// Rows per entry: title, path line, gap.
-const ENTRY_ROWS: u16 = 3;
+/// Rows per entry: title, path, date, gap.
+const ENTRY_ROWS: u16 = 4;
 
 pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
     // Laid out like glow: a title badge (or the `Find:` line while
     // filtering), the document count, then the list.
-    let [_, top, _, count_row, _, list, status] = Layout::vertical([
+    // The page indicator goes under the list; each entry already ends with
+    // a blank row, which separates the two.
+    let [_, top, _, count_row, _, list, pager_row, status] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Min(1),
+        Constraint::Length(1),
         Constraint::Length(1),
     ])
     .areas(frame.area());
@@ -73,22 +76,14 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
     };
     b.layout(usize::from(list.height / ENTRY_ROWS));
 
-    // `~/project  1953 documents`: the directory, then its count. A long
-    // path is shortened from the left so the count always fits. The page
-    // indicator sits on the right of the same row.
-    let mut count_row = inset(count_row);
     let (page, pages) = b.page();
     if pages > 1 {
-        let pager = page_indicator(t, page, pages);
-        let pager_w = pager.width() as u16;
-        let [rest, pager_area] =
-            Layout::horizontal([Constraint::Min(1), Constraint::Length(pager_w)]).areas(count_row);
-        frame.render_widget(pager, pager_area);
-        count_row = Rect {
-            width: rest.width.saturating_sub(2),
-            ..rest
-        };
+        frame.render_widget(page_indicator(t, page, pages), inset(pager_row));
     }
+
+    // `~/project  1953 documents`: the directory, then its count. A long
+    // path is shortened from the left so the count always fits.
+    let count_row = inset(count_row);
     let mut tail = vec![Span::raw("  ")];
     if b.is_scanning() {
         tail.push(Span::styled(
@@ -130,22 +125,28 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
         } else {
             Style::default().fg(t.text)
         };
-        // Like glow: the path (or the document's title) over its date.
-        let title = e.title.clone().unwrap_or_else(|| e.rel.clone());
+        // Title, then progressively quieter path and date lines. A file
+        // without a title shows its name, so the path isn't repeated.
+        let title = e.title.clone().unwrap_or_else(|| {
+            e.path
+                .file_name()
+                .map_or_else(|| e.rel.clone(), |n| n.to_string_lossy().into_owned())
+        });
         lines.push(Line::from(vec![
             bar.clone(),
             Span::styled(title, title_style),
         ]));
-        let mut meta = e.created.map(|c| format_time(c, &tz)).unwrap_or_default();
-        if e.title.is_some() {
-            if !meta.is_empty() {
-                meta.push_str(" · ");
-            }
-            meta.push_str(&e.rel);
-        }
+        lines.push(Line::from(vec![
+            bar.clone(),
+            Span::styled(e.rel.clone(), Style::default().fg(t.subtle)),
+        ]));
+        let date = e.created.map(|c| format_time(c, &tz)).unwrap_or_default();
         lines.push(Line::from(vec![
             bar,
-            Span::styled(meta, Style::default().fg(t.muted)),
+            Span::styled(
+                date,
+                Style::default().fg(t.muted).add_modifier(Modifier::DIM),
+            ),
         ]));
         lines.push(Line::default());
     }

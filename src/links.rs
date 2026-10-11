@@ -29,7 +29,7 @@ fn walk(blocks: &[Block], out: &mut Vec<Link>) {
                     inline_links(cell, out);
                 }
             }
-            Block::Code(_) | Block::Rule => {}
+            Block::Code(_) | Block::Rule | Block::Label(_) => {}
         }
     }
 }

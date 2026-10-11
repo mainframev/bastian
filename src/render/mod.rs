@@ -96,7 +96,11 @@ impl Renderer<'_> {
     fn blocks(&self, blocks: &[Block], width: usize, gap: bool) -> Out {
         let mut out = Out::default();
         for (i, block) in blocks.iter().enumerate() {
-            if gap && i > 0 {
+            // MDX tags hug what they wrap: no gap after an opening tag or
+            // before a closing one.
+            let after_open = i > 0 && matches!(&blocks[i - 1], Block::Label(l) if is_open_tag(l));
+            let before_close = matches!(block, Block::Label(l) if l.starts_with("</"));
+            if gap && i > 0 && !after_open && !before_close {
                 out.blank();
             }
             let part = self.block(block, width);
@@ -125,6 +129,10 @@ impl Renderer<'_> {
                 out
             }
             Block::Code(c) => self.code(c, width),
+            Block::Label(text) => Out {
+                lines: wrap(&[(text.clone(), Style::default().fg(t.muted))], width),
+                codes: Vec::new(),
+            },
             Block::Table { header, rows } => self.table(header, rows, width),
             Block::Rule => Out {
                 lines: vec![Line::styled(
@@ -384,6 +392,9 @@ impl Renderer<'_> {
                 if i.style.link.is_some() {
                     s = s.fg(t.link).add_modifier(Modifier::UNDERLINED);
                 }
+                if i.style.muted {
+                    s = s.fg(t.muted);
+                }
                 (i.text.clone(), s)
             })
             .collect()
@@ -424,4 +435,9 @@ pub fn to_plain(lines: &[Line]) -> String {
 
 fn secs(d: Duration) -> String {
     format!("{:.1}s", d.as_secs_f64())
+}
+
+/// `<Name ...>` but not `</Name>` or a self-closing `<Name />`.
+fn is_open_tag(label: &str) -> bool {
+    label.starts_with('<') && !label.starts_with("</") && !label.ends_with("/>")
 }

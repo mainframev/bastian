@@ -89,7 +89,7 @@ fn main() -> Result<()> {
         if !tui {
             let src = std::fs::read_to_string(&path)
                 .with_context(|| format!("reading {}", path.display()))?;
-            return print(&doc::parse(&src), &settings);
+            return print(&doc::parse_for(&src, Some(&path)), &settings);
         }
         let reader = settings.open(&path, path.display().to_string())?;
         app::App::read(reader, settings)

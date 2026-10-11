@@ -1,8 +1,23 @@
 mod attrs;
+mod mdx;
 mod parse;
 
 pub use attrs::Attrs;
 pub use parse::parse;
+
+use std::path::Path;
+
+/// Parse a document, choosing the MDX front end for `.mdx` files. Invalid
+/// MDX falls back to the plain Markdown parser so the file still shows.
+pub fn parse_for(src: &str, path: Option<&Path>) -> Document {
+    let is_mdx = path
+        .and_then(|p| p.extension())
+        .is_some_and(|e| e.eq_ignore_ascii_case("mdx"));
+    if is_mdx && let Some(doc) = mdx::parse(src) {
+        return doc;
+    }
+    parse(src)
+}
 
 /// A parsed Markdown document, reduced to the block structure bastian renders.
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -39,6 +54,9 @@ pub enum Block {
         rows: Vec<Vec<Vec<Inline>>>,
     },
     Rule,
+    /// A muted single-line marker, e.g. an MDX component's opening or
+    /// closing tag.
+    Label(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -65,6 +83,8 @@ pub struct InlineStyle {
     pub strike: bool,
     pub code: bool,
     pub link: Option<String>,
+    /// De-emphasized syntax such as inline JSX tags and expressions.
+    pub muted: bool,
 }
 
 pub fn plain_text(inlines: &[Inline]) -> String {

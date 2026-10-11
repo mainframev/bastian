@@ -375,7 +375,7 @@ impl Reader {
         self.modified = modified;
         match std::fs::read_to_string(path) {
             Ok(src) => {
-                self.replace_doc(crate::doc::parse(&src));
+                self.replace_doc(crate::doc::parse_for(&src, Some(path)));
                 self.message = Some("reloaded".into());
             }
             Err(e) => self.message = Some(format!("reload failed: {e}")),

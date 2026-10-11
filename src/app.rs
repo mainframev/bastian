@@ -42,7 +42,7 @@ impl Settings {
     pub fn open(&self, path: &Path, name: String) -> Result<Reader> {
         let src =
             std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-        let mut r = self.reader(name, doc::parse(&src), base_dir(path));
+        let mut r = self.reader(name, doc::parse_for(&src, Some(path)), base_dir(path));
         r.watch(path.to_path_buf());
         Ok(r)
     }

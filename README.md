@@ -62,6 +62,11 @@ all keys, `q` to quit.
 
 The open document reloads when the file changes on disk.
 
+`.mdx` files are parsed as MDX: front matter, `import`/`export` and
+`{/* comments */}` are hidden, components show as muted tag lines around their
+rendered content, and code blocks inside components can still be run. Front
+matter is hidden in plain `.md` files too.
+
 ## Code block attributes
 
 Put attributes in braces after the language:

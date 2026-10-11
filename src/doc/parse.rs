@@ -3,7 +3,11 @@ use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use super::{Attrs, Block, CodeBlock, Document, Inline, InlineStyle};
 
 pub fn parse(src: &str) -> Document {
-    let opts = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
+    let opts = Options::ENABLE_TABLES
+        | Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TASKLISTS
+        | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
+        | Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS;
     let mut b = Builder::default();
     for event in Parser::new_ext(src, opts) {
         b.event(event);
@@ -39,6 +43,8 @@ struct Builder {
     strike: u32,
     heading: Option<u8>,
     code: Option<(String, String)>,
+    /// Inside YAML/TOML front matter, which isn't shown.
+    metadata: bool,
     table: Option<TableState>,
     next_code_id: usize,
 }
@@ -48,6 +54,7 @@ impl Builder {
         match event {
             Event::Start(tag) => self.start(tag),
             Event::End(tag) => self.end(tag),
+            Event::Text(_) if self.metadata => {}
             Event::Text(t) => match &mut self.code {
                 Some((_, buf)) => buf.push_str(&t),
                 None => self.push_text(&t),
@@ -114,6 +121,7 @@ impl Builder {
             Tag::Strikethrough => self.set_count(|b| &mut b.strike, 1),
             Tag::Link { dest_url, .. } => self.style.link = Some(dest_url.into_string()),
             Tag::Image { .. } => self.push_text("[image: "),
+            Tag::MetadataBlock(_) => self.metadata = true,
             _ => {}
         }
     }
@@ -188,6 +196,7 @@ impl Builder {
             TagEnd::Strikethrough => self.set_count(|b| &mut b.strike, -1),
             TagEnd::Link => self.style.link = None,
             TagEnd::Image => self.push_text("]"),
+            TagEnd::MetadataBlock(_) => self.metadata = false,
             _ => {}
         }
     }
@@ -303,6 +312,15 @@ mod tests {
         };
         assert_eq!(*start, Some(1));
         assert!(matches!(&items[0][1], Block::Code(c) if c.src == "ls\n"));
+    }
+
+    #[test]
+    fn front_matter_is_hidden() {
+        let doc = parse("---\ntitle: x\ntags: [a]\n---\n\n# Real\n");
+        assert_eq!(doc.blocks.len(), 1);
+        assert_eq!(doc.title().as_deref(), Some("Real"));
+        let toml = parse("+++\ntitle = 'x'\n+++\n\ntext\n");
+        assert!(matches!(&toml.blocks[..], [Block::Paragraph(_)]));
     }
 
     #[test]

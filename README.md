@@ -62,6 +62,7 @@ bastian -t kanagawa README.md  # use another theme
 | `e` | edit the file in `$VISUAL`, `$EDITOR` or `vi`, at the line you're reading |
 | `ctrl-z` | suspend; resume with `fg` |
 | `#` | toggle line numbers |
+| `i` | show/hide images |
 | `T` | pick a theme (also in the browser) |
 | `?` | key help |
 | `Esc`, `h` | back to the previous document or the browser |
@@ -151,7 +152,8 @@ pager = false         # true: show documents in $PAGER instead of the TUI
 all = false           # true: also list hidden and gitignored files
 mouse = false         # true: scroll with the mouse wheel
 logo = true           # false: no logo at the top of the file browser (--no-logo)
-images = true         # false: show images as their alt text (--no-images)
+images = true         # false: show images as their alt text (--no-images);
+                      # `i` toggles them in the reader
 line_numbers = false  # true behaves like --line-numbers
 
 [interpreters]

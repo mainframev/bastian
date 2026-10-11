@@ -30,6 +30,8 @@ pub enum Action {
     Edit(PathBuf, Option<usize>),
     /// Open the theme picker.
     PickTheme,
+    /// Switch pictures for images on or off.
+    ToggleImages,
 }
 
 /// The link list opened with `L`.
@@ -206,6 +208,14 @@ impl Reader {
         }
         let path = url.split(['?', '#']).next().unwrap_or(url);
         Some(ImageSource::File(self.base_dir.join(path)))
+    }
+
+    /// Draw pictures with `support`, or leave images as their alt text
+    /// with `None`.
+    pub fn set_images(&mut self, support: Option<crate::images::Support>) {
+        self.images.set_support(support);
+        self.images_requested = false;
+        self.dirty = true;
     }
 
     /// Switch to `theme`, re-highlighting code on the next layout.
@@ -817,6 +827,7 @@ impl Reader {
             }
             KeyCode::Char('?') => self.help = true,
             KeyCode::Char('T') => return Action::PickTheme,
+            KeyCode::Char('i') => return Action::ToggleImages,
             KeyCode::Char('O') => {
                 self.outline = Outline::new(&self.doc, &self.rendered, self.scroll);
                 if self.outline.is_none() {

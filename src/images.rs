@@ -91,6 +91,12 @@ impl Images {
         self.support.is_some()
     }
 
+    /// Turn pictures on with `support`, or off with `None`. Loaded images
+    /// stay cached, so turning them back on doesn't load them again.
+    pub fn set_support(&mut self, support: Option<Support>) {
+        self.support = support;
+    }
+
     /// Start loading `key` from `source`, unless it's already known.
     pub fn request(&mut self, key: &str, source: Source) {
         if !self.enabled() || self.entries.contains_key(key) {
@@ -135,6 +141,9 @@ impl Images {
 
     /// Cell sizes of the images ready to draw.
     pub fn sizes(&self) -> ImageSizes {
+        if !self.enabled() {
+            return ImageSizes::new();
+        }
         self.entries
             .iter()
             .filter_map(|(k, e)| match e {

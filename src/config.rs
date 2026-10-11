@@ -149,7 +149,7 @@ pub const TEMPLATE: &str = r#"# bastian configuration. Every key is optional; co
 # all = false           # also list hidden and gitignored files
 # mouse = false         # scroll with the mouse wheel
 # logo = true           # show the logo at the top of the file browser
-# images = true         # show pictures for images in documents
+# images = true         # show pictures for images in documents (`i` toggles)
 
 # [interpreters]
 # The block source is appended as the last argument.

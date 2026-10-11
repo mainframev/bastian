@@ -76,8 +76,13 @@ struct Cli {
     #[arg(long)]
     no_logo: bool,
 
+    /// Draw pictures for images in documents, where the terminal can
+    /// (overrides `images = false`; `i` toggles them in the reader).
+    #[arg(long, overrides_with = "no_images")]
+    images: bool,
+
     /// Show images in documents as their alt text instead of pictures.
-    #[arg(long)]
+    #[arg(long, overrides_with = "images")]
     no_images: bool,
 
     /// Print the effective settings and where each came from, then exit.
@@ -169,7 +174,11 @@ fn main() -> Result<()> {
             all: cli.all.then_some(true),
             mouse: cli.mouse.then_some(true),
             logo: cli.no_logo.then_some(false),
-            images: cli.no_images.then_some(false),
+            images: match (cli.images, cli.no_images) {
+                (true, _) => Some(true),
+                (_, true) => Some(false),
+                _ => None,
+            },
             ..config::Config::default()
         },
     )?;
@@ -352,6 +361,7 @@ fn settings(
         logo: r.logo.value,
         // Only the TUI draws pictures.
         images: (tui && r.images.value).then(images::Support::detect),
+        show_images: r.images.value,
         interpreters: Interpreters::new(r.interpreters),
     };
     Ok((settings, name))

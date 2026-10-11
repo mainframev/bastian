@@ -38,8 +38,10 @@ pub struct Settings {
     pub mouse: bool,
     /// Show the logo at the top of the file browser.
     pub logo: bool,
-    /// How to draw pictures; `None` leaves images as their alt text.
+    /// How the terminal draws pictures, once asked; `None` until then.
     pub images: Option<crate::images::Support>,
+    /// Draw pictures for images; off leaves them as their alt text.
+    pub show_images: bool,
 }
 
 impl Settings {
@@ -49,8 +51,13 @@ impl Settings {
         r.assume_yes = self.assume_yes;
         r.interpreters = self.interpreters.clone();
         r.line_numbers = self.line_numbers;
-        r.images = crate::images::Images::new(self.images.clone());
+        r.images = crate::images::Images::new(self.image_support());
         r
+    }
+
+    /// The support readers draw pictures with: `None` while they're off.
+    fn image_support(&self) -> Option<crate::images::Support> {
+        self.images.clone().filter(|_| self.show_images)
     }
 
     /// A reader for a fetched document. Its code blocks run in the current
@@ -142,6 +149,26 @@ impl App {
     pub fn open_picker(&mut self) {
         let picker = ThemePicker::new(self.themes.dir.as_deref(), &self.themes.current);
         self.picker = Some((picker, self.settings.theme.clone()));
+    }
+
+    /// Switch pictures on or off in every reader, asking the terminal how
+    /// to draw them the first time they're turned on.
+    fn toggle_images(&mut self) {
+        let s = &mut self.settings;
+        s.show_images = !s.show_images;
+        if s.show_images && s.images.is_none() {
+            s.images = Some(crate::images::Support::detect());
+        }
+        let support = s.image_support();
+        for r in self.reader.iter_mut().chain(self.history.iter_mut()) {
+            r.set_images(support.clone());
+        }
+        let state = if self.settings.show_images {
+            "on"
+        } else {
+            "off"
+        };
+        self.set_message(format!("images {state}"));
     }
 
     /// Use `theme` everywhere: the browser, the open reader and history.
@@ -296,6 +323,7 @@ impl App {
             }
             reader::Action::Edit(path, line) => self.edit = Some((path, line)),
             reader::Action::PickTheme => self.open_picker(),
+            reader::Action::ToggleImages => self.toggle_images(),
             reader::Action::Copy(text) => {
                 // OSC 52 asks the terminal to set the clipboard, which also
                 // works over ssh. Terminals without support ignore it.
@@ -490,6 +518,7 @@ mod tests {
             mouse: true,
             logo: true,
             images: None,
+            show_images: false,
         }
     }
 
@@ -592,6 +621,7 @@ mod tests {
             mouse: true,
             logo: true,
             images: None,
+            show_images: false,
         };
         let src: String = (0..50).map(|i| format!("line {i}\n\n")).collect();
         let mut reader = settings.reader("t".into(), doc::parse(&src), PathBuf::from("."));
@@ -602,5 +632,66 @@ mod tests {
         assert_eq!(app.reader.as_ref().unwrap().scroll, 6);
         app.on_event(&wheel(MouseEventKind::ScrollUp));
         assert_eq!(app.reader.as_ref().unwrap().scroll, 3);
+    }
+
+    #[test]
+    fn i_toggles_pictures_in_every_reader() {
+        use crate::images::Support;
+        use ratatui_image::picker::Picker;
+
+        let dir = tempfile::tempdir().unwrap();
+        image::RgbImage::from_pixel(40, 40, image::Rgb([220, 40, 40]))
+            .save(dir.path().join("p.png"))
+            .unwrap();
+        let mut s = settings();
+        s.images = Some(Support::fixed(Picker::halfblocks()));
+        s.show_images = true;
+        let reader = s.reader(
+            "t".into(),
+            doc::parse("![a red square](p.png)\n"),
+            dir.path().to_path_buf(),
+        );
+        let mut app = App::read(reader, s);
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let r = app.reader.as_mut().unwrap();
+            r.layout(60, 20);
+            if !r.rendered.images.is_empty() {
+                break;
+            }
+            r.tick();
+            assert!(std::time::Instant::now() < deadline, "picture did not load");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let text = |app: &mut App| {
+            let r = app.reader.as_mut().unwrap();
+            r.layout(60, 20);
+            r.rendered
+                .lines
+                .iter()
+                .map(crate::render::plain)
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+
+        press(&mut app, KeyCode::Char('i'));
+        let off = text(&mut app);
+        let r = app.reader.as_ref().unwrap();
+        assert!(r.rendered.images.is_empty());
+        assert!(off.contains("a red square"), "{off}");
+        assert_eq!(r.message.as_deref(), Some("images off"));
+        // Readers opened afterwards start with pictures off too.
+        assert!(
+            !app.settings
+                .reader("u".into(), doc::parse(""), dir.path().into())
+                .images
+                .enabled()
+        );
+
+        press(&mut app, KeyCode::Char('i'));
+        text(&mut app);
+        let r = app.reader.as_ref().unwrap();
+        assert_eq!(r.rendered.images.len(), 1);
+        assert_eq!(r.message.as_deref(), Some("images on"));
     }
 }

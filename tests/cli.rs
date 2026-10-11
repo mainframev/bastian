@@ -85,6 +85,29 @@ fn print_config_names_every_source() {
 }
 
 #[test]
+fn images_flags_override_the_config_file() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("bastian")).unwrap();
+    std::fs::write(dir.path().join("bastian/config.toml"), "images = false\n").unwrap();
+    let images = |args: &[&str]| {
+        let mut all = vec!["--print-config"];
+        all.extend(args);
+        let out = bastian(dir.path(), &all, &[]);
+        stdout(&out)
+            .lines()
+            .find(|l| l.starts_with("images ="))
+            .unwrap()
+            .to_string()
+    };
+    assert!(images(&[]).starts_with("images = false"));
+    assert!(images(&["--images"]).starts_with("images = true"));
+    assert!(images(&["--images"]).ends_with("# flag"));
+    // The last of the pair wins.
+    assert!(images(&["--images", "--no-images"]).starts_with("images = false"));
+    assert!(images(&["--no-images", "--images"]).starts_with("images = true"));
+}
+
+#[test]
 fn bad_settings_say_where_they_came_from() {
     let dir = tempfile::tempdir().unwrap();
     let doc = dir.path().join("a.md");

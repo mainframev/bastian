@@ -179,6 +179,7 @@ const HELP: &[(&str, &str)] = &[
     ("ctrl-z", "suspend (resume with fg)"),
     ("#", "toggle line numbers"),
     ("O", "outline: jump to a heading"),
+    ("i", "show/hide images"),
     ("T", "pick a theme"),
     ("Esc, h", "back"),
     ("q", "quit"),

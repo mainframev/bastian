@@ -70,9 +70,24 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
     } else {
         format!("{} of {} documents", b.visible.len(), b.entries.len())
     };
+    b.layout(usize::from(list.height / ENTRY_ROWS));
+
     // `~/project  1953 documents`: the directory, then its count. A long
-    // path is shortened from the left so the count always fits.
-    let count_row = inset(count_row);
+    // path is shortened from the left so the count always fits. The page
+    // indicator sits on the right of the same row.
+    let mut count_row = inset(count_row);
+    let (page, pages) = b.page();
+    if pages > 1 {
+        let pager = page_indicator(t, page, pages);
+        let pager_w = pager.width() as u16;
+        let [rest, pager_area] =
+            Layout::horizontal([Constraint::Min(1), Constraint::Length(pager_w)]).areas(count_row);
+        frame.render_widget(pager, pager_area);
+        count_row = Rect {
+            width: rest.width.saturating_sub(2),
+            ..rest
+        };
+    }
     let mut tail = vec![Span::raw("  ")];
     if b.is_scanning() {
         tail.push(Span::styled(
@@ -89,8 +104,6 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
     let mut spans = vec![Span::styled(root, Style::default().fg(t.heading).bold())];
     spans.extend(tail);
     frame.render_widget(Line::from(spans), count_row);
-
-    b.layout(usize::from(list.height / ENTRY_ROWS));
     let mut lines = Vec::new();
     if b.visible.is_empty() {
         let msg = if b.is_scanning() {
@@ -165,6 +178,20 @@ fn display_root(root: &Path) -> String {
     }
 }
 
+/// Width of the page track, in cells.
+const TRACK: usize = 12;
+
+/// `━━━━━━──────  4/12`: a track filled up to the current page, then the
+/// page number.
+fn page_indicator(t: &Theme, page: usize, pages: usize) -> Line<'static> {
+    let filled = (page * TRACK).div_ceil(pages).clamp(1, TRACK);
+    Line::from(vec![
+        Span::styled("━".repeat(filled), Style::default().fg(t.accent)),
+        Span::styled("─".repeat(TRACK - filled), Style::default().fg(t.muted)),
+        Span::styled(format!("  {page}/{pages}"), Style::default().fg(t.subtle)),
+    ])
+}
+
 /// Keep the last `max` columns of `s`, marking the cut with `…`.
 fn shorten_left(s: &str, max: usize) -> String {
     let chars: Vec<char> = s.chars().collect();
@@ -199,6 +226,22 @@ pub fn format_time(t: SystemTime, tz: &TimeZone) -> String {
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[test]
+    fn page_track_fills_with_progress() {
+        let t = Theme::dark();
+        let text = |p, n| -> String {
+            page_indicator(&t, p, n)
+                .spans
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect()
+        };
+        assert_eq!(text(1, 12), "━───────────  1/12");
+        assert_eq!(text(6, 12), "━━━━━━──────  6/12");
+        assert_eq!(text(95, 95), "━━━━━━━━━━━━  95/95");
+        assert_eq!(text(1, 95), "━───────────  1/95");
+    }
 
     #[test]
     fn shortens_paths_from_the_left() {

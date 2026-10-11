@@ -167,13 +167,18 @@ impl Browser {
     }
 
     /// Keep the selection inside the window of `height` visible rows.
+    /// Show the page holding the selection. Like glow, the list turns a
+    /// whole screen at a time rather than scrolling entry by entry.
     pub fn layout(&mut self, rows: usize) {
         self.height = rows.max(1);
-        if self.selected < self.offset {
-            self.offset = self.selected;
-        } else if self.selected >= self.offset + self.height {
-            self.offset = self.selected + 1 - self.height;
-        }
+        self.offset = self.selected / self.height * self.height;
+    }
+
+    /// Current page and page count, both 1-based.
+    pub fn page(&self) -> (usize, usize) {
+        let per = self.height.max(1);
+        let pages = self.visible.len().div_ceil(per).max(1);
+        (self.selected / per + 1, pages)
     }
 
     pub fn on_key(&mut self, key: KeyEvent) -> Action {
@@ -512,6 +517,28 @@ mod tests {
         // The key that closes help does nothing else.
         assert!(matches!(b.on_key(key('q')), Action::None));
         assert!(!b.help);
+    }
+
+    #[test]
+    fn list_turns_whole_pages() {
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..25 {
+            std::fs::write(dir.path().join(format!("f{i}.md")), "x\n").unwrap();
+        }
+        let mut b = Browser::new(dir.path().to_path_buf());
+        wait_for_scan(&mut b);
+        b.layout(10);
+        assert_eq!((b.offset, b.page()), (0, (1, 3)));
+        b.selected = 9;
+        b.layout(10);
+        assert_eq!((b.offset, b.page()), (0, (1, 3)));
+        // One step past the last row turns to the next page.
+        b.on_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
+        b.layout(10);
+        assert_eq!((b.offset, b.page()), (10, (2, 3)));
+        b.selected = 24;
+        b.layout(10);
+        assert_eq!((b.offset, b.page()), (20, (3, 3)));
     }
 
     #[test]

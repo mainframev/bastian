@@ -466,6 +466,7 @@ mod tests {
             "fn main() { let s = \"hi\"; struct Point; }\n",
             Some("rust"),
             &theme,
+            4,
         );
         let color_of = |text: &str| {
             lines[0]

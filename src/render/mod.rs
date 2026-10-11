@@ -57,7 +57,23 @@ pub struct ImageSlot {
 pub type ImageSizes = HashMap<String, (u16, u16)>;
 
 /// Pictures taller than this many rows are scaled down.
-const MAX_IMAGE_ROWS: u16 = 24;
+/// Settings that change how documents render.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Options {
+    /// Pictures are scaled down to at most this many rows.
+    pub image_rows: u16,
+    /// Columns a tab in code takes up.
+    pub tab_width: u16,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            image_rows: 24,
+            tab_width: 4,
+        }
+    }
+}
 
 /// A link's text on one rendered line.
 #[derive(Debug, Clone, PartialEq)]
@@ -80,6 +96,11 @@ pub struct CodeRange {
 }
 
 pub fn render(doc: &Document, width: u16, theme: &Theme) -> Rendered {
+    render_with(doc, width, theme, Options::default())
+}
+
+/// Render without run output or pictures, with `opts`.
+pub fn render_with(doc: &Document, width: u16, theme: &Theme, opts: Options) -> Rendered {
     render_with_runs(
         doc,
         width,
@@ -88,6 +109,7 @@ pub fn render(doc: &Document, width: u16, theme: &Theme) -> Rendered {
         &Interpreters::default(),
         &Highlights::default(),
         &ImageSizes::new(),
+        opts,
     )
 }
 
@@ -108,6 +130,10 @@ impl Highlights {
     clippy::implicit_hasher,
     reason = "the reader's own maps; no need to be generic over hashers"
 )]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "each is a separate piece of reader state"
+)]
 pub fn render_with_runs(
     doc: &Document,
     width: u16,
@@ -116,6 +142,7 @@ pub fn render_with_runs(
     interpreters: &Interpreters,
     highlights: &Highlights,
     images: &ImageSizes,
+    opts: Options,
 ) -> Rendered {
     let r = Renderer {
         theme,
@@ -123,6 +150,7 @@ pub fn render_with_runs(
         interpreters,
         highlights,
         images,
+        opts,
         link_runs: RefCell::default(),
     };
     let width = usize::from(width).max(10);
@@ -256,6 +284,7 @@ struct Renderer<'a> {
     interpreters: &'a Interpreters,
     highlights: &'a Highlights,
     images: &'a ImageSizes,
+    opts: Options,
     /// Link runs in the order they were styled, for `locate_links`.
     link_runs: RefCell<Vec<(String, usize)>>,
 }
@@ -323,7 +352,7 @@ impl Renderer<'_> {
         let Some(&(w, h)) = self.images.get(url) else {
             return Out::from(wrap(&[(format!("[image: {alt}]"), caption)], width));
         };
-        let (cols, rows) = fit_image(w, h, width as u16);
+        let (cols, rows) = fit_image(w, h, width as u16, self.opts.image_rows);
         let mut lines = vec![Line::default(); usize::from(rows)];
         if !alt.is_empty() {
             lines.extend(wrap(&[(alt.to_string(), caption)], width));
@@ -450,7 +479,9 @@ impl Renderer<'_> {
             .0
             .borrow_mut()
             .entry(c.id)
-            .or_insert_with(|| code::highlight(&c.src, c.lang.as_deref(), self.theme))
+            .or_insert_with(|| {
+                code::highlight(&c.src, c.lang.as_deref(), self.theme, self.opts.tab_width)
+            })
             .clone()
     }
 
@@ -676,11 +707,11 @@ pub fn run_status(run: &BlockRun, t: &Theme) -> Line<'static> {
 }
 
 /// Scale a `w`×`h` cell picture to at most `width` columns and
-/// `MAX_IMAGE_ROWS` rows, keeping its shape.
-fn fit_image(w: u16, h: u16, width: u16) -> (u16, u16) {
+/// `max_rows` rows, keeping its shape.
+fn fit_image(w: u16, h: u16, width: u16, max_rows: u16) -> (u16, u16) {
     let (w, h) = (f32::from(w.max(1)), f32::from(h.max(1)));
     let scale = (f32::from(width.max(1)) / w)
-        .min(f32::from(MAX_IMAGE_ROWS) / h)
+        .min(f32::from(max_rows.max(1)) / h)
         .min(1.0);
     (
         ((w * scale).round() as u16).max(1),
@@ -888,15 +919,55 @@ mod tests {
             &Interpreters::default(),
             &Highlights::default(),
             &sizes,
+            Options::default(),
         );
         let [slot] = r.images.as_slice() else {
             panic!("expected one slot: {:?}", r.images);
         };
         // Scaled to the 38 columns inside the list indent, keeping its shape.
         assert_eq!((slot.col, slot.cols, slot.rows), (2, 36, 24));
-        assert_eq!(fit_image(60, 40, 38), (36, 24));
-        assert_eq!(fit_image(10, 5, 38), (10, 5));
+        assert_eq!(fit_image(60, 40, 38, 24), (36, 24));
+        assert_eq!(fit_image(10, 5, 38, 24), (10, 5));
+        assert_eq!(fit_image(60, 40, 38, 12), (18, 12));
         let caption = plain(&r.lines[slot.line + usize::from(slot.rows)]);
         assert_eq!(caption.trim(), "A cat");
+    }
+
+    #[test]
+    fn options_set_tab_width_and_picture_height() {
+        let doc = parse("```go\nfunc main() {\n\treturn\n}\n```\n");
+        let text = |opts| to_plain(&render_with(&doc, 40, &Theme::dark(), opts).lines);
+        assert!(
+            text(Options::default()).contains("     return"),
+            "{}",
+            text(Options::default())
+        );
+        let two = Options {
+            tab_width: 2,
+            ..Options::default()
+        };
+        assert!(
+            text(two).contains("   return") && !text(two).contains("     return"),
+            "{}",
+            text(two)
+        );
+
+        let doc = parse("![A cat](cat.png)\n");
+        let sizes = ImageSizes::from([("cat.png".to_string(), (60, 40))]);
+        let short = Options {
+            image_rows: 10,
+            ..Options::default()
+        };
+        let r = render_with_runs(
+            &doc,
+            80,
+            &Theme::dark(),
+            &HashMap::new(),
+            &Interpreters::default(),
+            &Highlights::default(),
+            &sizes,
+            short,
+        );
+        assert_eq!(r.images[0].rows, 10);
     }
 }

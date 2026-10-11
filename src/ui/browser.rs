@@ -47,6 +47,8 @@ pub struct Look<'a> {
     pub date_format: Option<&'a str>,
     pub selector: Selector,
     pub layout: BrowserLayout,
+    /// A scrollbar beside the list when it's longer than a page.
+    pub scrollbar: bool,
 }
 
 pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, look: Look) {
@@ -170,7 +172,9 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, look: Look) {
             .set_style(band, Style::default().bg(t.surface));
     }
     // In entries, so the thumb moves a page at a time like the list.
-    status::scrollbar(frame, t, list, b.visible.len(), b.height, b.offset());
+    if look.scrollbar {
+        status::scrollbar(frame, t, list, b.visible.len(), b.height, b.offset());
+    }
 
     let idle = if b.filter.is_empty() {
         "enter open · / filter · e edit · ? more"
@@ -404,6 +408,7 @@ mod tests {
         let look = Look {
             logo,
             date_format: Some(crate::config::DATE_FORMAT),
+            scrollbar: true,
             ..Look::default()
         };
         rows(&styled_screen(files, look, h))
@@ -458,6 +463,7 @@ mod tests {
             date_format: Some(crate::config::DATE_FORMAT),
             selector,
             layout,
+            scrollbar: true,
         }
     }
 

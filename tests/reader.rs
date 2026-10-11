@@ -207,6 +207,10 @@ fn remote_documents_resolve_links_and_always_confirm() {
         line_numbers: false,
         scan: bastian::browser::Scan::default(),
         date_format: Some(bastian::config::DATE_FORMAT.into()),
+        render: bastian::render::Options::default(),
+        hyperlinks: true,
+        scrollbar: true,
+        editor: None,
         mouse: false,
         logo: true,
         images: None,
@@ -443,4 +447,27 @@ fn outline_panel_lists_headings_and_jumps() {
         plain.message.as_deref(),
         Some("no headings in this document")
     );
+}
+
+#[test]
+fn hyperlinks_and_scrollbar_can_be_turned_off() {
+    use bastian::ui::reader::draw;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let long: String = (0..60)
+        .map(|i| format!("[link {i}](https://x.dev/{i})\n\n"))
+        .collect();
+    let mut r = Reader::new("t.md".into(), parse(&long), Theme::dark(), 80);
+    r.hyperlinks = false;
+    r.scrollbar = false;
+    let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
+    let frame = terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let buf = frame.buffer;
+    let cells: String = (0..12)
+        .flat_map(|y| (0..40).map(move |x| (x, y)))
+        .map(|(x, y)| buf[(x, y)].symbol().to_string())
+        .collect();
+    assert!(!cells.contains("\u{1b}]8;;"), "no OSC 8 links");
+    assert!(cells.contains("link 0"));
+    assert!(!cells.contains('█'), "no scrollbar thumb");
 }

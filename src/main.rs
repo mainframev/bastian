@@ -348,7 +348,13 @@ fn edit_config(path: &std::path::Path) -> Result<()> {
             .with_context(|| format!("writing {}", path.display()))?;
         eprintln!("created {}", path.display());
     }
-    let cmd = bastian::editor::command();
+    // The `editor` setting, when the file still parses (it may be open to
+    // fix it).
+    let configured = std::env::var("BASTIAN_EDITOR")
+        .ok()
+        .filter(|e| !e.trim().is_empty())
+        .or_else(|| config::load_from(path).ok().and_then(|c| c.editor));
+    let cmd = bastian::editor::command(configured.as_deref());
     let status =
         bastian::editor::open_with(&cmd, path, None).with_context(|| format!("running {cmd}"))?;
     anyhow::ensure!(status.success(), "{cmd} exited with {status}");
@@ -384,6 +390,13 @@ fn settings(
         line_numbers: r.line_numbers.value,
         scan,
         date_format,
+        render: render::Options {
+            image_rows: r.image_height.value,
+            tab_width: r.tab_width.value,
+        },
+        hyperlinks: r.hyperlinks.value,
+        scrollbar: r.scrollbar.value,
+        editor: Some(r.editor.value).filter(|e| !e.trim().is_empty()),
         mouse: r.mouse.value,
         logo: r.logo.value,
         // Only the TUI draws pictures.
@@ -504,7 +517,7 @@ struct Output {
 }
 
 fn print(doc: &doc::Document, settings: &Settings, out: &Output) -> Result<()> {
-    let rendered = render::render(doc, out.width, &settings.theme);
+    let rendered = render::render_with(doc, out.width, &settings.theme, settings.render);
     let text = if out.color {
         render::to_ansi(&rendered.lines)
     } else {

@@ -46,6 +46,16 @@ pub struct Config {
     pub extensions: Option<Vec<String>>,
     /// Gitignore-style globs of paths the browser leaves out.
     pub ignore: Option<Vec<String>>,
+    /// Pictures are scaled down to at most this many rows.
+    pub image_height: Option<u16>,
+    /// Columns a tab in code takes up.
+    pub tab_width: Option<u16>,
+    /// Make links clickable terminal hyperlinks (OSC 8).
+    pub hyperlinks: Option<bool>,
+    /// Show scrollbars.
+    pub scrollbar: Option<bool>,
+    /// Editor command line, used before `$VISUAL` and `$EDITOR`.
+    pub editor: Option<String>,
     /// Language → command line; the block source is appended as the last
     /// argument. An empty list stops that language from running.
     pub interpreters: HashMap<String, Vec<String>>,
@@ -212,6 +222,12 @@ pub const TEMPLATE: &str = r#"# bastian configuration. Every key is optional; co
 # date_format = "%d %b %Y %H:%M %Z"  # strftime format of those dates
 # extensions = ["md", "markdown", "mdx", "mdown", "mkdn", "mkd"]
 # ignore = ["node_modules", "CHANGELOG.md"]  # gitignore-style globs to leave out
+# image_height = 24     # rows a picture takes up at most
+# tab_width = 4         # columns per tab in code
+# hyperlinks = true     # clickable links (turn off if your terminal shows
+#                       # escape codes instead)
+# scrollbar = true      # show scrollbars
+# editor = "nvim"       # used by `e`, before $VISUAL and $EDITOR
 
 # [interpreters]
 # The block source is appended as the last argument.
@@ -258,6 +274,11 @@ pub fn describe(r: &Resolved, file: Option<&Path>) -> String {
         row("date_format", &r.date_format),
         row("extensions", &r.extensions),
         row("ignore", &r.ignore),
+        row("image_height", &r.image_height),
+        row("tab_width", &r.tab_width),
+        row("hyperlinks", &r.hyperlinks),
+        row("scrollbar", &r.scrollbar),
+        row("editor", &r.editor),
     ];
     // Line the source comments up, at least two spaces after the value;
     // a long list doesn't push every other comment out.
@@ -337,6 +358,12 @@ pub struct Resolved {
     pub date_format: Setting<String>,
     pub extensions: Setting<Vec<String>>,
     pub ignore: Setting<Vec<String>>,
+    pub image_height: Setting<u16>,
+    pub tab_width: Setting<u16>,
+    pub hyperlinks: Setting<bool>,
+    pub scrollbar: Setting<bool>,
+    /// Empty when not set.
+    pub editor: Setting<String>,
     pub interpreters: HashMap<String, Vec<String>>,
 }
 
@@ -406,6 +433,11 @@ pub fn resolve(file: Config, env: &EnvMap, cli: Config) -> Result<Resolved> {
             env,
         )?,
         ignore: setting("ignore", Vec::new(), file.ignore, cli.ignore, env)?,
+        image_height: setting("image_height", 24, file.image_height, cli.image_height, env)?,
+        tab_width: setting("tab_width", 4, file.tab_width, cli.tab_width, env)?,
+        hyperlinks: setting("hyperlinks", true, file.hyperlinks, cli.hyperlinks, env)?,
+        scrollbar: setting("scrollbar", true, file.scrollbar, cli.scrollbar, env)?,
+        editor: setting("editor", String::new(), file.editor, cli.editor, env)?,
         interpreters: file.interpreters,
     })
 }
@@ -591,7 +623,7 @@ impl Value for u16 {
         v.parse().ok()
     }
     fn expected() -> String {
-        "a number of columns".into()
+        "a whole number".into()
     }
     fn toml(&self) -> String {
         self.to_string()
@@ -867,6 +899,11 @@ mod tests {
             date_format = "%Y-%m-%d"
             extensions = ["md", "txt"]
             ignore = ["drafts/"]
+            image_height = 12
+            tab_width = 2
+            hyperlinks = false
+            scrollbar = false
+            editor = "nvim -p"
             [interpreters]
             ruby = ["ruby", "-e"]
             fish = []
@@ -887,6 +924,11 @@ mod tests {
         assert_eq!(c.date_format.as_deref(), Some("%Y-%m-%d"));
         assert_eq!(c.extensions, Some(vec!["md".into(), "txt".into()]));
         assert_eq!(c.ignore, Some(vec!["drafts/".into()]));
+        assert_eq!(c.image_height, Some(12));
+        assert_eq!(c.tab_width, Some(2));
+        assert_eq!(c.hyperlinks, Some(false));
+        assert_eq!(c.scrollbar, Some(false));
+        assert_eq!(c.editor.as_deref(), Some("nvim -p"));
         assert_eq!(c.interpreters["ruby"], ["ruby", "-e"]);
         assert!(c.interpreters["fish"].is_empty());
     }

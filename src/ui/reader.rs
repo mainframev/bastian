@@ -72,16 +72,20 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
         })
         .collect();
     frame.render_widget(Paragraph::new(visible), content);
-    draw_hyperlinks(frame, r, content, end);
+    if r.hyperlinks {
+        draw_hyperlinks(frame, r, content, end);
+    }
     draw_images(frame, r, content, end);
-    status::scrollbar(
-        frame,
-        t,
-        body,
-        r.rendered.lines.len(),
-        usize::from(body.height),
-        r.scroll,
-    );
+    if r.scrollbar {
+        status::scrollbar(
+            frame,
+            t,
+            body,
+            r.rendered.lines.len(),
+            usize::from(body.height),
+            r.scroll,
+        );
+    }
 
     if gutter > 0 {
         let digits = usize::from(gutter - GUTTER_GAP);

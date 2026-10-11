@@ -106,6 +106,12 @@ pub struct Reader {
     images_requested: bool,
     /// Syntax highlighting per code block, reused across re-renders.
     highlights: Highlights,
+    /// Image size and tab width settings.
+    pub render_opts: render::Options,
+    /// Make links clickable terminal hyperlinks.
+    pub hyperlinks: bool,
+    /// Show a scrollbar when the document overflows.
+    pub scrollbar: bool,
     width: u16,
     height: usize,
 }
@@ -147,6 +153,9 @@ impl Reader {
             images: Images::default(),
             images_requested: false,
             highlights: Highlights::default(),
+            render_opts: render::Options::default(),
+            hyperlinks: true,
+            scrollbar: true,
             width: 0,
             height: 0,
         }
@@ -240,6 +249,7 @@ impl Reader {
                 &self.interpreters,
                 &self.highlights,
                 &self.images.sizes(),
+                self.render_opts,
             );
             self.width = width;
             self.dirty = false;

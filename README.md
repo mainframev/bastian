@@ -59,7 +59,7 @@ bastian -t kanagawa README.md  # use another theme
 | `c` | copy the whole document |
 | `L` | list links; follow one with `Enter` |
 | `O` | outline of the headings; `Enter` jumps to one |
-| `e` | edit the file in `$VISUAL`, `$EDITOR` or `vi`, at the line you're reading |
+| `e` | edit the file in your `editor`, `$VISUAL`, `$EDITOR` or `vi`, at the line you're reading |
 | `ctrl-z` | suspend; resume with `fg` |
 | `#` | toggle line numbers |
 | `i` | show/hide images |
@@ -162,6 +162,11 @@ dates = true          # false: no file dates in the browser
 date_format = "%d %b %Y %H:%M %Z"  # strftime format of those dates
 extensions = ["md", "markdown", "mdx", "mdown", "mkdn", "mkd"]  # files listed
 ignore = []           # gitignore-style globs to leave out, e.g. ["drafts/"]
+image_height = 24     # rows a picture takes up at most
+tab_width = 4         # columns per tab in code
+hyperlinks = true     # false: plain links, for terminals that show OSC 8 codes
+scrollbar = true      # false: no scrollbars
+# editor = "nvim"     # for `e`, before $VISUAL and $EDITOR
 line_numbers = false  # true behaves like --line-numbers
 
 [interpreters]

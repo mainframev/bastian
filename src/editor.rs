@@ -2,13 +2,18 @@ use std::io;
 use std::path::Path;
 use std::process::{Command, ExitStatus};
 
-/// The user's editor: `$VISUAL`, then `$EDITOR`, then `vi`, like git.
-pub fn command() -> String {
-    pick(std::env::var("VISUAL").ok(), std::env::var("EDITOR").ok())
+/// The user's editor: `configured` (the `editor` setting), then
+/// `$VISUAL`, then `$EDITOR`, then `vi`, like git.
+pub fn command(configured: Option<&str>) -> String {
+    pick(
+        configured.map(str::to_string),
+        std::env::var("VISUAL").ok(),
+        std::env::var("EDITOR").ok(),
+    )
 }
 
-fn pick(visual: Option<String>, editor: Option<String>) -> String {
-    [visual, editor]
+fn pick(configured: Option<String>, visual: Option<String>, editor: Option<String>) -> String {
+    [configured, visual, editor]
         .into_iter()
         .flatten()
         .find(|e| !e.trim().is_empty())
@@ -55,12 +60,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn prefers_visual_then_editor_then_vi() {
+    fn prefers_config_then_visual_then_editor_then_vi() {
         let s = |v: &str| Some(v.to_string());
-        assert_eq!(pick(s("code --wait"), s("vim")), "code --wait");
-        assert_eq!(pick(None, s("nvim")), "nvim");
-        assert_eq!(pick(s("  "), s("hx")), "hx");
-        assert_eq!(pick(None, None), "vi");
+        assert_eq!(pick(s("zed --wait"), s("code"), s("vim")), "zed --wait");
+        assert_eq!(pick(None, s("code --wait"), s("vim")), "code --wait");
+        assert_eq!(pick(None, None, s("nvim")), "nvim");
+        assert_eq!(pick(s(""), s("  "), s("hx")), "hx");
+        assert_eq!(pick(None, None, None), "vi");
     }
 
     #[test]

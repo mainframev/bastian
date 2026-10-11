@@ -18,7 +18,7 @@ use crate::links;
 use crate::picker::{self, ThemePicker};
 use crate::prompt;
 use crate::reader::{self, Reader};
-use crate::render::theme::Theme;
+use crate::render::{self, theme::Theme};
 use crate::ui;
 
 /// Options shared by every document the app opens.
@@ -35,6 +35,14 @@ pub struct Settings {
     pub scan: browser::Scan,
     /// strftime format of the browser's dates; `None` hides them.
     pub date_format: Option<String>,
+    /// Image size and tab width settings.
+    pub render: render::Options,
+    /// Make links clickable terminal hyperlinks.
+    pub hyperlinks: bool,
+    /// Show scrollbars.
+    pub scrollbar: bool,
+    /// Editor command line from the config; `$VISUAL`/`$EDITOR` without.
+    pub editor: Option<String>,
     /// Scroll with the mouse wheel (captures the mouse, so terminal text
     /// selection needs a modifier key).
     pub mouse: bool,
@@ -57,6 +65,9 @@ impl Settings {
         r.assume_yes = self.assume_yes;
         r.interpreters = self.interpreters.clone();
         r.line_numbers = self.line_numbers;
+        r.render_opts = self.render;
+        r.hyperlinks = self.hyperlinks;
+        r.scrollbar = self.scrollbar;
         r.images = crate::images::Images::new(self.image_support());
         r
     }
@@ -359,7 +370,7 @@ impl App {
         path: &Path,
         line: Option<usize>,
     ) -> Result<()> {
-        let cmd = editor::command();
+        let cmd = editor::command(self.settings.editor.as_deref());
         let result = with_terminal_released(terminal, self.settings.mouse, || {
             editor::open_with(&cmd, path, line)
         })?;
@@ -367,7 +378,9 @@ impl App {
             Ok(status) if status.success() => {}
             // The shell's "command not found" status.
             Ok(status) if status.code() == Some(127) => {
-                self.set_message(format!("editor not found: {cmd} (set $VISUAL or $EDITOR)"));
+                self.set_message(format!(
+                    "editor not found: {cmd} (set `editor` in the config, $VISUAL or $EDITOR)"
+                ));
             }
             Ok(status) => self.set_message(format!("{cmd} exited with {status}")),
             Err(err) => self.set_message(format!("could not run {cmd}: {err}")),
@@ -477,6 +490,7 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<Option<String
                     let look = ui::browser::Look {
                         logo: s.logo,
                         date_format: s.date_format.as_deref(),
+                        scrollbar: s.scrollbar,
                         selector: s.selector,
                         layout: s.browser_layout,
                     };
@@ -529,6 +543,10 @@ mod tests {
             line_numbers: false,
             scan: browser::Scan::default(),
             date_format: Some(crate::config::DATE_FORMAT.into()),
+            render: render::Options::default(),
+            hyperlinks: true,
+            scrollbar: true,
+            editor: None,
             mouse: true,
             logo: true,
             images: None,
@@ -635,6 +653,10 @@ mod tests {
             line_numbers: false,
             scan: browser::Scan::default(),
             date_format: Some(crate::config::DATE_FORMAT.into()),
+            render: render::Options::default(),
+            hyperlinks: true,
+            scrollbar: true,
+            editor: None,
             mouse: true,
             logo: true,
             images: None,
@@ -688,7 +710,7 @@ mod tests {
             r.rendered
                 .lines
                 .iter()
-                .map(crate::render::plain)
+                .map(render::plain)
                 .collect::<Vec<_>>()
                 .join("\n")
         };

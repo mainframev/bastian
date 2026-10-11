@@ -16,9 +16,15 @@ pub fn known_extension(ext: &str) -> bool {
     SYNTAXES.find_syntax_by_extension(ext).is_some()
 }
 
-/// Syntax-highlight `src` into one span list per source line.
-pub fn highlight(src: &str, lang: Option<&str>, theme: &Theme) -> Vec<Vec<Span<'static>>> {
-    let src = src.replace('\t', "    ");
+/// Syntax-highlight `src` into one span list per source line, each tab
+/// as `tab_width` spaces.
+pub fn highlight(
+    src: &str,
+    lang: Option<&str>,
+    theme: &Theme,
+    tab_width: u16,
+) -> Vec<Vec<Span<'static>>> {
+    let src = src.replace('\t', &" ".repeat(usize::from(tab_width)));
     let plain = || {
         src.lines()
             .map(|l| vec![Span::styled(l.to_string(), Style::default().fg(theme.text))])

@@ -53,7 +53,8 @@ struct Cli {
     #[arg(long)]
     pager: bool,
 
-    /// Color printed output [default: auto; honors NO_COLOR and CLICOLOR_FORCE].
+    /// Color printed output: auto colors on a terminal, honoring NO_COLOR and
+    /// CLICOLOR_FORCE [default: auto].
     #[arg(long, value_enum)]
     color: Option<ColorMode>,
 

@@ -45,8 +45,9 @@ pub enum Confirm {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum ColorMode {
-    /// Color when writing to a terminal (or with `CLICOLOR_FORCE`), never
-    /// with `NO_COLOR`.
+    // Color when writing to a terminal (or with `CLICOLOR_FORCE`), never
+    // with `NO_COLOR`. A plain comment: a doc comment here would switch
+    // `--help` to clap's long layout.
     Auto,
     Always,
     Never,

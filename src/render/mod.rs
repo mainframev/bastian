@@ -11,7 +11,7 @@ use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
 use crate::doc::{Block, CodeBlock, Document, Inline, plain_text};
-use crate::exec::{self, BlockRun, Status};
+use crate::exec::{BlockRun, Interpreters, Status};
 use theme::Theme;
 use wrap::{hard_wrap, line_width, wrap};
 
@@ -33,7 +33,7 @@ pub struct CodeRange {
 }
 
 pub fn render(doc: &Document, width: u16, theme: &Theme) -> Rendered {
-    render_with_runs(doc, width, theme, &HashMap::new())
+    render_with_runs(doc, width, theme, &HashMap::new(), &Interpreters::default())
 }
 
 /// Render with each code block's run status and output drawn under it.
@@ -42,8 +42,14 @@ pub fn render_with_runs(
     width: u16,
     theme: &Theme,
     runs: &HashMap<usize, BlockRun>,
+    interpreters: &Interpreters,
 ) -> Rendered {
-    let out = Renderer { theme, runs }.blocks(&doc.blocks, usize::from(width).max(10), true);
+    let out = Renderer {
+        theme,
+        runs,
+        interpreters,
+    }
+    .blocks(&doc.blocks, usize::from(width).max(10), true);
     Rendered {
         lines: out.lines,
         code_blocks: out.codes,
@@ -82,6 +88,7 @@ impl Out {
 struct Renderer<'a> {
     theme: &'a Theme,
     runs: &'a HashMap<usize, BlockRun>,
+    interpreters: &'a Interpreters,
 }
 
 impl Renderer<'_> {
@@ -207,7 +214,13 @@ impl Renderer<'_> {
             (Some(name), None) => name.clone(),
             (None, lang) => lang.clone().unwrap_or_default(),
         };
-        let label = if c.lang.as_deref().and_then(exec::interpreter).is_some() && !c.attrs.norun {
+        let label = if c
+            .lang
+            .as_deref()
+            .and_then(|l| self.interpreters.get(l))
+            .is_some()
+            && !c.attrs.norun
+        {
             format!("▶ {label}")
         } else {
             label

@@ -5,7 +5,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Padding, Paragraph};
 
 use super::status::{self, Left};
-use crate::reader::Reader;
+use crate::reader::{LinkPicker, Reader};
+use crate::render::theme::Theme;
 
 /// Columns of left margin around the document.
 pub const MARGIN: u16 = 2;
@@ -83,7 +84,7 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
         (Some(p), _) => Left::Prompt(p),
         (None, Some(m)) => Left::Error(m),
         (None, None) if r.focus.is_some() => {
-            hint = format!("{}  enter run · R all · x stop · o output", r.name);
+            hint = format!("{}  enter run · R all · x stop · y copy · ? keys", r.name);
             Left::Text(&hint)
         }
         (None, None) => Left::Text(&r.name),
@@ -92,7 +93,131 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
 
     if let Some(ids) = &r.confirm {
         draw_confirm(frame, r, ids);
+    } else if let Some(picker) = &r.link_picker {
+        draw_links(frame, r, picker);
+    } else if r.help {
+        draw_help(frame, r);
     }
+}
+
+const HELP: &[(&str, &str)] = &[
+    ("j/k  ↓/↑", "scroll"),
+    ("ctrl-d/u", "half page"),
+    ("space/b", "page down/up"),
+    ("g/G", "top/bottom"),
+    ("/  n/N", "search, next/previous match"),
+    ("Tab/S-Tab", "focus next/previous code block"),
+    ("Enter, r", "run focused block"),
+    ("R", "run all blocks from the focused one"),
+    ("x", "stop running blocks"),
+    ("o", "show/hide output"),
+    ("y", "copy focused block"),
+    ("L", "list links"),
+    ("Esc, h", "back"),
+    ("q", "quit"),
+];
+
+fn draw_help(frame: &mut Frame, r: &Reader) {
+    let t = &r.theme;
+    let key_w = HELP
+        .iter()
+        .map(|(k, _)| k.chars().count())
+        .max()
+        .unwrap_or(0);
+    let mut lines: Vec<Line> = HELP
+        .iter()
+        .map(|(k, what)| {
+            Line::from(vec![
+                Span::styled(
+                    format!("{k:<key_w$}  "),
+                    Style::default().fg(t.accent).bold(),
+                ),
+                Span::styled(*what, Style::default().fg(t.text)),
+            ])
+        })
+        .collect();
+    lines.push(Line::default());
+    lines.push(Line::styled(
+        "any key to close",
+        Style::default().fg(t.muted),
+    ));
+    modal(frame, t, " keys ", lines);
+}
+
+fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
+    let t = &r.theme;
+    let area = frame.area();
+    // Leave room for the border and a margin around the box.
+    let rows = area.height.saturating_sub(6).max(1) as usize;
+    let start = picker.selected.saturating_sub(rows.saturating_sub(1));
+    let max_w = area.width.saturating_sub(10) as usize;
+    let lines: Vec<Line> = picker
+        .links
+        .iter()
+        .enumerate()
+        .skip(start)
+        .take(rows)
+        .map(|(i, link)| {
+            let selected = i == picker.selected;
+            let marker = if selected { "▶ " } else { "  " };
+            let text_style = if selected {
+                Style::default().fg(t.accent).bold()
+            } else {
+                Style::default().fg(t.text)
+            };
+            let entry = format!("{}  {}", link.text, link.url);
+            let shown: String = entry.chars().take(max_w.saturating_sub(2)).collect();
+            let split = link.text.chars().count().min(shown.chars().count());
+            let (text, url): (String, String) = (
+                shown.chars().take(split).collect(),
+                shown.chars().skip(split).collect(),
+            );
+            Line::from(vec![
+                Span::styled(marker, Style::default().fg(t.accent)),
+                Span::styled(text, text_style),
+                Span::styled(url, Style::default().fg(t.muted)),
+            ])
+        })
+        .collect();
+    let title = format!(
+        " links {}/{} · enter open · esc close ",
+        picker.selected + 1,
+        picker.links.len()
+    );
+    modal(frame, t, &title, lines);
+}
+
+/// A bordered box centered on screen.
+fn modal(frame: &mut Frame, t: &Theme, title: &str, lines: Vec<Line>) {
+    let area = frame.area();
+    let inner_w = lines
+        .iter()
+        .map(Line::width)
+        .chain(std::iter::once(title.chars().count()))
+        .max()
+        .unwrap_or(20);
+    let width = (inner_w as u16 + 4).min(area.width);
+    let height = (lines.len() as u16 + 2).min(area.height);
+    let rect = Rect::new(
+        area.x + area.width.saturating_sub(width) / 2,
+        area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    );
+    frame.render_widget(Clear, rect);
+    frame.render_widget(
+        Paragraph::new(lines).block(
+            Block::bordered()
+                .title(Span::styled(
+                    title.to_string(),
+                    Style::default().fg(t.accent),
+                ))
+                .border_style(Style::default().fg(t.accent))
+                .padding(Padding::horizontal(1))
+                .style(Style::default().bg(t.surface)),
+        ),
+        rect,
+    );
 }
 
 fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {
@@ -124,31 +249,7 @@ fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {
             Span::styled(" cancel", Style::default().fg(t.subtle)),
         ]),
     ];
-    let area = frame.area();
-    let width = lines
-        .iter()
-        .map(Line::width)
-        .max()
-        .unwrap_or(20)
-        .clamp(24, area.width.saturating_sub(4) as usize) as u16
-        + 4;
-    let height = lines.len() as u16 + 2;
-    let rect = Rect::new(
-        area.x + area.width.saturating_sub(width) / 2,
-        area.y + area.height.saturating_sub(height) / 2,
-        width.min(area.width),
-        height.min(area.height),
-    );
-    frame.render_widget(Clear, rect);
-    frame.render_widget(
-        Paragraph::new(lines).block(
-            Block::bordered()
-                .border_style(Style::default().fg(t.accent))
-                .padding(Padding::horizontal(1))
-                .style(Style::default().bg(t.surface)),
-        ),
-        rect,
-    );
+    modal(frame, t, " run ", lines);
 }
 
 /// Restyle char ranges of `line`, splitting spans where needed.

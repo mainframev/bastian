@@ -1,19 +1,33 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
+use std::time::{Duration, Instant, SystemTime};
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::doc::{Block, CodeBlock, Document};
-use crate::exec::{self, BlockRun, RunEvent, RunSpec, Runner, Status};
+use crate::exec::{BlockRun, Interpreters, RunEvent, RunSpec, Runner, Status};
+use crate::links::{self, Link, Target};
 use crate::prompt::{Prompt, PromptEvent};
 use crate::render::theme::Theme;
 use crate::render::{self, Rendered};
 
 pub enum Action {
     None,
-    /// Go back to the browser, or quit when there is none.
+    /// Go back to the previous document or the browser, or quit.
     Back,
     Quit,
+    /// Open a Markdown document in bastian.
+    OpenDocument(PathBuf),
+    /// Hand a URL or file to the system opener.
+    OpenExternal(String),
+    /// Put text on the clipboard.
+    Copy(String),
+}
+
+/// The link list opened with `L`.
+pub struct LinkPicker {
+    pub links: Vec<Link>,
+    pub selected: usize,
 }
 
 /// A search hit in rendered text, in char offsets within the line.
@@ -52,6 +66,13 @@ pub struct Reader {
     pub base_dir: PathBuf,
     /// Skip confirmation, except for blocks marked `confirm`.
     pub assume_yes: bool,
+    pub link_picker: Option<LinkPicker>,
+    pub help: bool,
+    /// File the document came from, watched for changes.
+    pub source: Option<PathBuf>,
+    modified: Option<SystemTime>,
+    last_check: Instant,
+    pub interpreters: Interpreters,
     codes: Vec<CodeBlock>,
     runner: Runner,
     /// Remaining blocks of a run-all, started one after another.
@@ -83,6 +104,12 @@ impl Reader {
             message: None,
             base_dir: PathBuf::from("."),
             assume_yes: false,
+            link_picker: None,
+            help: false,
+            source: None,
+            modified: None,
+            last_check: Instant::now(),
+            interpreters: Interpreters::default(),
             codes,
             runner: Runner::default(),
             queue: VecDeque::new(),
@@ -97,7 +124,13 @@ impl Reader {
     /// Re-render when the width or run output changed, and keep scroll in range.
     pub fn layout(&mut self, width: u16, height: u16) {
         if width != self.width || self.dirty {
-            self.rendered = render::render_with_runs(&self.doc, width, &self.theme, &self.runs);
+            self.rendered = render::render_with_runs(
+                &self.doc,
+                width,
+                &self.theme,
+                &self.runs,
+                &self.interpreters,
+            );
             self.width = width;
             self.dirty = false;
             if let Some(s) = &mut self.search {
@@ -235,16 +268,19 @@ impl Reader {
             return Err("block is marked norun".into());
         }
         let lang = c.lang.as_deref().ok_or("block has no language")?;
-        let (program, args) =
-            exec::interpreter(lang).ok_or_else(|| format!("no interpreter for `{lang}`"))?;
-        let mut args: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+        let mut cmd = self
+            .interpreters
+            .get(lang)
+            .ok_or_else(|| format!("no interpreter for `{lang}`"))?;
+        let program = cmd.remove(0);
+        let mut args = cmd;
         args.push(c.src.clone());
         let cwd = match &c.attrs.cwd {
             Some(dir) => self.base_dir.join(dir),
             None => self.base_dir.clone(),
         };
         Ok(RunSpec {
-            program: program.to_string(),
+            program,
             args,
             cwd,
             env: c.attrs.env.clone(),
@@ -312,9 +348,55 @@ impl Reader {
     }
 
     /// Apply process events and timeouts. Returns true when anything changed.
+    /// Watch `path` and reload the document when it changes on disk.
+    pub fn watch(&mut self, path: PathBuf) {
+        self.modified = mtime(&path);
+        self.source = Some(path);
+    }
+
+    /// Re-read the source file if its modification time moved.
+    fn check_reload(&mut self) -> bool {
+        if self.last_check.elapsed() < RELOAD_CHECK {
+            return false;
+        }
+        self.last_check = Instant::now();
+        let Some(path) = &self.source else {
+            return false;
+        };
+        let modified = mtime(path);
+        if modified == self.modified {
+            return false;
+        }
+        self.modified = modified;
+        match std::fs::read_to_string(path) {
+            Ok(src) => {
+                self.replace_doc(crate::doc::parse(&src));
+                self.message = Some("reloaded".into());
+            }
+            Err(e) => self.message = Some(format!("reload failed: {e}")),
+        }
+        true
+    }
+
+    /// Swap in a new version of the document, keeping scroll and any run
+    /// state whose block still exists.
+    pub fn replace_doc(&mut self, doc: Document) {
+        let mut codes = Vec::new();
+        collect_code(&doc.blocks, &mut codes);
+        self.runs
+            .retain(|id, run| *id < codes.len() || run.is_running());
+        if self.focus.is_some_and(|id| id >= codes.len()) {
+            self.focus = None;
+        }
+        self.codes = codes;
+        self.doc = doc;
+        self.dirty = true;
+    }
+
     pub fn tick(&mut self) -> bool {
+        let reloaded = self.check_reload();
         let events = self.runner.drain();
-        let changed = !events.is_empty() || self.is_running();
+        let changed = reloaded || !events.is_empty() || self.is_running();
         for event in events {
             match event {
                 RunEvent::Output { id, text, stderr } => {
@@ -425,8 +507,71 @@ impl Reader {
         }
     }
 
+    fn on_link_key(&mut self, key: KeyEvent) -> Action {
+        let Some(picker) = &mut self.link_picker else {
+            return Action::None;
+        };
+        let last = picker.links.len().saturating_sub(1);
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down | KeyCode::Tab => {
+                picker.selected = (picker.selected + 1).min(last);
+            }
+            KeyCode::Char('k') | KeyCode::Up | KeyCode::BackTab => {
+                picker.selected = picker.selected.saturating_sub(1);
+            }
+            KeyCode::Enter => {
+                let url = picker.links[picker.selected].url.clone();
+                self.link_picker = None;
+                return self.follow_link(&url);
+            }
+            KeyCode::Esc | KeyCode::Char('q' | 'L') => self.link_picker = None,
+            _ => {}
+        }
+        Action::None
+    }
+
+    fn follow_link(&mut self, url: &str) -> Action {
+        match links::resolve(url, &self.base_dir) {
+            Target::Document(path) => Action::OpenDocument(path),
+            Target::External(target) => Action::OpenExternal(target),
+            Target::Anchor(anchor) => {
+                match self.heading_line(&anchor) {
+                    Some(line) => {
+                        self.follow = None;
+                        self.scroll = line.min(self.max_scroll());
+                    }
+                    None => self.message = Some(format!("no heading #{anchor}")),
+                }
+                Action::None
+            }
+            Target::Missing(path) => {
+                self.message = Some(format!("not found: {}", path.display()));
+                Action::None
+            }
+        }
+    }
+
+    /// Rendered line of the heading whose GitHub-style slug is `anchor`.
+    fn heading_line(&self, anchor: &str) -> Option<usize> {
+        let text = heading_texts(&self.doc.blocks)
+            .into_iter()
+            .find(|h| links::slug(h) == anchor)?;
+        self.rendered.lines.iter().position(|line| {
+            let plain: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+            let plain = plain.trim().trim_start_matches('#').trim();
+            !plain.is_empty() && text.starts_with(plain)
+        })
+    }
+
     pub fn on_key(&mut self, key: KeyEvent) -> Action {
         self.message = None;
+        if self.help {
+            self.help = false;
+            return Action::None;
+        }
+        if self.link_picker.is_some() {
+            return self.on_link_key(key);
+        }
         if self.confirm.is_some() {
             self.on_confirm_key(key);
             return Action::None;
@@ -482,10 +627,47 @@ impl Reader {
                     self.dirty = true;
                 }
             }
+            KeyCode::Char('y') => match self.focus.and_then(|id| self.code(id)) {
+                Some(c) => {
+                    let src = c.src.trim_end_matches('\n').to_string();
+                    self.message = Some(format!("copied {}", self.label(c.id)));
+                    return Action::Copy(src);
+                }
+                None => self.message = Some("focus a block with Tab first".into()),
+            },
+            KeyCode::Char('L') => {
+                let links = links::collect(&self.doc);
+                if links.is_empty() {
+                    self.message = Some("no links in this document".into());
+                } else {
+                    self.link_picker = Some(LinkPicker { links, selected: 0 });
+                }
+            }
+            KeyCode::Char('?') => self.help = true,
             _ => {}
         }
         Action::None
     }
+}
+
+/// How often to check the source file for changes.
+const RELOAD_CHECK: Duration = Duration::from_millis(500);
+
+fn mtime(path: &std::path::Path) -> Option<SystemTime> {
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+fn heading_texts(blocks: &[Block]) -> Vec<String> {
+    let mut out = Vec::new();
+    for b in blocks {
+        match b {
+            Block::Heading { inlines, .. } => out.push(crate::doc::plain_text(inlines)),
+            Block::Quote(inner) => out.extend(heading_texts(inner)),
+            Block::List { items, .. } => items.iter().for_each(|i| out.extend(heading_texts(i))),
+            _ => {}
+        }
+    }
+    out
 }
 
 fn collect_code(blocks: &[Block], out: &mut Vec<CodeBlock>) {

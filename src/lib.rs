@@ -1,7 +1,9 @@
 pub mod app;
 pub mod browser;
+pub mod config;
 pub mod doc;
 pub mod exec;
+pub mod links;
 pub mod prompt;
 pub mod reader;
 pub mod render;

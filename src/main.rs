@@ -1,27 +1,30 @@
 use std::io::{IsTerminal, Read};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 
+use bastian::app::{self, Settings};
+use bastian::config::{self, Confirm, ThemeName};
+use bastian::exec::Interpreters;
 use bastian::render::theme::Theme;
-use bastian::{app, browser, doc, reader, render};
+use bastian::{browser, doc, render};
 
 /// Read Markdown in the terminal, and run its code blocks.
 #[derive(Parser)]
-#[command(version)]
+#[command(version, after_help = config_help())]
 struct Cli {
     /// Markdown file to read, `-` for stdin, or a directory to browse.
     /// Defaults to browsing the current directory.
     path: Option<PathBuf>,
 
-    /// Maximum width of the rendered document.
-    #[arg(short, long, default_value_t = 100)]
-    width: u16,
+    /// Maximum width of the rendered document [default: 100].
+    #[arg(short, long)]
+    width: Option<u16>,
 
-    /// Color theme.
-    #[arg(short, long, value_enum, default_value_t = ThemeName::Dark)]
-    theme: ThemeName,
+    /// Color theme [default: dark].
+    #[arg(short, long, value_enum)]
+    theme: Option<ThemeName>,
 
     /// Run code blocks without asking first. Blocks marked `confirm` still ask.
     #[arg(short, long)]
@@ -32,18 +35,29 @@ struct Cli {
     print: bool,
 }
 
-#[derive(Clone, Copy, ValueEnum)]
-enum ThemeName {
-    Dark,
-    Light,
+fn config_help() -> String {
+    match config::path() {
+        Some(p) => format!("Config file: {}", p.display()),
+        None => "Config file: none (HOME is not set)".to_string(),
+    }
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let theme = match cli.theme {
+    let cfg = config::load()?;
+
+    // Command-line flags win over the config file.
+    let theme = match cli.theme.or(cfg.theme).unwrap_or(ThemeName::Dark) {
         ThemeName::Dark => Theme::dark(),
         ThemeName::Light => Theme::light(),
     };
+    let settings = Settings {
+        theme,
+        max_width: cli.width.or(cfg.width).unwrap_or(100),
+        assume_yes: cli.yes || cfg.confirm == Some(Confirm::Never),
+        interpreters: Interpreters::new(cfg.interpreters),
+    };
+
     let tui = !cli.print && std::io::stdout().is_terminal();
     let path = cli.path.unwrap_or_else(|| PathBuf::from("."));
 
@@ -54,21 +68,26 @@ fn main() -> Result<()> {
             }
             return Ok(());
         }
-        app::App::browse(path, theme, cli.width, cli.yes)
-    } else {
-        let (name, src) = read_source(&path)?;
+        app::App::browse(path, settings)
+    } else if path.as_os_str() == "-" {
+        let mut src = String::new();
+        std::io::stdin()
+            .read_to_string(&mut src)
+            .context("reading stdin")?;
         let doc = doc::parse(&src);
         if !tui {
-            let rendered = render::render(&doc, cli.width, &theme);
-            println!("{}", render::to_plain(&rendered.lines));
-            return Ok(());
+            return print(&doc, &settings);
         }
-        let mut reader = reader::Reader::new(name, doc, theme, cli.width);
-        reader.assume_yes = cli.yes;
-        if path.as_os_str() != "-" {
-            reader.base_dir = app::base_dir(&path);
+        let reader = settings.reader("stdin".into(), doc, PathBuf::from("."));
+        app::App::read(reader, settings)
+    } else {
+        if !tui {
+            let src = std::fs::read_to_string(&path)
+                .with_context(|| format!("reading {}", path.display()))?;
+            return print(&doc::parse(&src), &settings);
         }
-        app::App::read(reader)
+        let reader = settings.open(&path, path.display().to_string())?;
+        app::App::read(reader, settings)
     };
 
     let mut terminal = ratatui::init();
@@ -77,15 +96,8 @@ fn main() -> Result<()> {
     result
 }
 
-fn read_source(path: &Path) -> Result<(String, String)> {
-    if path.as_os_str() == "-" {
-        let mut src = String::new();
-        std::io::stdin()
-            .read_to_string(&mut src)
-            .context("reading stdin")?;
-        return Ok(("stdin".to_string(), src));
-    }
-    let src =
-        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-    Ok((path.display().to_string(), src))
+fn print(doc: &doc::Document, settings: &Settings) -> Result<()> {
+    let rendered = render::render(doc, settings.max_width, &settings.theme);
+    println!("{}", render::to_plain(&rendered.lines));
+    Ok(())
 }

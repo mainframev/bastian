@@ -9,18 +9,40 @@ use std::time::{Duration, Instant};
 /// Output lines kept per block; older lines are dropped and counted.
 pub const MAX_OUTPUT_LINES: usize = 2000;
 
-/// Program and leading arguments that run a block's source for a fence
-/// language. The source is passed as the final argument.
-pub fn interpreter(lang: &str) -> Option<(&'static str, &'static [&'static str])> {
+/// Built-in command lines that run a block's source for a fence language.
+/// The source is passed as the final argument.
+fn builtin(lang: &str) -> Option<&'static [&'static str]> {
     Some(match lang {
-        "sh" => ("sh", &["-c"]),
-        "bash" => ("bash", &["-c"]),
-        "zsh" => ("zsh", &["-c"]),
-        "fish" => ("fish", &["-c"]),
-        "python" | "py" | "python3" => ("python3", &["-c"]),
-        "node" | "js" | "javascript" => ("node", &["-e"]),
+        "sh" => &["sh", "-c"],
+        "bash" => &["bash", "-c"],
+        "zsh" => &["zsh", "-c"],
+        "fish" => &["fish", "-c"],
+        "python" | "py" | "python3" => &["python3", "-c"],
+        "node" | "js" | "javascript" => &["node", "-e"],
         _ => return None,
     })
+}
+
+/// Built-in interpreters plus overrides from the config file.
+#[derive(Debug, Clone, Default)]
+pub struct Interpreters {
+    overrides: HashMap<String, Vec<String>>,
+}
+
+impl Interpreters {
+    pub fn new(overrides: HashMap<String, Vec<String>>) -> Self {
+        Self { overrides }
+    }
+
+    /// Command line for `lang`, without the source. An empty override
+    /// disables a built-in language.
+    pub fn get(&self, lang: &str) -> Option<Vec<String>> {
+        match self.overrides.get(lang) {
+            Some(cmd) if cmd.is_empty() => None,
+            Some(cmd) => Some(cmd.clone()),
+            None => builtin(lang).map(|c| c.iter().map(|s| s.to_string()).collect()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -306,6 +328,21 @@ mod tests {
             .unwrap();
         let (out, _) = run_until_exit(&mut r, Duration::from_secs(5));
         assert_eq!(out, ["100%"]);
+    }
+
+    #[test]
+    fn interpreter_overrides() {
+        let i = Interpreters::new(HashMap::from([
+            (
+                "ruby".to_string(),
+                vec!["ruby".to_string(), "-e".to_string()],
+            ),
+            ("fish".to_string(), Vec::new()),
+        ]));
+        assert_eq!(i.get("ruby").unwrap(), ["ruby", "-e"]);
+        assert_eq!(i.get("fish"), None);
+        assert_eq!(i.get("sh").unwrap(), ["sh", "-c"]);
+        assert_eq!(i.get("rust"), None);
     }
 
     #[test]

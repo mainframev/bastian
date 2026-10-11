@@ -1,56 +1,75 @@
 use std::path::{Path, PathBuf};
-
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use ratatui::DefaultTerminal;
+use ratatui::crossterm::clipboard::CopyToClipboard;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::execute;
 
 use crate::browser::{self, Browser};
-use crate::doc;
+use crate::doc::{self, Document};
+use crate::exec::Interpreters;
+use crate::links;
 use crate::reader::{self, Reader};
 use crate::render::theme::Theme;
 use crate::ui;
 
-/// Top-level TUI state: an optional file browser with a reader on top.
-pub struct App {
+/// Options shared by every document the app opens.
+#[derive(Clone)]
+pub struct Settings {
     pub theme: Theme,
     pub max_width: u16,
-    pub browser: Option<Browser>,
-    pub reader: Option<Reader>,
     /// Run blocks without asking, except those marked `confirm`.
     pub assume_yes: bool,
+    pub interpreters: Interpreters,
+}
+
+impl Settings {
+    pub fn reader(&self, name: String, doc: Document, base_dir: PathBuf) -> Reader {
+        let mut r = Reader::new(name, doc, self.theme.clone(), self.max_width);
+        r.base_dir = base_dir;
+        r.assume_yes = self.assume_yes;
+        r.interpreters = self.interpreters.clone();
+        r
+    }
+
+    /// Open a file in a reader that reloads when the file changes.
+    pub fn open(&self, path: &Path, name: String) -> Result<Reader> {
+        let src =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        let mut r = self.reader(name, doc::parse(&src), base_dir(path));
+        r.watch(path.to_path_buf());
+        Ok(r)
+    }
+}
+
+/// Top-level TUI state: an optional file browser with a reader on top.
+/// Followed links push the previous reader onto `history`.
+pub struct App {
+    pub settings: Settings,
+    pub browser: Option<Browser>,
+    pub reader: Option<Reader>,
+    pub history: Vec<Reader>,
 }
 
 impl App {
-    pub fn browse(root: PathBuf, theme: Theme, max_width: u16, assume_yes: bool) -> Self {
+    pub fn browse(root: PathBuf, settings: Settings) -> Self {
         Self {
             browser: Some(Browser::new(root)),
             reader: None,
-            theme,
-            max_width,
-            assume_yes,
+            history: Vec::new(),
+            settings,
         }
     }
 
-    pub fn read(reader: Reader) -> Self {
+    pub fn read(reader: Reader, settings: Settings) -> Self {
         Self {
-            theme: reader.theme.clone(),
-            max_width: reader.max_width,
-            assume_yes: reader.assume_yes,
             browser: None,
             reader: Some(reader),
+            history: Vec::new(),
+            settings,
         }
-    }
-
-    fn open(&mut self, path: &Path, name: String) -> Result<()> {
-        let src =
-            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-        let mut reader = Reader::new(name, doc::parse(&src), self.theme.clone(), self.max_width);
-        reader.base_dir = base_dir(path);
-        reader.assume_yes = self.assume_yes;
-        self.reader = Some(reader);
-        Ok(())
     }
 
     /// Returns false when the app should exit.
@@ -64,14 +83,8 @@ impl App {
         }
 
         if let Some(r) = &mut self.reader {
-            return match r.on_key(key) {
-                reader::Action::None => true,
-                reader::Action::Quit => false,
-                reader::Action::Back => {
-                    self.reader = None;
-                    self.browser.is_some()
-                }
-            };
+            let action = r.on_key(key);
+            return self.on_reader_action(action);
         }
 
         let Some(b) = &mut self.browser else {
@@ -84,15 +97,67 @@ impl App {
                 let name = b
                     .selected_entry()
                     .map_or_else(|| path.display().to_string(), |e| e.rel.clone());
-                if let Err(err) = self.open(&path, name)
-                    && let Some(b) = &mut self.browser
-                {
-                    b.message = Some(format!("{err:#}"));
+                match self.settings.open(&path, name) {
+                    Ok(r) => self.reader = Some(r),
+                    Err(err) => b.message = Some(format!("{err:#}")),
                 }
                 true
             }
         }
     }
+
+    fn on_reader_action(&mut self, action: reader::Action) -> bool {
+        match action {
+            reader::Action::None => {}
+            reader::Action::Quit => return false,
+            reader::Action::Back => {
+                self.reader = self.history.pop();
+                return self.reader.is_some() || self.browser.is_some();
+            }
+            reader::Action::OpenDocument(path) => {
+                let name = display_name(&path);
+                match self.settings.open(&path, name) {
+                    Ok(next) => {
+                        if let Some(prev) = self.reader.replace(next) {
+                            self.history.push(prev);
+                        }
+                    }
+                    Err(err) => self.set_message(format!("{err:#}")),
+                }
+            }
+            reader::Action::OpenExternal(target) => {
+                if let Err(err) = links::open_external(&target) {
+                    self.set_message(format!("could not open {target}: {err}"));
+                }
+            }
+            reader::Action::Copy(text) => {
+                // OSC 52 asks the terminal to set the clipboard, which also
+                // works over ssh. Terminals without support ignore it.
+                if let Err(err) =
+                    execute!(std::io::stdout(), CopyToClipboard::to_clipboard_from(text))
+                {
+                    self.set_message(format!("copy failed: {err}"));
+                }
+            }
+        }
+        true
+    }
+
+    fn set_message(&mut self, msg: String) {
+        if let Some(r) = &mut self.reader {
+            r.message = Some(msg);
+        }
+    }
+}
+
+/// Path relative to the current directory when possible, for the status bar.
+fn display_name(path: &Path) -> String {
+    std::env::current_dir()
+        .ok()
+        .and_then(|cwd| path.strip_prefix(cwd).ok().map(Path::to_path_buf))
+        .unwrap_or_else(|| path.to_path_buf())
+        .display()
+        .to_string()
 }
 
 /// Directory a document's blocks run in: the one containing the file.
@@ -120,7 +185,7 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<()> {
             if let Some(r) = &mut app.reader {
                 ui::reader::draw(f, r);
             } else if let Some(b) = &mut app.browser {
-                ui::browser::draw(f, b, &app.theme);
+                ui::browser::draw(f, b, &app.settings.theme);
             }
         })?;
         if event::poll(TICK)? {

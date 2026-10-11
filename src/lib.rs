@@ -6,6 +6,7 @@ pub mod editor;
 pub mod exec;
 pub mod links;
 pub mod output;
+pub mod picker;
 pub mod prompt;
 pub mod reader;
 pub mod remote;

@@ -5,7 +5,8 @@ use anyhow::Result;
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::clipboard::CopyToClipboard;
 use ratatui::crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseEventKind,
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
+    MouseEventKind,
 };
 use ratatui::crossterm::execute;
 
@@ -14,6 +15,7 @@ use crate::doc::{self, Document};
 use crate::editor;
 use crate::exec::Interpreters;
 use crate::links;
+use crate::picker::{self, ThemePicker};
 use crate::prompt;
 use crate::reader::{self, Reader};
 use crate::render::theme::Theme;
@@ -83,6 +85,28 @@ pub struct App {
     edit: Option<(PathBuf, Option<usize>)>,
     /// Set by ctrl-z; the run loop suspends bastian like a shell job.
     suspend: bool,
+    /// Where themes come from and where a picked one is saved.
+    pub themes: ThemeFiles,
+    /// The open theme picker, and the theme to restore if it's cancelled.
+    picker: Option<(ThemePicker, Theme)>,
+    /// Quit once the picker closes (`bastian themes`).
+    pub pick_and_exit: bool,
+    /// Shown after the TUI exits, e.g. what `bastian themes` saved.
+    pub exit_note: Option<String>,
+}
+
+/// Theme locations and the current choice, for the theme picker.
+#[derive(Clone, Default)]
+pub struct ThemeFiles {
+    /// The user's themes directory.
+    pub dir: Option<PathBuf>,
+    /// Config file a picked theme is written to.
+    pub config: Option<PathBuf>,
+    /// The theme in use, by name.
+    pub current: String,
+    /// What overrides the config file's `theme` this session, if anything
+    /// (`--theme` or `BASTIAN_THEME`).
+    pub overridden_by: Option<String>,
 }
 
 impl App {
@@ -103,6 +127,69 @@ impl App {
             history: Vec::new(),
             edit: None,
             suspend: false,
+            themes: ThemeFiles::default(),
+            picker: None,
+            pick_and_exit: false,
+            exit_note: None,
+        }
+    }
+
+    pub fn open_picker(&mut self) {
+        let picker = ThemePicker::new(self.themes.dir.as_deref(), &self.themes.current);
+        self.picker = Some((picker, self.settings.theme.clone()));
+    }
+
+    /// Use `theme` everywhere: the browser, the open reader and history.
+    fn apply_theme(&mut self, theme: Theme) {
+        for r in self.reader.iter_mut().chain(self.history.iter_mut()) {
+            r.set_theme(theme.clone());
+        }
+        self.settings.theme = theme;
+    }
+
+    /// Returns false when the app should exit.
+    fn on_picker_key(&mut self, key: KeyEvent) -> bool {
+        let Some((picker, _)) = &mut self.picker else {
+            return true;
+        };
+        match picker.on_key(key) {
+            picker::Event::None => {}
+            picker::Event::Preview(theme) => self.apply_theme(theme),
+            picker::Event::Cancel => {
+                if let Some((_, before)) = self.picker.take() {
+                    self.apply_theme(before);
+                }
+                return !self.pick_and_exit;
+            }
+            picker::Event::Pick { name, theme } => {
+                self.picker = None;
+                self.apply_theme(theme);
+                let note = self.save_theme(&name);
+                self.themes.current = name;
+                if self.pick_and_exit {
+                    self.exit_note = Some(note);
+                    return false;
+                }
+                self.set_message(note);
+            }
+        }
+        true
+    }
+
+    /// Write `name` to the config file; returns what to tell the user.
+    fn save_theme(&self, name: &str) -> String {
+        let Some(path) = &self.themes.config else {
+            return format!("theme {name} (no config file to save it to)");
+        };
+        match crate::config::save_theme(path, name) {
+            Ok(()) => {
+                let mut note = format!("theme {name} saved to {}", path.display());
+                if let Some(by) = &self.themes.overridden_by {
+                    note.push_str(&format!("; {by} still overrides it"));
+                }
+                note
+            }
+            Err(e) => format!("theme {name} not saved: {e:#}"),
         }
     }
 
@@ -144,6 +231,9 @@ impl App {
             self.suspend = true;
             return true;
         }
+        if self.picker.is_some() {
+            return self.on_picker_key(key);
+        }
 
         if let Some(r) = &mut self.reader {
             let action = r.on_key(key);
@@ -168,6 +258,10 @@ impl App {
             }
             browser::Action::Edit(path) => {
                 self.edit = Some((path, None));
+                true
+            }
+            browser::Action::PickTheme => {
+                self.open_picker();
                 true
             }
         }
@@ -196,6 +290,7 @@ impl App {
                 }
             }
             reader::Action::Edit(path, line) => self.edit = Some((path, line)),
+            reader::Action::PickTheme => self.open_picker(),
             reader::Action::Copy(text) => {
                 // OSC 52 asks the terminal to set the clipboard, which also
                 // works over ssh. Terminals without support ignore it.
@@ -324,7 +419,8 @@ fn is_ignored(event: &Event) -> bool {
 /// How often to wake up for process output while waiting for keys.
 const TICK: Duration = Duration::from_millis(100);
 
-pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<()> {
+/// Run the TUI until the user quits. Returns a note to print afterwards.
+pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<Option<String>> {
     let mut redraw = true;
     loop {
         if let Some(r) = &mut app.reader {
@@ -340,13 +436,16 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<()> {
                 } else if let Some(b) = &mut app.browser {
                     ui::browser::draw(f, b, &app.settings.theme);
                 }
+                if let Some((p, _)) = &app.picker {
+                    ui::picker::draw(f, &app.settings.theme, p);
+                }
             })?;
         }
         if event::poll(TICK)? {
             let event = event::read()?;
             let ignored = is_ignored(&event);
             if !app.on_event(event) {
-                return Ok(());
+                return Ok(app.exit_note.take());
             }
             if let Some((path, line)) = app.edit.take() {
                 app.run_editor(terminal, &path, line)?;

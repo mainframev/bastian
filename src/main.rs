@@ -86,8 +86,8 @@ enum Command {
     },
     /// Print the man page (roff), e.g. `bastian man | man -l -`.
     Man,
-    /// List the built-in themes and your own from the `themes` directory
-    /// next to the config file.
+    /// Pick a theme with a live preview and save it to the config file
+    /// (lists the themes instead when output isn't a terminal).
     Themes,
 }
 
@@ -159,6 +159,7 @@ fn main() -> Result<()> {
             ..config::Config::default()
         },
     )?;
+    let mut resolved = resolved;
     if cli.print_config {
         print!(
             "{}",
@@ -167,7 +168,9 @@ fn main() -> Result<()> {
         return Ok(());
     }
     let stdout_tty = std::io::stdout().is_terminal();
-    if list_themes {
+    // In a terminal, `bastian themes` opens the picker; otherwise it lists.
+    let pick_theme = list_themes && stdout_tty;
+    if list_themes && !pick_theme {
         let color = output::use_color(
             resolved.color.value,
             stdout_tty,
@@ -177,9 +180,29 @@ fn main() -> Result<()> {
         print!("{}", theme_list(&resolved, themes_dir.as_deref(), color));
         return Ok(());
     }
-    config::check_themes(&resolved, |name| {
+    let checked = config::check_themes(&resolved, |name| {
         themes::exists(name, themes_dir.as_deref())
-    })?;
+    });
+    if let Err(e) = checked {
+        if !pick_theme {
+            return Err(e);
+        }
+        // The picker is how a bad theme setting gets fixed: start from the
+        // defaults instead of refusing to open.
+        resolved.theme.value = "auto".into();
+        resolved.dark_theme.value = "rose-pine".into();
+        resolved.light_theme.value = "rose-pine-dawn".into();
+    }
+    let theme_files = app::ThemeFiles {
+        dir: themes_dir.clone(),
+        config: located.as_ref().map(|(p, _)| p.clone()),
+        current: String::new(),
+        overridden_by: match resolved.theme.source {
+            config::Source::Flag => Some("--theme".into()),
+            config::Source::Env => Some("BASTIAN_THEME".into()),
+            _ => None,
+        },
+    };
     let out = Output {
         width: output::print_width(
             &resolved.width,
@@ -195,9 +218,26 @@ fn main() -> Result<()> {
         pager: (resolved.pager.value && stdout_tty)
             .then(|| output::pager_command(std::env::var("PAGER").ok().as_deref())),
     };
-    let tui = !cli.print && out.pager.is_none() && stdout_tty;
+    let tui = pick_theme || (!cli.print && out.pager.is_none() && stdout_tty);
     // Plain output has no colors, so it skips the background query.
-    let settings = settings(resolved, themes_dir.as_deref(), tui || out.color)?;
+    let (settings, current) = settings(resolved, themes_dir.as_deref(), tui || out.color)?;
+    let theme_files = app::ThemeFiles {
+        current,
+        ..theme_files
+    };
+
+    if pick_theme {
+        let reader = settings.reader(
+            "theme preview".into(),
+            doc::parse(bastian::picker::SAMPLE),
+            PathBuf::from("."),
+        );
+        let mut app = app::App::read(reader, settings);
+        app.themes = theme_files;
+        app.pick_and_exit = true;
+        app.open_picker();
+        return run_tui(app);
+    }
 
     let path = cli.path.unwrap_or_else(|| PathBuf::from("."));
 
@@ -243,11 +283,20 @@ fn main() -> Result<()> {
         app::App::read(reader, settings)
     };
 
+    let mut app = app;
+    app.themes = theme_files;
+    run_tui(app)
+}
+
+fn run_tui(app: app::App) -> Result<()> {
     let mouse = app.settings.mouse;
     let mut terminal = app::enter_terminal(mouse)?;
     let result = app::run(&mut terminal, app);
     app::leave_terminal(mouse);
-    result
+    if let Some(note) = result? {
+        println!("{note}");
+    }
+    Ok(())
 }
 
 /// Open the config file in the editor, writing the template first if it's
@@ -275,17 +324,19 @@ fn settings(
     r: config::Resolved,
     themes_dir: Option<&std::path::Path>,
     colored: bool,
-) -> Result<Settings> {
+) -> Result<(Settings, String)> {
     let light = colored && r.theme.value == "auto" && term::background() == Some(Background::Light);
-    Ok(Settings {
-        theme: themes::load(config::theme_name(&r, light), themes_dir)?,
+    let name = config::theme_name(&r, light).to_string();
+    let settings = Settings {
+        theme: themes::load(&name, themes_dir)?,
         max_width: r.width.value,
         assume_yes: r.confirm.value == Confirm::Never,
         line_numbers: r.line_numbers.value,
         all: r.all.value,
         mouse: r.mouse.value,
         interpreters: Interpreters::new(r.interpreters),
-    })
+    };
+    Ok((settings, name))
 }
 
 /// `bastian themes`: one row per theme with its appearance, where it comes

@@ -26,6 +26,8 @@ pub enum Action {
     Copy(String),
     /// Open the document's file in the user's editor, at a 1-based line.
     Edit(PathBuf, Option<usize>),
+    /// Open the theme picker.
+    PickTheme,
 }
 
 /// The link list opened with `L`.
@@ -134,6 +136,13 @@ impl Reader {
             width: 0,
             height: 0,
         }
+    }
+
+    /// Switch to `theme`, re-highlighting code on the next layout.
+    pub fn set_theme(&mut self, theme: Theme) {
+        self.theme = theme;
+        self.highlights.clear();
+        self.dirty = true;
     }
 
     /// Re-render when the width or run output changed, and keep scroll in range.
@@ -719,6 +728,7 @@ impl Reader {
                 }
             }
             KeyCode::Char('?') => self.help = true,
+            KeyCode::Char('T') => return Action::PickTheme,
             KeyCode::Char('#') => self.line_numbers = !self.line_numbers,
             KeyCode::Char('e') => match &self.source {
                 Some(path) => return Action::Edit(path.clone(), self.source_line()),

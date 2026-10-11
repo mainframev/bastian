@@ -60,6 +60,7 @@ uname -sm
 | `e` | edit the file in `$VISUAL`, `$EDITOR` or `vi`, at the line you're reading |
 | `ctrl-z` | suspend; resume with `fg` |
 | `#` | toggle line numbers |
+| `T` | pick a theme (also in the browser) |
 | `?` | key help |
 | `Esc`, `h` | back to the previous document or the browser |
 | `q` | quit |
@@ -164,8 +165,11 @@ Built-in themes, which also color code blocks:
 Pick one with `-t`, `theme = "..."` or `BASTIAN_THEME`. With `theme = "auto"`
 (the default), bastian asks the terminal for its background color and uses
 `dark_theme` or `light_theme`; `"dark"` and `"light"` force one of the two.
-`bastian themes` lists every theme with a color swatch and marks the ones your
-settings use.
+`bastian themes` opens a theme picker over a sample document: move through the
+list to preview each theme, `Enter` saves the highlighted one as `theme` in
+your config file (other settings and comments are kept), `Esc` leaves things
+as they were. Press `T` for the same picker while reading or browsing. Piped,
+`bastian themes` prints the list with each theme's colors instead.
 
 ### Your own themes
 

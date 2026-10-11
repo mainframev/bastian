@@ -74,6 +74,33 @@ pub fn find_line(t: &Theme, text: &str, editing: bool) -> Line<'static> {
 /// A bordered box centered on screen.
 pub fn modal(frame: &mut Frame, t: &Theme, title: &str, lines: Vec<Line>) {
     let area = frame.area();
+    let (width, height) = box_size(area, title, &lines);
+    let rect = Rect::new(
+        area.x + area.width.saturating_sub(width) / 2,
+        area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    );
+    boxed(frame, t, title, lines, rect);
+}
+
+/// Like `modal`, but against the right edge (above the status bar), so the
+/// screen behind stays visible.
+pub fn side_panel(frame: &mut Frame, t: &Theme, title: &str, lines: Vec<Line>) {
+    let area = frame.area();
+    let (width, height) = box_size(area, title, &lines);
+    let height = height.min(area.height.saturating_sub(2));
+    let rect = Rect::new(
+        area.right().saturating_sub(width + 1),
+        area.y + 1,
+        width,
+        height,
+    );
+    boxed(frame, t, title, lines, rect);
+}
+
+/// Border, padding and title around `lines`, fitted to `area`.
+fn box_size(area: Rect, title: &str, lines: &[Line]) -> (u16, u16) {
     let inner_w = lines
         .iter()
         .map(Line::width)
@@ -82,12 +109,10 @@ pub fn modal(frame: &mut Frame, t: &Theme, title: &str, lines: Vec<Line>) {
         .unwrap_or(20);
     let width = (inner_w as u16 + 4).min(area.width);
     let height = (lines.len() as u16 + 2).min(area.height);
-    let rect = Rect::new(
-        area.x + area.width.saturating_sub(width) / 2,
-        area.y + area.height.saturating_sub(height) / 2,
-        width,
-        height,
-    );
+    (width, height)
+}
+
+fn boxed(frame: &mut Frame, t: &Theme, title: &str, lines: Vec<Line>, rect: Rect) {
     frame.render_widget(Clear, rect);
     frame.render_widget(
         Paragraph::new(lines).block(

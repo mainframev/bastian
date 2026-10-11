@@ -156,6 +156,7 @@ const HELP: &[(&str, &str)] = &[
     ("e", "edit at this line in $VISUAL/$EDITOR"),
     ("ctrl-z", "suspend (resume with fg)"),
     ("#", "toggle line numbers"),
+    ("T", "pick a theme"),
     ("Esc, h", "back"),
     ("q", "quit"),
 ];

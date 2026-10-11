@@ -25,6 +25,7 @@ const HELP: &[(&str, &str)] = &[
     ("Enter", "open"),
     ("e", "edit in $VISUAL/$EDITOR"),
     ("r", "rescan for files"),
+    ("T", "pick a theme"),
     ("Esc", "clear filter"),
     ("q", "quit"),
 ];

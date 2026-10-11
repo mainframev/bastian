@@ -1,5 +1,6 @@
 pub mod browser;
 mod logo;
+pub mod picker;
 pub mod reader;
 mod status;
 

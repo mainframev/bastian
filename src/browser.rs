@@ -59,6 +59,8 @@ pub enum Action {
     Quit,
     Open(PathBuf),
     Edit(PathBuf),
+    /// Open the theme picker.
+    PickTheme,
 }
 
 pub struct Browser {
@@ -282,6 +284,7 @@ impl Browser {
             }
             KeyCode::Char('r') => self.rescan(),
             KeyCode::Char('?') => self.help = true,
+            KeyCode::Char('T') => return Action::PickTheme,
             _ => {}
         }
         Action::None

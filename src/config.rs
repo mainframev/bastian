@@ -312,6 +312,61 @@ fn pick<T>(default: T, file: Option<T>, env: Option<T>, cli: Option<T>) -> Setti
     Setting { value, source }
 }
 
+/// Write `theme = "<name>"` into the config file at `path`, replacing a
+/// top-level `theme` line if there is one and keeping everything else
+/// (comments, other keys, tables) as it is. Creates the file if needed.
+pub fn save_theme(path: &Path, name: &str) -> Result<()> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e).with_context(|| format!("reading {}", path.display())),
+    };
+    let updated = with_theme(&text, name);
+    // Never write something that no longer parses.
+    toml::from_str::<Config>(&updated)
+        .with_context(|| format!("updating {} would break it", path.display()))?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+    }
+    std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))
+}
+
+/// `text` with its top-level `theme` set to `name`.
+fn with_theme(text: &str, name: &str) -> String {
+    let line = format!("theme = {name:?}");
+    let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
+    // Top-level keys come before the first `[table]`.
+    let top = lines
+        .iter()
+        .position(|l| l.trim_start().starts_with('['))
+        .unwrap_or(lines.len());
+    let existing = lines[..top].iter().position(|l| {
+        let l = l.trim_start();
+        l.strip_prefix("theme")
+            .is_some_and(|rest| rest.trim_start().starts_with('='))
+    });
+    match existing {
+        Some(i) => {
+            // Keep a trailing comment on the line.
+            let comment = lines[i]
+                .find('#')
+                .map(|h| lines[i][lines[i][..h].trim_end().len()..].to_string());
+            lines[i] = format!("{line}{}", comment.unwrap_or_default());
+        }
+        None => {
+            // After any leading comment block, before the first key or table.
+            let at = lines[..top]
+                .iter()
+                .position(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty())
+                .unwrap_or(top);
+            lines.insert(at, line);
+        }
+    }
+    let mut out = lines.join("\n");
+    out.push('\n');
+    out
+}
+
 /// Name of the theme to use. `auto` follows the terminal background
 /// (`light_background`, unknown counts as dark); `dark` and `light` pick
 /// `dark_theme` and `light_theme`.
@@ -732,6 +787,36 @@ mod tests {
         assert!(
             err.contains("(from `dark_theme` in the config file)"),
             "{err}"
+        );
+    }
+
+    #[test]
+    fn saving_a_theme_keeps_the_rest_of_the_file() {
+        assert_eq!(with_theme("", "nord"), "theme = \"nord\"\n");
+        assert_eq!(
+            with_theme("# mine\n\nwidth = 80\n[interpreters]\ntheme = []\n", "nord"),
+            "# mine\n\ntheme = \"nord\"\nwidth = 80\n[interpreters]\ntheme = []\n"
+        );
+        assert_eq!(
+            with_theme(
+                "width = 80\ntheme = \"auto\"  # follow the terminal\n",
+                "dracula"
+            ),
+            "width = 80\ntheme = \"dracula\"  # follow the terminal\n"
+        );
+        // The commented template line stays a comment.
+        let t = with_theme(TEMPLATE, "nord");
+        assert!(t.contains("# theme = \"auto\""), "{t}");
+        let c: Config = toml::from_str(&t).unwrap();
+        assert_eq!(c.theme.as_deref(), Some("nord"));
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sub/config.toml");
+        save_theme(&path, "kanagawa").unwrap();
+        save_theme(&path, "nord").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "theme = \"nord\"\n"
         );
     }
 }

@@ -13,15 +13,35 @@ pub enum Left<'a> {
     Error(&'a str),
 }
 
+/// Left side of the status bar: prompt keys while typing, else a pending
+/// message, else the screen's `idle` hint.
+pub fn left<'a>(prompt_open: bool, message: Option<&'a str>, idle: &'a str) -> Left<'a> {
+    match (prompt_open, message) {
+        (true, _) => Left::Text("enter accept · esc clear"),
+        (false, Some(m)) => Left::Error(m),
+        (false, None) => Left::Text(idle),
+    }
+}
+
+/// Style of a list row's text, highlighted when selected.
+pub fn row_style(t: &Theme, selected: bool) -> Style {
+    if selected {
+        Style::default().fg(t.accent).bold()
+    } else {
+        Style::default().fg(t.text)
+    }
+}
+
 pub fn draw(frame: &mut Frame, area: Rect, t: &Theme, left: Left, right: &str) {
     let mut spans = vec![Span::styled(
         " bastian ",
         Style::default().fg(t.h1_fg).bg(t.accent).bold(),
     )];
-    match left {
-        Left::Text(s) => spans.push(Span::styled(format!(" {s}"), Style::default().fg(t.text))),
-        Left::Error(s) => spans.push(Span::styled(format!(" {s}"), Style::default().fg(t.err))),
-    }
+    let (s, fg) = match left {
+        Left::Text(s) => (s, t.text),
+        Left::Error(s) => (s, t.err),
+    };
+    spans.push(Span::styled(format!(" {s}"), Style::default().fg(fg)));
 
     // One column of padding on each side of the right-hand text.
     let right_w = right.width() as u16 + 2;

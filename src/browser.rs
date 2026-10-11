@@ -6,9 +6,9 @@ use std::time::SystemTime;
 use ignore::WalkState;
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
-use crate::prompt::{Prompt, PromptEvent};
+use crate::prompt::{self, Prompt, PromptEvent};
 
 /// A Markdown file found under the browsed directory.
 #[derive(Debug, Clone)]
@@ -43,7 +43,6 @@ pub struct Browser {
     /// One-shot error shown in the status bar until the next key.
     pub message: Option<String>,
     pub height: usize,
-    pub offset: usize,
     /// Entries still arriving from the background scan.
     incoming: Option<Receiver<Entry>>,
     /// When the scan started, for the loading spinner.
@@ -67,7 +66,6 @@ impl Browser {
             prompt: None,
             message: None,
             height: 0,
-            offset: 0,
             incoming: None,
             started: std::time::Instant::now(),
             help: false,
@@ -140,7 +138,6 @@ impl Browser {
 
     fn refilter(&mut self) {
         self.selected = 0;
-        self.offset = 0;
         if self.filter.is_empty() {
             self.visible = (0..self.entries.len()).collect();
             return;
@@ -171,12 +168,17 @@ impl Browser {
         self.selected = self.selected.saturating_add_signed(delta).min(max);
     }
 
-    /// Keep the selection inside the window of `height` visible rows.
-    /// Show the page holding the selection. The list turns a whole
-    /// screen at a time rather than scrolling entry by entry.
+    /// Set how many entries fit on a page. The list shows the page holding
+    /// the selection, turning a whole screen at a time rather than
+    /// scrolling entry by entry.
     pub fn layout(&mut self, rows: usize) {
         self.height = rows.max(1);
-        self.offset = self.selected / self.height * self.height;
+    }
+
+    /// Index of the first entry on the current page.
+    pub fn offset(&self) -> usize {
+        let per = self.height.max(1);
+        self.selected / per * per
     }
 
     /// Current page and page count, both 1-based.
@@ -216,7 +218,7 @@ impl Browser {
         }
 
         let page = self.height.max(1) as isize;
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let ctrl = prompt::ctrl(&key);
         match key.code {
             KeyCode::Char('d') if ctrl => self.move_by(page / 2),
             KeyCode::Char('u') if ctrl => self.move_by(-page / 2),
@@ -260,7 +262,7 @@ impl Browser {
 /// Keys that move the selection rather than edit filter text. Plain
 /// letters (even `j`/`k`) stay text, and ctrl-u keeps clearing the input.
 fn is_navigation(key: &KeyEvent) -> bool {
-    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let ctrl = prompt::ctrl(key);
     match key.code {
         KeyCode::Up
         | KeyCode::Down
@@ -394,6 +396,7 @@ fn first_heading(src: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::crossterm::event::KeyModifiers;
 
     #[test]
     fn heading_skips_fences() {
@@ -583,17 +586,17 @@ mod tests {
         let mut b = Browser::new(dir.path().to_path_buf(), false);
         wait_for_scan(&mut b);
         b.layout(10);
-        assert_eq!((b.offset, b.page()), (0, (1, 3)));
+        assert_eq!((b.offset(), b.page()), (0, (1, 3)));
         b.selected = 9;
         b.layout(10);
-        assert_eq!((b.offset, b.page()), (0, (1, 3)));
+        assert_eq!((b.offset(), b.page()), (0, (1, 3)));
         // One step past the last row turns to the next page.
         b.on_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
         b.layout(10);
-        assert_eq!((b.offset, b.page()), (10, (2, 3)));
+        assert_eq!((b.offset(), b.page()), (10, (2, 3)));
         b.selected = 24;
         b.layout(10);
-        assert_eq!((b.offset, b.page()), (20, (3, 3)));
+        assert_eq!((b.offset(), b.page()), (20, (3, 3)));
 
         // h/l and ←/→ turn pages, keeping the row within the page.
         b.selected = 12;

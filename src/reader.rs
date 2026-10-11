@@ -2,12 +2,12 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use crate::doc::{self, Block, CodeBlock, Document};
 use crate::exec::{BlockRun, Interpreters, RunEvent, RunSpec, Runner, Status};
 use crate::links::{self, Link, Target};
-use crate::prompt::{Prompt, PromptEvent};
+use crate::prompt::{self, Prompt, PromptEvent};
 use crate::render::theme::Theme;
 use crate::render::{self, Rendered};
 
@@ -635,7 +635,7 @@ impl Reader {
         }
 
         let page = self.height.max(1) as isize;
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let ctrl = prompt::ctrl(&key);
         match key.code {
             KeyCode::Char('q') => return Action::Quit,
             KeyCode::Esc if self.search.is_some() => self.search = None,

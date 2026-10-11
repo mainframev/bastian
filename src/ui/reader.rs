@@ -4,11 +4,9 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use super::status::{self, Left};
+pub use super::MARGIN;
+use super::status;
 use crate::reader::{LinkPicker, Reader};
-
-/// Columns of left margin around the document.
-pub const MARGIN: u16 = 2;
 
 pub fn draw(frame: &mut Frame, r: &mut Reader) {
     // While searching, a `Find:` line sits above the document.
@@ -107,26 +105,18 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
     } else {
         r.scroll * 100 / r.max_scroll()
     };
-    let right = match &r.search {
-        _ if r.search.is_none() && r.focus.is_some() => {
-            let (i, n) = r.focus_position().unwrap_or((0, 0));
-            format!("block {i}/{n}  {pct:>3}%")
-        }
-        _ => format!("{} lines  {pct:>3}%", r.rendered.lines.len()),
+    let right = if r.search.is_none() && r.focus.is_some() {
+        let (i, n) = r.focus_position().unwrap_or((0, 0));
+        format!("block {i}/{n}  {pct:>3}%")
+    } else {
+        format!("{} lines  {pct:>3}%", r.rendered.lines.len())
     };
-    let hint;
-    let left = match (&r.prompt, &r.message) {
-        (Some(_), _) => Left::Text("enter accept · esc clear"),
-        (None, Some(m)) => Left::Error(m),
-        (None, None) if r.focus.is_some() => {
-            hint = format!("{}  enter run · R all · x stop · y copy · ? more", r.name);
-            Left::Text(&hint)
-        }
-        (None, None) => {
-            hint = format!("{}  e edit · ? more", r.name);
-            Left::Text(&hint)
-        }
+    let hint = if r.focus.is_some() {
+        format!("{}  enter run · R all · x stop · y copy · ? more", r.name)
+    } else {
+        format!("{}  e edit · ? more", r.name)
     };
+    let left = status::left(r.prompt.is_some(), r.message.as_deref(), &hint);
     status::draw(frame, status, &r.theme, left, &right);
 
     if let Some(ids) = &r.confirm {
@@ -184,11 +174,7 @@ fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
         .map(|(i, link)| {
             let selected = i == picker.selected;
             let marker = if selected { "▶ " } else { "  " };
-            let text_style = if selected {
-                Style::default().fg(t.accent).bold()
-            } else {
-                Style::default().fg(t.text)
-            };
+            let text_style = status::row_style(t, selected);
             let entry = format!("{}  {}", link.text, link.url);
             let shown: String = entry.chars().take(max_w.saturating_sub(2)).collect();
             let split = link.text.chars().count().min(shown.chars().count());
@@ -244,10 +230,8 @@ fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {
 fn draw_find(frame: &mut Frame, r: &Reader, area: Rect) {
     let t = &r.theme;
     let area = Rect {
-        x: area.x + MARGIN,
-        width: area.width.saturating_sub(MARGIN * 2),
         height: 1,
-        ..area
+        ..super::inset(area)
     };
     let text = match (&r.prompt, &r.search) {
         (Some(p), _) => p.text.as_str(),

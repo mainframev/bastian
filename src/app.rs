@@ -5,8 +5,7 @@ use anyhow::Result;
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::clipboard::CopyToClipboard;
 use ratatui::crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
-    MouseEventKind,
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseEventKind,
 };
 use ratatui::crossterm::execute;
 
@@ -15,6 +14,7 @@ use crate::doc::{self, Document};
 use crate::editor;
 use crate::exec::Interpreters;
 use crate::links;
+use crate::prompt;
 use crate::reader::{self, Reader};
 use crate::render::theme::Theme;
 use crate::ui;
@@ -137,10 +137,10 @@ impl App {
         if key.kind != KeyEventKind::Press {
             return true;
         }
-        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+        if key.code == KeyCode::Char('c') && prompt::ctrl(&key) {
             return false;
         }
-        if key.code == KeyCode::Char('z') && key.modifiers.contains(KeyModifiers::CONTROL) {
+        if key.code == KeyCode::Char('z') && prompt::ctrl(&key) {
             self.suspend = true;
             return true;
         }

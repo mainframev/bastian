@@ -5,14 +5,14 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
+use super::inset;
 use super::logo;
-use super::reader::MARGIN;
-use super::status::{self, Left};
+use super::status;
 use crate::browser::Browser;
 use crate::render::theme::Theme;
 
@@ -50,12 +50,6 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
         Constraint::Length(1),
     ])
     .areas(frame.area());
-
-    let inset = |r: Rect| Rect {
-        x: r.x + MARGIN,
-        width: r.width.saturating_sub(MARGIN * 2),
-        ..r
-    };
 
     let finding = b.prompt.is_some() || !b.filter.is_empty();
     if finding {
@@ -111,7 +105,7 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
         lines.push(Line::styled(msg, Style::default().fg(t.muted)));
     }
     let tz = TimeZone::system();
-    for (row, &idx) in b.visible.iter().enumerate().skip(b.offset).take(b.height) {
+    for (row, &idx) in b.visible.iter().enumerate().skip(b.offset()).take(b.height) {
         let e = &b.entries[idx];
         let selected = row == b.selected;
         let bar = if selected {
@@ -119,20 +113,18 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
         } else {
             Span::raw("  ")
         };
-        let title_style = if selected {
-            Style::default().fg(t.accent).bold()
-        } else {
-            Style::default().fg(t.text)
-        };
+        let title_style = status::row_style(t, selected);
         // Title, then progressively quieter path and date lines. The path
         // is left out when it would just repeat the title (a top-level file
-        // without a title); the entry keeps its height so pages stay even.
+        // without a title); padding keeps every entry `ENTRY_ROWS` tall so
+        // pages stay even.
         let title = e.title.clone().unwrap_or_else(|| {
             e.path
                 .file_name()
                 .map_or_else(|| e.rel.clone(), |n| n.to_string_lossy().into_owned())
         });
         let show_path = e.rel != title;
+        let start = lines.len();
         lines.push(Line::from(vec![
             bar.clone(),
             Span::styled(title, title_style),
@@ -151,19 +143,16 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
                 Style::default().fg(t.muted).add_modifier(Modifier::DIM),
             ),
         ]));
-        lines.push(Line::default());
-        if !show_path {
-            lines.push(Line::default());
-        }
+        lines.resize(start + usize::from(ENTRY_ROWS), Line::default());
     }
     frame.render_widget(Paragraph::new(lines), inset(list));
 
-    let left = match (&b.prompt, &b.message) {
-        (Some(_), _) => Left::Text("enter accept · esc clear"),
-        (None, Some(m)) => Left::Error(m),
-        (None, None) if !b.filter.is_empty() => Left::Text("/ edit filter · esc clear"),
-        (None, None) => Left::Text("enter open · / filter · e edit · ? more"),
+    let idle = if b.filter.is_empty() {
+        "enter open · / filter · e edit · ? more"
+    } else {
+        "/ edit filter · esc clear"
     };
+    let left = status::left(b.prompt.is_some(), b.message.as_deref(), idle);
     let right = if b.visible.is_empty() {
         String::new()
     } else {

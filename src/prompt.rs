@@ -1,5 +1,10 @@
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+/// Whether ctrl is held.
+pub fn ctrl(key: &KeyEvent) -> bool {
+    key.modifiers.contains(KeyModifiers::CONTROL)
+}
+
 /// Single-line text input shown in the status bar.
 pub struct Prompt {
     pub text: String,
@@ -21,7 +26,7 @@ impl Prompt {
     }
 
     pub fn on_key(&mut self, key: KeyEvent) -> PromptEvent {
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let ctrl = ctrl(&key);
         match key.code {
             KeyCode::Enter => PromptEvent::Submit,
             KeyCode::Esc => PromptEvent::Cancel,

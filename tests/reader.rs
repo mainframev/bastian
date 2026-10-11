@@ -228,3 +228,13 @@ fn remote_documents_resolve_links_and_always_confirm() {
     key(&mut r, KeyCode::Enter);
     assert_eq!(r.confirm, Some(vec![0]));
 }
+
+#[test]
+fn replaced_document_is_highlighted_afresh() {
+    let mut r = reader("```sh\necho old\n```\n");
+    let text = |r: &Reader| bastian::render::to_plain(&r.rendered.lines);
+    assert!(text(&r).contains("echo old"));
+    r.replace_doc(parse("```sh\necho new\n```\n"));
+    r.layout(80, 10);
+    assert!(text(&r).contains("echo new"), "{}", text(&r));
+}

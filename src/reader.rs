@@ -9,7 +9,7 @@ use crate::exec::{BlockRun, Interpreters, RunEvent, RunSpec, Runner, Status};
 use crate::links::{self, Link, Target};
 use crate::prompt::{self, Prompt, PromptEvent};
 use crate::render::theme::Theme;
-use crate::render::{self, Rendered};
+use crate::render::{self, Highlights, Rendered};
 
 pub enum Action {
     None,
@@ -91,6 +91,8 @@ pub struct Reader {
     /// Block whose output the view keeps in sight until the user scrolls.
     follow: Option<usize>,
     dirty: bool,
+    /// Syntax highlighting per code block, reused across re-renders.
+    highlights: Highlights,
     width: u16,
     height: usize,
 }
@@ -128,6 +130,7 @@ impl Reader {
             timed_out: HashSet::new(),
             follow: None,
             dirty: false,
+            highlights: Highlights::default(),
             width: 0,
             height: 0,
         }
@@ -142,6 +145,7 @@ impl Reader {
                 &self.theme,
                 &self.runs,
                 &self.interpreters,
+                &self.highlights,
             );
             self.width = width;
             self.dirty = false;
@@ -420,12 +424,17 @@ impl Reader {
         }
         self.codes = codes;
         self.doc = doc;
+        self.highlights.clear();
         self.dirty = true;
     }
 
     pub fn tick(&mut self) -> bool {
         let reloaded = self.check_reload();
         let events = self.runner.drain();
+        // Without new events, only running blocks' timers move: patch
+        // those lines instead of laying out the whole document again.
+        // A search re-renders so its matches stay in step with the text.
+        let rerender = reloaded || !events.is_empty() || self.search.is_some();
         let changed = reloaded || !events.is_empty() || self.is_running();
         for event in events {
             match event {
@@ -478,8 +487,32 @@ impl Reader {
             self.runner.cancel(id);
         }
 
-        self.dirty |= changed;
+        if rerender || self.dirty {
+            self.dirty |= changed;
+        } else if changed {
+            self.refresh_timers();
+        }
         changed
+    }
+
+    /// Redraw the elapsed time on running blocks' status lines in place.
+    /// Only valid while `rendered` is current (not `dirty`).
+    fn refresh_timers(&mut self) {
+        for range in &self.rendered.code_blocks {
+            let Some(run) = self.runs.get(&range.id).filter(|r| r.is_running()) else {
+                continue;
+            };
+            // The status line opens the run panel right under the block,
+            // after any prefix spans from enclosing lists or quotes.
+            if range.output_end <= range.lines.end {
+                continue;
+            }
+            let status = render::run_status(run, &self.theme);
+            let line = &mut self.rendered.lines[range.lines.end];
+            line.spans
+                .truncate(line.spans.len().saturating_sub(status.spans.len()));
+            line.spans.extend(status.spans);
+        }
     }
 
     fn on_confirm_key(&mut self, key: KeyEvent) {

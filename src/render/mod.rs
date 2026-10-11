@@ -6,6 +6,7 @@ pub use ansi::to_ansi;
 pub use code::known_extension;
 mod wrap;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::time::Duration;
@@ -44,7 +45,26 @@ pub struct CodeRange {
 }
 
 pub fn render(doc: &Document, width: u16, theme: &Theme) -> Rendered {
-    render_with_runs(doc, width, theme, &HashMap::new(), &Interpreters::default())
+    render_with_runs(
+        doc,
+        width,
+        theme,
+        &HashMap::new(),
+        &Interpreters::default(),
+        &Highlights::default(),
+    )
+}
+
+/// Highlighted source lines per code block id. Highlighting doesn't depend
+/// on width or run state, so a reader keeps these across re-renders and
+/// clears them when the document changes.
+#[derive(Default)]
+pub struct Highlights(RefCell<HashMap<usize, Vec<Vec<Span<'static>>>>>);
+
+impl Highlights {
+    pub fn clear(&self) {
+        self.0.borrow_mut().clear();
+    }
 }
 
 /// Render with each code block's run status and output drawn under it.
@@ -54,11 +74,13 @@ pub fn render_with_runs(
     theme: &Theme,
     runs: &HashMap<usize, BlockRun>,
     interpreters: &Interpreters,
+    highlights: &Highlights,
 ) -> Rendered {
     let r = Renderer {
         theme,
         runs,
         interpreters,
+        highlights,
     };
     let width = usize::from(width).max(10);
     if doc.code_file
@@ -129,6 +151,7 @@ struct Renderer<'a> {
     theme: &'a Theme,
     runs: &'a HashMap<usize, BlockRun>,
     interpreters: &'a Interpreters,
+    highlights: &'a Highlights,
 }
 
 impl Renderer<'_> {
@@ -275,7 +298,7 @@ impl Renderer<'_> {
             format!("{label:>inner_w$}"),
             Style::default().fg(t.muted),
         )]));
-        for src_line in code::highlight(&c.src, c.lang.as_deref(), t) {
+        for src_line in self.highlighted(c) {
             for row in hard_wrap(src_line, inner_w) {
                 lines.push(pad_line(row));
             }
@@ -288,6 +311,15 @@ impl Renderer<'_> {
             codes: vec![range],
             starts: Vec::new(),
         }
+    }
+
+    fn highlighted(&self, c: &CodeBlock) -> Vec<Vec<Span<'static>>> {
+        self.highlights
+            .0
+            .borrow_mut()
+            .entry(c.id)
+            .or_insert_with(|| code::highlight(&c.src, c.lang.as_deref(), self.theme))
+            .clone()
     }
 
     /// Append `c`'s run panel, if it has run, under its `lines` and return
@@ -314,10 +346,7 @@ impl Renderer<'_> {
     fn code_file(&self, c: &CodeBlock, width: usize) -> Rendered {
         let mut lines = Vec::new();
         let mut src_line = Vec::new();
-        for (n, spans) in code::highlight(&c.src, c.lang.as_deref(), self.theme)
-            .into_iter()
-            .enumerate()
-        {
+        for (n, spans) in self.highlighted(c).into_iter().enumerate() {
             for (i, row) in hard_wrap(spans, width).into_iter().enumerate() {
                 lines.push(Line::from(row));
                 src_line.push((i == 0).then_some(n));
@@ -340,36 +369,7 @@ impl Renderer<'_> {
     /// Status line and output shown under a code block that has run.
     fn run_panel(&self, run: &BlockRun, width: usize) -> Vec<Line<'static>> {
         let t = self.theme;
-        let (icon, text, color) = match &run.status {
-            Status::Running(since) => ("●", format!("running {}", secs(since.elapsed())), t.warn),
-            Status::Ok(took) => ("✓", format!("done in {}", secs(*took)), t.ok),
-            Status::Failed {
-                code: Some(c),
-                took,
-            } => ("✗", format!("exit {c} after {}", secs(*took)), t.err),
-            Status::Failed { code: None, took } => (
-                "✗",
-                format!("killed by signal after {}", secs(*took)),
-                t.err,
-            ),
-            Status::Cancelled(took) => ("■", format!("cancelled after {}", secs(*took)), t.warn),
-            Status::TimedOut(took) => ("✗", format!("timed out after {}", secs(*took)), t.err),
-            Status::Error(e) => ("✗", format!("could not start: {e}"), t.err),
-        };
-        let mut status = vec![Span::styled(
-            format!("{icon} {text}"),
-            Style::default().fg(color).bold(),
-        )];
-        if !run.expanded && !run.output.is_empty() {
-            status.push(Span::styled(
-                {
-                    let n = run.output.len() + run.dropped;
-                    format!("  {n} line{} hidden", if n == 1 { "" } else { "s" })
-                },
-                Style::default().fg(t.muted),
-            ));
-        }
-        let mut lines = vec![Line::from(status)];
+        let mut lines = vec![run_status(run, t)];
         if !run.expanded {
             return lines;
         }
@@ -499,6 +499,39 @@ impl Renderer<'_> {
             })
             .collect()
     }
+}
+
+/// First line of a run panel: status icon, text and elapsed time, plus a
+/// hidden-line count when the output is collapsed.
+pub fn run_status(run: &BlockRun, t: &Theme) -> Line<'static> {
+    let (icon, text, color) = match &run.status {
+        Status::Running(since) => ("●", format!("running {}", secs(since.elapsed())), t.warn),
+        Status::Ok(took) => ("✓", format!("done in {}", secs(*took)), t.ok),
+        Status::Failed {
+            code: Some(c),
+            took,
+        } => ("✗", format!("exit {c} after {}", secs(*took)), t.err),
+        Status::Failed { code: None, took } => (
+            "✗",
+            format!("killed by signal after {}", secs(*took)),
+            t.err,
+        ),
+        Status::Cancelled(took) => ("■", format!("cancelled after {}", secs(*took)), t.warn),
+        Status::TimedOut(took) => ("✗", format!("timed out after {}", secs(*took)), t.err),
+        Status::Error(e) => ("✗", format!("could not start: {e}"), t.err),
+    };
+    let mut status = vec![Span::styled(
+        format!("{icon} {text}"),
+        Style::default().fg(color).bold(),
+    )];
+    if !run.expanded && !run.output.is_empty() {
+        let n = run.output.len() + run.dropped;
+        status.push(Span::styled(
+            format!("  {n} line{} hidden", if n == 1 { "" } else { "s" }),
+            Style::default().fg(t.muted),
+        ));
+    }
+    Line::from(status)
 }
 
 /// A column's minimum width never exceeds this, so one long word can't

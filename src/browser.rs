@@ -5,7 +5,7 @@ use std::time::SystemTime;
 
 use ignore::WalkState;
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
-use nucleo_matcher::{Config, Matcher, Utf32Str};
+use nucleo_matcher::{Config, Matcher, Utf32Str, Utf32String};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use crate::prompt::{self, Prompt, PromptEvent};
@@ -21,6 +21,37 @@ pub struct Entry {
     /// Creation time, or the modification time where the filesystem
     /// doesn't record one.
     pub created: Option<SystemTime>,
+    /// What the filter matches against: the path, then the title.
+    key: Utf32String,
+}
+
+impl Entry {
+    pub fn new(
+        path: PathBuf,
+        rel: String,
+        title: Option<String>,
+        modified: Option<SystemTime>,
+        created: Option<SystemTime>,
+    ) -> Self {
+        let hay = match &title {
+            Some(t) => format!("{rel} {t}"),
+            None => rel.clone(),
+        };
+        // Same representation `Utf32Str::new` gives, kept for every keystroke.
+        let mut buf = Vec::new();
+        let key = match Utf32Str::new(&hay, &mut buf) {
+            Utf32Str::Ascii(_) => Utf32String::Ascii(hay.into()),
+            Utf32Str::Unicode(chars) => Utf32String::Unicode(chars.into()),
+        };
+        Self {
+            path,
+            rel,
+            title,
+            modified,
+            created,
+            key,
+        }
+    }
 }
 
 pub enum Action {
@@ -32,6 +63,8 @@ pub enum Action {
 
 pub struct Browser {
     pub root: PathBuf,
+    /// `root` for display, with the home directory as `~`.
+    pub root_label: String,
     /// List hidden and gitignored files too.
     pub all: bool,
     pub entries: Vec<Entry>,
@@ -57,6 +90,7 @@ impl Browser {
     /// `tick` to pick them up. `all` also lists hidden and gitignored files.
     pub fn new(root: PathBuf, all: bool) -> Self {
         let mut b = Self {
+            root_label: display_root(&root),
             root,
             all,
             visible: Vec::new(),
@@ -143,17 +177,12 @@ impl Browser {
             return;
         }
         let pattern = Pattern::parse(&self.filter, CaseMatching::Smart, Normalization::Smart);
-        let mut buf = Vec::new();
         let mut scored: Vec<(usize, u32)> = self
             .entries
             .iter()
             .enumerate()
             .filter_map(|(i, e)| {
-                let hay = match &e.title {
-                    Some(t) => format!("{} {t}", e.rel),
-                    None => e.rel.clone(),
-                };
-                let score = pattern.score(Utf32Str::new(&hay, &mut buf), &mut self.matcher)?;
+                let score = pattern.score(e.key.slice(..), &mut self.matcher)?;
                 Some((i, score))
             })
             .collect();
@@ -285,6 +314,16 @@ pub fn discover(root: &Path, all: bool) -> Vec<Entry> {
     entries
 }
 
+/// Absolute path with the home directory shortened to `~`.
+fn display_root(root: &Path) -> String {
+    let abs = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    match std::env::var_os("HOME").and_then(|h| abs.strip_prefix(h).ok().map(Path::to_path_buf)) {
+        Some(rel) if rel.as_os_str().is_empty() => "~".to_string(),
+        Some(rel) => format!("~/{}", rel.display()),
+        None => abs.display().to_string(),
+    }
+}
+
 fn sort(entries: &mut [Entry]) {
     entries.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| a.rel.cmp(&b.rel)));
 }
@@ -313,19 +352,19 @@ pub fn scan(root: &Path, all: bool, tx: Sender<Entry>) {
                 }
                 let path = d.path().to_path_buf();
                 let meta = d.metadata().ok();
-                let entry = Entry {
-                    rel: path
-                        .strip_prefix(root)
-                        .unwrap_or(&path)
-                        .display()
-                        .to_string(),
-                    title: read_title(&path),
-                    modified: meta.as_ref().and_then(|m| m.modified().ok()),
-                    created: meta
-                        .as_ref()
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap_or(&path)
+                    .display()
+                    .to_string();
+                let entry = Entry::new(
+                    path.clone(),
+                    rel,
+                    read_title(&path),
+                    meta.as_ref().and_then(|m| m.modified().ok()),
+                    meta.as_ref()
                         .and_then(|m| m.created().or_else(|_| m.modified()).ok()),
-                    path,
-                };
+                );
                 if tx.send(entry).is_err() {
                     return WalkState::Quit;
                 }
@@ -488,13 +527,13 @@ mod tests {
         let picked = b.selected_entry().unwrap().path.clone();
         let (tx, rx) = mpsc::channel();
         b.incoming = Some(rx);
-        tx.send(Entry {
-            path: dir.path().join("new.md"),
-            rel: "new.md".into(),
-            title: None,
-            modified: Some(SystemTime::now() + std::time::Duration::from_secs(60)),
-            created: None,
-        })
+        tx.send(Entry::new(
+            dir.path().join("new.md"),
+            "new.md".into(),
+            None,
+            Some(SystemTime::now() + std::time::Duration::from_secs(60)),
+            None,
+        ))
         .unwrap();
         drop(tx);
         b.tick();

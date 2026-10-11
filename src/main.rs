@@ -171,9 +171,10 @@ fn main() -> Result<()> {
         pager: (resolved.pager.value && stdout_tty)
             .then(|| output::pager_command(std::env::var("PAGER").ok().as_deref())),
     };
-    let settings = settings(resolved);
-
     let tui = !cli.print && out.pager.is_none() && stdout_tty;
+    // Plain output has no colors, so it skips the background query.
+    let settings = settings(resolved, tui || out.color);
+
     let path = cli.path.unwrap_or_else(|| PathBuf::from("."));
 
     // A URL or github.com/gitlab.com repository, unless a local file of
@@ -243,13 +244,16 @@ fn edit_config(path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-/// Turn resolved configuration into what the app runs with.
-fn settings(r: config::Resolved) -> Settings {
+/// Turn resolved configuration into what the app runs with. `colored` says
+/// whether the theme's colors will show; if not, `auto` doesn't ask the
+/// terminal for its background.
+fn settings(r: config::Resolved, colored: bool) -> Settings {
     Settings {
         theme: match r.theme.value {
             ThemeName::Dark => Theme::dark(),
             ThemeName::Light => Theme::light(),
             // One detection decides both Markdown and code-block colors.
+            ThemeName::Auto if !colored => Theme::dark(),
             ThemeName::Auto => match term::background() {
                 Some(Background::Light) => Theme::light(),
                 _ => Theme::dark(),

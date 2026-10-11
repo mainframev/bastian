@@ -211,3 +211,33 @@ fn view_follows_output_of_focused_run() {
         ["45"]
     );
 }
+
+#[test]
+fn running_timer_updates_in_place() {
+    // Inside a list, so the status line carries an indent prefix.
+    let mut r = reader("- item\n\n  ```sh\n  sleep 2\n  ```\n");
+    key(&mut r, KeyCode::Enter);
+    key(&mut r, KeyCode::Char('y'));
+    r.tick();
+    r.layout(80, 40);
+    thread::sleep(Duration::from_millis(250));
+    assert!(r.tick());
+    r.layout(80, 40);
+    let before = bastian::render::to_plain(&r.rendered.lines);
+    thread::sleep(Duration::from_millis(250));
+    assert!(r.tick());
+    r.layout(80, 40);
+    let patched = bastian::render::to_plain(&r.rendered.lines);
+    assert!(patched.contains("● running"), "{patched}");
+    assert_ne!(before, patched, "timer did not advance");
+
+    // A full re-render gives the same text, apart from the elapsed time.
+    let doc = r.doc.clone();
+    r.replace_doc(doc);
+    r.layout(80, 40);
+    let full = bastian::render::to_plain(&r.rendered.lines);
+    let mask = |s: &str| s.replace(|c: char| c.is_ascii_digit(), "#");
+    assert_eq!(mask(&patched), mask(&full));
+    key(&mut r, KeyCode::Char('x'));
+    settle(&mut r);
+}

@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::time::SystemTime;
 
 use jiff::Timestamp;
@@ -87,7 +86,7 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
     tail.push(Span::styled(count, Style::default().fg(t.muted)));
     let tail_w: usize = tail.iter().map(Span::width).sum();
     let root = shorten_left(
-        &display_root(&b.root),
+        &b.root_label,
         (count_row.width as usize).saturating_sub(tail_w),
     );
     let mut spans = vec![Span::styled(root, Style::default().fg(t.heading).bold())];
@@ -162,16 +161,6 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
 
     if b.help {
         status::help(frame, t, HELP);
-    }
-}
-
-/// Absolute path with the home directory shortened to `~`.
-fn display_root(root: &Path) -> String {
-    let abs = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
-    match std::env::var_os("HOME").and_then(|h| abs.strip_prefix(h).ok().map(Path::to_path_buf)) {
-        Some(rel) if rel.as_os_str().is_empty() => "~".to_string(),
-        Some(rel) => format!("~/{}", rel.display()),
-        None => abs.display().to_string(),
     }
 }
 

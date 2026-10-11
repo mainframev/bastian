@@ -308,6 +308,19 @@ fn suspend(terminal: &mut DefaultTerminal, mouse: bool) -> Result<()> {
     Ok(())
 }
 
+/// Events that change nothing on screen: pointer motion and clicks (only
+/// the wheel scrolls) and key releases.
+fn is_ignored(event: &Event) -> bool {
+    match event {
+        Event::Mouse(m) => !matches!(
+            m.kind,
+            MouseEventKind::ScrollDown | MouseEventKind::ScrollUp
+        ),
+        Event::Key(k) => k.kind != KeyEventKind::Press,
+        _ => false,
+    }
+}
+
 /// How often to wake up for process output while waiting for keys.
 const TICK: Duration = Duration::from_millis(100);
 
@@ -320,28 +333,30 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<()> {
         if let Some(b) = &mut app.browser {
             redraw |= b.tick();
         }
-        if !redraw && !event::poll(TICK)? {
-            continue;
+        if std::mem::take(&mut redraw) {
+            terminal.draw(|f| {
+                if let Some(r) = &mut app.reader {
+                    ui::reader::draw(f, r);
+                } else if let Some(b) = &mut app.browser {
+                    ui::browser::draw(f, b, &app.settings.theme);
+                }
+            })?;
         }
-        redraw = false;
-        terminal.draw(|f| {
-            if let Some(r) = &mut app.reader {
-                ui::reader::draw(f, r);
-            } else if let Some(b) = &mut app.browser {
-                ui::browser::draw(f, b, &app.settings.theme);
-            }
-        })?;
         if event::poll(TICK)? {
-            if !app.on_event(event::read()?) {
+            let event = event::read()?;
+            let ignored = is_ignored(&event);
+            if !app.on_event(event) {
                 return Ok(());
             }
             if let Some((path, line)) = app.edit.take() {
                 app.run_editor(terminal, &path, line)?;
+                redraw = true;
             }
             if std::mem::take(&mut app.suspend) {
                 suspend(terminal, app.settings.mouse)?;
+                redraw = true;
             }
-            redraw = true;
+            redraw |= !ignored;
         }
     }
 }

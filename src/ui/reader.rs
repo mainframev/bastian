@@ -46,12 +46,14 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
             let Some(s) = &r.search else {
                 return line.clone();
             };
-            let ranges: Vec<_> = s
-                .matches
+            // Matches are in line order: take just this line's.
+            let first = s.matches.partition_point(|m| m.line < i);
+            let last = s.matches.partition_point(|m| m.line <= i);
+            let ranges: Vec<_> = s.matches[first..last]
                 .iter()
                 .enumerate()
-                .filter(|(_, m)| m.line == i)
-                .map(|(n, m)| {
+                .map(|(k, m)| {
+                    let n = first + k;
                     let style = if n == s.current {
                         Style::default().fg(t.h1_fg).bg(t.current_bg)
                     } else {

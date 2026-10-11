@@ -55,11 +55,9 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, show_logo: bool) {
 
     let finding = b.prompt.is_some() || !b.filter.is_empty();
     if finding {
-        let text = b
-            .prompt
-            .as_ref()
-            .map_or(b.filter.as_str(), |p| p.text.as_str());
-        frame.render_widget(status::find_line(t, text, b.prompt.is_some()), inset(top));
+        let text = b.prompt.as_ref().map_or(b.filter.as_str(), |p| p.text());
+        let cursor = b.prompt.as_ref().map(|p| p.cursor());
+        frame.render_widget(status::find_line(t, text, cursor), inset(top));
     } else if show_logo {
         logo::draw(frame, inset(top), t);
     }

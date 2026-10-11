@@ -60,15 +60,22 @@ pub fn draw(frame: &mut Frame, area: Rect, t: &Theme, left: Left, right: &str) {
 
 /// The `Find:` line shown above a list or document while searching.
 /// `editing` draws a cursor after the text.
-pub fn find_line(t: &Theme, text: &str, editing: bool) -> Line<'static> {
-    let mut spans = vec![
-        Span::styled("Find: ", Style::default().fg(t.warn).bold()),
-        Span::styled(text.to_string(), Style::default().fg(t.text)),
-    ];
-    if editing {
-        spans.push(Span::styled(" ", Style::default().bg(t.accent)));
-    }
-    Line::from(spans)
+/// `Find: text`, with a block cursor at character `cursor` while editing.
+pub fn find_line(t: &Theme, text: &str, cursor: Option<usize>) -> Line<'static> {
+    let label = Span::styled("Find: ", Style::default().fg(t.warn).bold());
+    let style = Style::default().fg(t.text);
+    let Some(at) = cursor else {
+        return Line::from(vec![label, Span::styled(text.to_string(), style)]);
+    };
+    let before: String = text.chars().take(at).collect();
+    let under = text.chars().nth(at).map_or(" ".to_string(), String::from);
+    let after: String = text.chars().skip(at + 1).collect();
+    Line::from(vec![
+        label,
+        Span::styled(before, style),
+        Span::styled(under, Style::default().fg(t.h1_fg).bg(t.accent)),
+        Span::styled(after, style),
+    ])
 }
 
 /// A bordered box centered on screen.

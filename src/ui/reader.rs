@@ -237,7 +237,7 @@ fn draw_find(frame: &mut Frame, r: &Reader, area: Rect) {
         ..super::inset(area)
     };
     let text = match (&r.prompt, &r.search) {
-        (Some(p), _) => p.text.as_str(),
+        (Some(p), _) => p.text(),
         (None, Some(s)) => s.query.as_str(),
         (None, None) => "",
     };
@@ -251,7 +251,10 @@ fn draw_find(frame: &mut Frame, r: &Reader, area: Rect) {
         Constraint::Length(count.chars().count() as u16),
     ])
     .areas(area);
-    frame.render_widget(status::find_line(t, text, r.prompt.is_some()), left);
+    frame.render_widget(
+        status::find_line(t, text, r.prompt.as_ref().map(|p| p.cursor())),
+        left,
+    );
     frame.render_widget(Span::styled(count, Style::default().fg(t.muted)), right);
 }
 

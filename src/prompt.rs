@@ -1,13 +1,17 @@
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+use tui_input::Input;
+use tui_input::backend::crossterm::EventHandler;
 
 /// Whether ctrl is held.
 pub fn ctrl(key: &KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL)
 }
 
-/// Single-line text input shown in the status bar.
+/// Single-line text input with a cursor (search and filter), backed by
+/// `tui_input`: ←/→, Home/End, ctrl-a/e, alt-b/f and word deletion work
+/// as in a shell.
 pub struct Prompt {
-    pub text: String,
+    input: Input,
 }
 
 #[derive(Debug, PartialEq)]
@@ -19,36 +23,73 @@ pub enum PromptEvent {
 }
 
 impl Prompt {
+    /// Start editing `text`, with the cursor at its end.
     pub fn new(text: &str) -> Self {
         Self {
-            text: text.to_string(),
+            input: Input::new(text.to_string()),
         }
     }
 
+    pub fn text(&self) -> &str {
+        self.input.value()
+    }
+
+    /// Cursor position, in characters.
+    pub fn cursor(&self) -> usize {
+        self.input.cursor()
+    }
+
     pub fn on_key(&mut self, key: KeyEvent) -> PromptEvent {
-        let ctrl = ctrl(&key);
         match key.code {
             KeyCode::Enter => PromptEvent::Submit,
             KeyCode::Esc => PromptEvent::Cancel,
-            KeyCode::Char('u') if ctrl => {
-                self.text.clear();
-                PromptEvent::Changed
-            }
-            KeyCode::Char('w') if ctrl => {
-                let trimmed = self.text.trim_end();
-                let cut = trimmed.rfind(char::is_whitespace).map_or(0, |i| i + 1);
-                self.text.truncate(cut);
-                PromptEvent::Changed
-            }
-            KeyCode::Backspace => {
-                self.text.pop();
-                PromptEvent::Changed
-            }
-            KeyCode::Char(c) if !ctrl => {
-                self.text.push(c);
-                PromptEvent::Changed
-            }
-            _ => PromptEvent::None,
+            _ => match self.input.handle_event(&Event::Key(key)) {
+                Some(changed) if changed.value => PromptEvent::Changed,
+                _ => PromptEvent::None,
+            },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn press(p: &mut Prompt, code: KeyCode, mods: KeyModifiers) -> PromptEvent {
+        p.on_key(KeyEvent::new(code, mods))
+    }
+
+    #[test]
+    fn edits_at_the_cursor() {
+        let mut p = Prompt::new("helo");
+        assert_eq!(p.cursor(), 4);
+        assert_eq!(
+            press(&mut p, KeyCode::Left, KeyModifiers::NONE),
+            PromptEvent::None
+        );
+        assert_eq!(
+            press(&mut p, KeyCode::Char('l'), KeyModifiers::NONE),
+            PromptEvent::Changed
+        );
+        assert_eq!((p.text(), p.cursor()), ("hello", 4));
+        press(&mut p, KeyCode::Home, KeyModifiers::NONE);
+        press(&mut p, KeyCode::Delete, KeyModifiers::NONE);
+        assert_eq!(p.text(), "ello");
+        press(&mut p, KeyCode::End, KeyModifiers::NONE);
+        press(&mut p, KeyCode::Char(' '), KeyModifiers::NONE);
+        press(&mut p, KeyCode::Char('W'), KeyModifiers::SHIFT);
+        assert_eq!(p.text(), "ello W");
+        press(&mut p, KeyCode::Char('w'), KeyModifiers::CONTROL);
+        assert_eq!(p.text(), "ello ");
+        press(&mut p, KeyCode::Char('u'), KeyModifiers::CONTROL);
+        assert_eq!(p.text(), "");
+        assert_eq!(
+            press(&mut p, KeyCode::Enter, KeyModifiers::NONE),
+            PromptEvent::Submit
+        );
+        assert_eq!(
+            press(&mut p, KeyCode::Esc, KeyModifiers::NONE),
+            PromptEvent::Cancel
+        );
     }
 }

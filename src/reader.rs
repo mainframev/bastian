@@ -663,7 +663,7 @@ impl Reader {
         if let Some(prompt) = &mut self.prompt {
             match prompt.on_key(key) {
                 PromptEvent::Changed => {
-                    let q = prompt.text.clone();
+                    let q = prompt.text().to_string();
                     self.set_query(&q);
                 }
                 PromptEvent::Submit => self.prompt = None,

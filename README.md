@@ -70,6 +70,11 @@ In the browser: `j/k` to move, `h/l` (or `←/→`) for the previous/next page,
 `Enter` to open, `e` to edit, `r` to rescan for new or deleted files, `?` for
 all keys, `q` to quit.
 
+The search and filter input edits like a shell prompt: `←/→`, `Home/End`
+(or `ctrl-a/e`), `alt-b/f` by word, `ctrl-w` and `ctrl-u` to delete. While
+filtering, `↑/↓`, `PageUp/PageDown` and `ctrl-j/k` leave the input and move
+through the results.
+
 The open document reloads when the file changes on disk.
 
 Remote documents (URLs, `github.com/owner/repo`, `gitlab.com/group/project`)

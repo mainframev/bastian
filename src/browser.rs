@@ -229,7 +229,7 @@ impl Browser {
         if let Some(prompt) = &mut self.prompt {
             match prompt.on_key(key) {
                 PromptEvent::Changed => {
-                    self.filter = prompt.text.clone();
+                    self.filter = prompt.text().to_string();
                     self.refilter();
                 }
                 PromptEvent::Submit => self.prompt = None,
@@ -296,12 +296,8 @@ impl Browser {
 fn is_navigation(key: &KeyEvent) -> bool {
     let ctrl = prompt::ctrl(key);
     match key.code {
-        KeyCode::Up
-        | KeyCode::Down
-        | KeyCode::Left
-        | KeyCode::Right
-        | KeyCode::PageUp
-        | KeyCode::PageDown => true,
+        // ←/→ move the cursor in the filter text instead.
+        KeyCode::Up | KeyCode::Down | KeyCode::PageUp | KeyCode::PageDown => true,
         KeyCode::Char('j' | 'k' | 'n' | 'p' | 'd' | 'f' | 'b') => ctrl,
         _ => false,
     }
@@ -630,7 +626,7 @@ mod tests {
         b.on_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
         b.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE));
         b.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
-        assert_eq!(b.prompt.as_ref().unwrap().text, "");
+        assert_eq!(b.prompt.as_ref().unwrap().text(), "");
     }
 
     #[test]
@@ -707,7 +703,7 @@ mod tests {
         }
         // Plain j/k are still filter text.
         b.on_key(key(KeyCode::Char('j'), KeyModifiers::NONE));
-        assert_eq!(b.prompt.as_ref().unwrap().text, "docj");
+        assert_eq!(b.prompt.as_ref().unwrap().text(), "docj");
         b.on_key(key(KeyCode::Backspace, KeyModifiers::NONE));
 
         // ctrl-j closes the input, keeps the filter and moves.
@@ -716,16 +712,23 @@ mod tests {
         assert_eq!(b.filter, "doc");
         assert_eq!(b.selected, 1);
 
-        // Same for paging straight from the input.
+        // ←/→ move the cursor and keep the input open.
         b.on_key(key(KeyCode::Char('/'), KeyModifiers::NONE));
-        b.on_key(key(KeyCode::Right, KeyModifiers::NONE));
+        b.on_key(key(KeyCode::Left, KeyModifiers::NONE));
+        b.on_key(key(KeyCode::Char('_'), KeyModifiers::NONE));
+        assert_eq!(b.prompt.as_ref().unwrap().text(), "do_c");
+        b.on_key(key(KeyCode::Backspace, KeyModifiers::NONE));
+
+        // Paging straight from the input closes it, like ctrl-j. (Editing
+        // the filter put the selection back at the top.)
+        b.on_key(key(KeyCode::PageDown, KeyModifiers::NONE));
         assert!(b.prompt.is_none());
-        assert_eq!(b.selected, 11);
+        assert_eq!(b.selected, 10);
 
         // ctrl-u still clears the text rather than paging.
         b.on_key(key(KeyCode::Char('/'), KeyModifiers::NONE));
         b.on_key(key(KeyCode::Char('u'), KeyModifiers::CONTROL));
-        assert_eq!(b.prompt.as_ref().unwrap().text, "");
+        assert_eq!(b.prompt.as_ref().unwrap().text(), "");
     }
 
     #[test]

@@ -32,11 +32,11 @@ pub struct Theme {
 impl Theme {
     /// The default dark theme, Rosé Pine.
     pub fn dark() -> Self {
-        crate::themes::load("rose-pine").expect("built-in theme")
+        crate::themes::load("rose-pine", None).expect("built-in theme")
     }
 
     /// The default light theme, Rosé Pine Dawn.
     pub fn light() -> Self {
-        crate::themes::load("rose-pine-dawn").expect("built-in theme")
+        crate::themes::load("rose-pine-dawn", None).expect("built-in theme")
     }
 }

@@ -3,6 +3,7 @@
 //! (`[syntax]`) the highlighter is built from.
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -120,14 +121,32 @@ pub enum Appearance {
 }
 
 /// A theme file as written: every section is a table of color strings.
+/// With `extends`, keys left out come from that theme.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ThemeFile {
+    extends: Option<String>,
     appearance: Option<Appearance>,
     #[serde(default)]
     ui: BTreeMap<String, String>,
     #[serde(default)]
     syntax: BTreeMap<String, String>,
+}
+
+impl ThemeFile {
+    /// `self` on top of `base`.
+    fn over(self, base: ThemeFile) -> ThemeFile {
+        let mut ui = base.ui;
+        ui.extend(self.ui);
+        let mut syntax = base.syntax;
+        syntax.extend(self.syntax);
+        ThemeFile {
+            extends: None,
+            appearance: self.appearance.or(base.appearance),
+            ui,
+            syntax,
+        }
+    }
 }
 
 /// Names of the built-in themes, in display order.
@@ -136,29 +155,135 @@ pub fn builtin_names() -> impl Iterator<Item = &'static str> {
 }
 
 /// The theme `name` stands for, following aliases.
-fn canonical(name: &str) -> &str {
+pub fn canonical(name: &str) -> &str {
     ALIASES
         .iter()
         .find(|(alias, _)| *alias == name)
         .map_or(name, |(_, target)| target)
 }
 
-/// Whether `name` is a theme bastian can load.
-pub fn exists(name: &str) -> bool {
+fn builtin(name: &str) -> Option<&'static str> {
     let name = canonical(name);
-    BUILTINS.iter().any(|(n, _)| *n == name)
+    BUILTINS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, src)| *src)
 }
 
-/// Load the theme called `name` (or an alias of one).
-pub fn load(name: &str) -> Result<Theme> {
-    let canonical = canonical(name);
-    let (_, src) = BUILTINS
-        .iter()
-        .find(|(n, _)| *n == canonical)
-        .ok_or_else(|| anyhow!("unknown theme {name:?}; run `bastian themes` to list them"))?;
-    let file: ThemeFile =
-        toml::from_str(src).with_context(|| format!("parsing built-in theme {canonical}"))?;
-    build(file, canonical)
+/// `<dir>/<name>.toml`, for names that are plain file names.
+fn user_file(name: &str, dir: Option<&Path>) -> Option<PathBuf> {
+    let plain = !name.is_empty()
+        && !name.starts_with('.')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    let path = dir?.join(format!("{name}.toml"));
+    (plain && path.is_file()).then_some(path)
+}
+
+/// Whether `name` is a theme bastian can load: a file in `dir` (the user's
+/// themes directory) or a built-in.
+pub fn exists(name: &str, dir: Option<&Path>) -> bool {
+    user_file(name, dir).is_some() || builtin(name).is_some()
+}
+
+/// Load the theme called `name`. A file in `dir` wins over a built-in of the
+/// same name, so a built-in can be tweaked by extending it under its own name.
+pub fn load(name: &str, dir: Option<&Path>) -> Result<Theme> {
+    let mut chain = Vec::new();
+    let (file, origin) = read(name, dir, &mut chain)?;
+    build(file, &origin)
+}
+
+/// The merged file for `name` and where it came from. `chain` holds the
+/// names being resolved, to catch `extends` cycles.
+fn read(name: &str, dir: Option<&Path>, chain: &mut Vec<String>) -> Result<(ThemeFile, String)> {
+    // Extending your own name means the built-in underneath.
+    let own = chain.last().is_some_and(|n| n == name);
+    let path = if own { None } else { user_file(name, dir) };
+    if !own && chain.iter().any(|n| n == name) {
+        chain.push(name.to_string());
+        bail!("theme `extends` loops: {}", chain.join(" → "));
+    }
+    chain.push(name.to_string());
+    let (file, origin): (ThemeFile, String) = match path {
+        Some(path) => {
+            let text = std::fs::read_to_string(&path)
+                .with_context(|| format!("reading {}", path.display()))?;
+            let file = toml::from_str(&text)
+                .with_context(|| format!("parsing theme {}", path.display()))?;
+            (file, path.display().to_string())
+        }
+        None => {
+            let src = builtin(name).ok_or_else(|| {
+                anyhow!("unknown theme {name:?}; run `bastian themes` to list them")
+            })?;
+            let file =
+                toml::from_str(src).with_context(|| format!("parsing built-in theme {name}"))?;
+            (file, canonical(name).to_string())
+        }
+    };
+    match file.extends.clone() {
+        Some(base) => {
+            let (base, _) = read(&base, dir, chain)
+                .with_context(|| format!("loading `extends = {base:?}` of {origin}"))?;
+            Ok((file.over(base), origin))
+        }
+        None => Ok((file, origin)),
+    }
+}
+
+/// One row of `bastian themes`.
+pub struct Listing {
+    pub name: String,
+    /// The file it's read from, for user themes.
+    pub path: Option<PathBuf>,
+    /// A user file that replaces a built-in of the same name.
+    pub overrides: bool,
+    /// The loaded theme, or why it doesn't load.
+    pub theme: Result<Theme>,
+}
+
+/// Built-in themes, then the user's, each sorted by name. A user theme
+/// that shadows a built-in replaces its row.
+pub fn list(dir: Option<&Path>) -> Vec<Listing> {
+    let mut user: Vec<(String, PathBuf)> = dir
+        .and_then(|d| std::fs::read_dir(d).ok())
+        .into_iter()
+        .flatten()
+        .filter_map(|e| {
+            let path = e.ok()?.path();
+            let name = path.file_stem()?.to_str()?.to_string();
+            (path.extension()? == "toml" && user_file(&name, dir).is_some()).then_some((name, path))
+        })
+        .collect();
+    user.sort();
+    let mut rows: Vec<Listing> = builtin_names()
+        .map(|name| match user.iter().position(|(n, _)| n == name) {
+            Some(i) => {
+                let (name, path) = user.remove(i);
+                Listing {
+                    theme: load(&name, dir),
+                    name,
+                    path: Some(path),
+                    overrides: true,
+                }
+            }
+            None => Listing {
+                name: name.to_string(),
+                path: None,
+                overrides: false,
+                theme: load(name, None),
+            },
+        })
+        .collect();
+    rows.extend(user.into_iter().map(|(name, path)| Listing {
+        theme: load(&name, dir),
+        name,
+        path: Some(path),
+        overrides: false,
+    }));
+    rows
 }
 
 /// Check a parsed file is complete and turn it into a `Theme`.
@@ -262,7 +387,7 @@ mod tests {
     #[test]
     fn every_builtin_loads() {
         for name in builtin_names() {
-            let t = load(name).unwrap_or_else(|e| panic!("{name}: {e:#}"));
+            let t = load(name, None).unwrap_or_else(|e| panic!("{name}: {e:#}"));
             let expect = if name.ends_with("-day")
                 || name.ends_with("-dawn")
                 || name.ends_with("-lotus")
@@ -281,11 +406,11 @@ mod tests {
     #[test]
     fn aliases_resolve() {
         for (alias, target) in ALIASES {
-            assert!(exists(alias), "{alias}");
-            assert!(exists(target), "{target}");
+            assert!(exists(alias, None), "{alias}");
+            assert!(exists(target, None), "{target}");
         }
-        assert!(!exists("nope"));
-        let err = load("nope").unwrap_err().to_string();
+        assert!(!exists("nope", None));
+        let err = load("nope", None).unwrap_err().to_string();
         assert!(err.contains("unknown theme \"nope\""), "{err}");
     }
 
@@ -329,7 +454,7 @@ mod tests {
 
     #[test]
     fn code_takes_the_palette_colors() {
-        let t = load("kanagawa-wave").unwrap();
+        let t = load("kanagawa-wave", None).unwrap();
         let f: ThemeFile = toml::from_str(
             BUILTINS
                 .iter()
@@ -359,5 +484,85 @@ mod tests {
         assert_eq!(color_of("hi"), Some(want("string")));
         assert_eq!(color_of("main"), Some(want("function")));
         assert_eq!(color_of("Point"), Some(want("type")));
+    }
+
+    fn theme_dir(files: &[(&str, &str)]) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        for (name, src) in files {
+            std::fs::write(dir.path().join(format!("{name}.toml")), src).unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn user_themes_extend_and_override() {
+        let dir = theme_dir(&[
+            ("mine", "extends = \"nord\"\n[ui]\naccent = \"#ff0000\"\n"),
+            // Same name as a built-in: extends the built-in underneath.
+            (
+                "dracula",
+                "extends = \"dracula\"\n[syntax]\nstring = \"#00ff00\"\n",
+            ),
+        ]);
+        let d = Some(dir.path());
+        let nord = load("nord", None).unwrap();
+        let mine = load("mine", d).unwrap();
+        assert_eq!(mine.accent, Color::Rgb(255, 0, 0));
+        assert_eq!(mine.text, nord.text);
+        assert_eq!(mine.appearance, Appearance::Dark);
+        assert!(exists("mine", d) && !exists("mine", None));
+
+        let tweaked = load("dracula", d).unwrap();
+        assert_eq!(tweaked.accent, load("dracula", None).unwrap().accent);
+
+        let rows = list(d);
+        assert_eq!(rows.len(), BUILTINS.len() + 1);
+        let row = |n: &str| rows.iter().find(|r| r.name == n).unwrap();
+        assert!(row("dracula").overrides && row("dracula").path.is_some());
+        assert!(!row("mine").overrides && row("mine").theme.is_ok());
+        assert!(row("nord").path.is_none());
+    }
+
+    #[test]
+    fn broken_user_themes_say_why() {
+        let dir = theme_dir(&[
+            ("a", "extends = \"b\"\n"),
+            ("b", "extends = \"a\"\n"),
+            (
+                "partial",
+                "appearance = \"dark\"\n[ui]\ntext = \"#ffffff\"\n",
+            ),
+            ("typo", "extend = \"nord\"\n"),
+            ("orphan", "extends = \"missing\"\n"),
+        ]);
+        let d = Some(dir.path());
+        let err = |n: &str| format!("{:#}", load(n, d).unwrap_err());
+        assert!(err("a").contains("loops: a → b → a"), "{}", err("a"));
+        assert!(
+            err("partial").contains("is missing ui.muted"),
+            "{}",
+            err("partial")
+        );
+        assert!(
+            err("typo").contains("unknown field `extend`"),
+            "{}",
+            err("typo")
+        );
+        assert!(
+            err("orphan").contains("unknown theme \"missing\""),
+            "{}",
+            err("orphan")
+        );
+        // Listing still shows them, with the error.
+        assert!(
+            list(d)
+                .iter()
+                .find(|r| r.name == "a")
+                .unwrap()
+                .theme
+                .is_err()
+        );
+        // Names that aren't plain file names never reach the filesystem.
+        assert!(!exists("../a", d) && !exists(".a", d));
     }
 }

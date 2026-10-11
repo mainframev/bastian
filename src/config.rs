@@ -132,7 +132,8 @@ pub const TEMPLATE: &str = r#"# bastian configuration. Every key is optional; co
 # BASTIAN_* environment variables take precedence over this file.
 
 # theme = "auto"        # "auto" (match the terminal), "dark", "light" or a
-#                       # theme name; `bastian themes` lists them
+#                       # theme name; `bastian themes` lists them, and your
+#                       # own go in themes/<name>.toml next to this file
 # dark_theme = "rose-pine"        # used by "auto" and "dark"
 # light_theme = "rose-pine-dawn"  # used by "auto" and "light"
 # width = 100           # maximum document width

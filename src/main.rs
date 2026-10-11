@@ -85,6 +85,9 @@ enum Command {
     },
     /// Print the man page (roff), e.g. `bastian man | man -l -`.
     Man,
+    /// List the built-in themes and your own from the `themes` directory
+    /// next to the config file.
+    Themes,
 }
 
 fn config_help() -> String {
@@ -110,6 +113,12 @@ fn main() -> Result<()> {
         std::env::var("BASTIAN_CONFIG").ok().as_deref(),
         &lookup,
     );
+    // User themes live in `themes/` beside the config file.
+    let themes_dir = located
+        .as_ref()
+        .and_then(|(p, _)| p.parent())
+        .map(|d| d.join("themes"));
+    let list_themes = matches!(cli.command, Some(Command::Themes));
     match cli.command {
         Some(Command::Config) => {
             let (path, _) = located.context("no config location: HOME is not set")?;
@@ -128,7 +137,7 @@ fn main() -> Result<()> {
             clap_mangen::Man::new(Cli::command()).render(&mut std::io::stdout())?;
             return Ok(());
         }
-        None => {}
+        Some(Command::Themes) | None => {}
     }
     let file = match &located {
         Some((path, explicit)) => config::load_at(path, *explicit)?,
@@ -156,8 +165,20 @@ fn main() -> Result<()> {
         );
         return Ok(());
     }
-    config::check_themes(&resolved, themes::exists)?;
     let stdout_tty = std::io::stdout().is_terminal();
+    if list_themes {
+        let color = output::use_color(
+            resolved.color.value,
+            stdout_tty,
+            std::env::var("NO_COLOR").ok().as_deref(),
+            std::env::var("CLICOLOR_FORCE").ok().as_deref(),
+        );
+        print!("{}", theme_list(&resolved, themes_dir.as_deref(), color));
+        return Ok(());
+    }
+    config::check_themes(&resolved, |name| {
+        themes::exists(name, themes_dir.as_deref())
+    })?;
     let out = Output {
         width: output::print_width(
             &resolved.width,
@@ -175,7 +196,7 @@ fn main() -> Result<()> {
     };
     let tui = !cli.print && out.pager.is_none() && stdout_tty;
     // Plain output has no colors, so it skips the background query.
-    let settings = settings(resolved, tui || out.color)?;
+    let settings = settings(resolved, themes_dir.as_deref(), tui || out.color)?;
 
     let path = cli.path.unwrap_or_else(|| PathBuf::from("."));
 
@@ -249,10 +270,14 @@ fn edit_config(path: &std::path::Path) -> Result<()> {
 /// Turn resolved configuration into what the app runs with. `colored` says
 /// whether the theme's colors will show; if not, `auto` doesn't ask the
 /// terminal for its background.
-fn settings(r: config::Resolved, colored: bool) -> Result<Settings> {
+fn settings(
+    r: config::Resolved,
+    themes_dir: Option<&std::path::Path>,
+    colored: bool,
+) -> Result<Settings> {
     let light = colored && r.theme.value == "auto" && term::background() == Some(Background::Light);
     Ok(Settings {
-        theme: themes::load(config::theme_name(&r, light))?,
+        theme: themes::load(config::theme_name(&r, light), themes_dir)?,
         max_width: r.width.value,
         assume_yes: r.confirm.value == Confirm::Never,
         line_numbers: r.line_numbers.value,
@@ -260,6 +285,75 @@ fn settings(r: config::Resolved, colored: bool) -> Result<Settings> {
         mouse: r.mouse.value,
         interpreters: Interpreters::new(r.interpreters),
     })
+}
+
+/// `bastian themes`: one row per theme with its appearance, where it comes
+/// from, a color swatch when `color`, and which settings point at it.
+fn theme_list(r: &config::Resolved, dir: Option<&std::path::Path>, color: bool) -> String {
+    use ratatui::style::Color;
+    let rows = themes::list(dir);
+    let w = rows.iter().map(|l| l.name.len()).max().unwrap_or(0);
+    let swatch = |c: Color| match c {
+        Color::Rgb(r, g, b) => format!("\x1b[38;2;{r};{g};{b}m██\x1b[0m"),
+        _ => String::new(),
+    };
+    let mut out = String::new();
+    for l in rows {
+        let roles: Vec<&str> = [
+            ("theme", &r.theme.value),
+            ("dark_theme", &r.dark_theme.value),
+            ("light_theme", &r.light_theme.value),
+        ]
+        .into_iter()
+        .filter(|(_, v)| themes::canonical(v) == l.name)
+        .map(|(k, _)| k)
+        .collect();
+        // Paths under the home directory as `~/…`.
+        let shown = |p: &std::path::Path| match std::env::var_os("HOME") {
+            Some(home) if p.starts_with(&home) => {
+                format!("~/{}", p.strip_prefix(&home).unwrap_or(p).display())
+            }
+            _ => p.display().to_string(),
+        };
+        let origin = match (&l.path, l.overrides) {
+            (Some(p), true) => format!("{} (overrides built-in)", shown(p)),
+            (Some(p), false) => shown(p),
+            (None, _) => "built-in".to_string(),
+        };
+        let (appearance, colors) = match &l.theme {
+            Ok(t) => {
+                let appearance = match t.appearance {
+                    themes::Appearance::Dark => "dark",
+                    themes::Appearance::Light => "light",
+                };
+                let colors: String = [t.accent, t.heading, t.link, t.code, t.ok, t.warn, t.err]
+                    .into_iter()
+                    .map(swatch)
+                    .collect();
+                (
+                    appearance,
+                    if color {
+                        format!("{colors}  ")
+                    } else {
+                        String::new()
+                    },
+                )
+            }
+            Err(_) => ("?", String::new()),
+        };
+        out.push_str(&format!(
+            "{:<w$}  {appearance:<5}  {colors}{origin}",
+            l.name
+        ));
+        if !roles.is_empty() {
+            out.push_str(&format!("  ← {}", roles.join(", ")));
+        }
+        if let Err(e) = &l.theme {
+            out.push_str(&format!("\n{:<w$}  error: {e:#}", ""));
+        }
+        out.push('\n');
+    }
+    out
 }
 
 /// `--theme` accepts any name (checked later against the registry) but

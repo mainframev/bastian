@@ -225,7 +225,9 @@ impl Browser {
             KeyCode::PageUp => self.move_by(-page),
             KeyCode::Char('g') | KeyCode::Home => self.selected = 0,
             KeyCode::Char('G') | KeyCode::End => self.move_by(isize::MAX),
-            KeyCode::Enter | KeyCode::Char('l') => {
+            KeyCode::Char('l') | KeyCode::Right => self.move_by(page),
+            KeyCode::Char('h') | KeyCode::Left => self.move_by(-page),
+            KeyCode::Enter => {
                 if let Some(e) = self.selected_entry() {
                     return Action::Open(e.path.clone());
                 }
@@ -539,6 +541,21 @@ mod tests {
         b.selected = 24;
         b.layout(10);
         assert_eq!((b.offset, b.page()), (20, (3, 3)));
+
+        // h/l and ←/→ turn pages, keeping the row within the page.
+        b.selected = 12;
+        let press = |b: &mut Browser, code| {
+            b.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+            b.layout(10);
+        };
+        press(&mut b, KeyCode::Char('h'));
+        assert_eq!((b.selected, b.page()), (2, (1, 3)));
+        press(&mut b, KeyCode::Char('l'));
+        assert_eq!((b.selected, b.page()), (12, (2, 3)));
+        press(&mut b, KeyCode::Right);
+        assert_eq!((b.selected, b.page()), (22, (3, 3)));
+        press(&mut b, KeyCode::Left);
+        assert_eq!(b.page(), (2, 3));
     }
 
     #[test]

@@ -53,7 +53,8 @@ uname -sm
 | `Esc`, `h` | back to the previous document or the browser |
 | `q` | quit |
 
-In the browser: `j/k` to move, `ctrl-d/u` and `ctrl-f/b` to page, `/` to filter,
+In the browser: `j/k` to move, `h/l` (or `←/→`) for the previous/next page,
+`ctrl-d/u` and `ctrl-f/b` to page, `/` to filter,
 `Enter` to open, `e` to edit, `r` to rescan for new or deleted files, `?` for
 all keys, `q` to quit.
 

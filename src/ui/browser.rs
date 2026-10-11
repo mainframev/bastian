@@ -17,11 +17,12 @@ use crate::render::theme::Theme;
 
 const HELP: &[(&str, &str)] = &[
     ("j/k  ↓/↑", "move"),
+    ("h/l  ←/→", "previous/next page"),
     ("ctrl-d/u", "half page"),
     ("ctrl-f/b", "full page"),
     ("g/G", "first/last"),
     ("/", "filter"),
-    ("Enter, l", "open"),
+    ("Enter", "open"),
     ("e", "edit in $VISUAL/$EDITOR"),
     ("r", "rescan for files"),
     ("Esc", "clear filter"),

@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 
 use bastian::app::{self, Settings};
-use bastian::config::{self, Confirm, ThemeName};
+use bastian::config::{self, CliOverrides, Confirm, ThemeName};
 use bastian::exec::Interpreters;
 use bastian::render::theme::Theme;
 use bastian::{browser, doc, render};
@@ -48,20 +48,17 @@ fn config_help() -> String {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let cfg = config::load()?;
-
-    // Command-line flags win over the config file.
-    let theme = match cli.theme.or(cfg.theme).unwrap_or(ThemeName::Dark) {
-        ThemeName::Dark => Theme::dark(),
-        ThemeName::Light => Theme::light(),
-    };
-    let settings = Settings {
-        theme,
-        max_width: cli.width.or(cfg.width).unwrap_or(100),
-        assume_yes: cli.yes || cfg.confirm == Some(Confirm::Never),
-        line_numbers: cli.line_numbers || cfg.line_numbers == Some(true),
-        interpreters: Interpreters::new(cfg.interpreters),
-    };
+    let resolved = config::resolve(
+        config::load()?,
+        &config::env_vars(),
+        CliOverrides {
+            theme: cli.theme,
+            width: cli.width,
+            confirm: cli.yes.then_some(Confirm::Never),
+            line_numbers: cli.line_numbers.then_some(true),
+        },
+    )?;
+    let settings = settings(resolved);
 
     let tui = !cli.print && std::io::stdout().is_terminal();
     let path = cli.path.unwrap_or_else(|| PathBuf::from("."));
@@ -99,6 +96,20 @@ fn main() -> Result<()> {
     let result = app::run(&mut terminal, app);
     ratatui::restore();
     result
+}
+
+/// Turn resolved configuration into what the app runs with.
+fn settings(r: config::Resolved) -> Settings {
+    Settings {
+        theme: match r.theme.value {
+            ThemeName::Dark => Theme::dark(),
+            ThemeName::Light => Theme::light(),
+        },
+        max_width: r.width.value,
+        assume_yes: r.confirm.value == Confirm::Never,
+        line_numbers: r.line_numbers.value,
+        interpreters: Interpreters::new(r.interpreters),
+    }
 }
 
 fn print(doc: &doc::Document, settings: &Settings) -> Result<()> {

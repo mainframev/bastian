@@ -109,6 +109,10 @@ python = ["uv", "run", "python", "-c"]
 fish = []             # an empty list stops a language from running
 ```
 
+Each setting can also come from the environment: `BASTIAN_THEME`,
+`BASTIAN_WIDTH`, `BASTIAN_CONFIRM` and `BASTIAN_LINE_NUMBERS`. Precedence is
+defaults < config file < environment < command-line flags.
+
 ## Development
 
 ```sh {name=check}

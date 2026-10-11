@@ -39,7 +39,10 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
         ..body
     };
     let end = (r.scroll + content.height as usize).min(r.rendered.lines.len());
-    let t = &r.theme;
+    // A copy (cheap: colors and an `Arc`), so `r` can be borrowed mutably
+    // for the images below.
+    let theme = r.theme.clone();
+    let t = &theme;
     let visible: Vec<Line> = (r.scroll..end)
         .map(|i| {
             let line = &r.rendered.lines[i];
@@ -67,6 +70,7 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
         .collect();
     frame.render_widget(Paragraph::new(visible), content);
     draw_hyperlinks(frame, r, content, end);
+    draw_images(frame, r, content, end);
     status::scrollbar(
         frame,
         t,
@@ -276,6 +280,32 @@ fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {
         ]),
     ];
     status::modal(frame, t, " run ", lines);
+}
+
+/// Pictures over the rows reserved for them, when wholly on screen;
+/// a partly scrolled-off picture leaves its rows blank.
+fn draw_images(frame: &mut Frame, r: &mut Reader, content: Rect, end: usize) {
+    let scroll = r.scroll;
+    let slots: Vec<_> = r
+        .rendered
+        .images
+        .iter()
+        .filter(|s| s.line >= scroll && s.line + usize::from(s.rows) <= end)
+        .cloned()
+        .collect();
+    for slot in slots {
+        let Some(protocol) = r.images.protocol(&slot.url) else {
+            continue;
+        };
+        let x = content.x + slot.col as u16;
+        let area = Rect::new(
+            x,
+            content.y + (slot.line - scroll) as u16,
+            slot.cols.min(content.right().saturating_sub(x)),
+            slot.rows,
+        );
+        frame.render_stateful_widget(ratatui_image::StatefulImage::default(), area, protocol);
+    }
 }
 
 /// Make visible links clickable: an OSC 8 hyperlink over each link's text.

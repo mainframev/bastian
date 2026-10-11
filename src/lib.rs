@@ -4,6 +4,7 @@ pub mod config;
 pub mod doc;
 pub mod editor;
 pub mod exec;
+pub mod images;
 pub mod links;
 pub mod outline;
 pub mod output;

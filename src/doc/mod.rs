@@ -122,6 +122,12 @@ pub enum Block {
     /// A muted single-line marker, e.g. an MDX component's opening or
     /// closing tag.
     Label(String),
+    /// A paragraph holding just an image, shown as the picture where the
+    /// terminal can.
+    Image {
+        alt: String,
+        url: String,
+    },
 }
 
 /// Horizontal alignment of a table column.

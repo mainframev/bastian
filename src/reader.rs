@@ -6,6 +6,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use crate::doc::{self, Block, CodeBlock, Document};
 use crate::exec::{BlockRun, Interpreters, RunEvent, RunSpec, Runner, Status};
+use crate::images::{Images, Source as ImageSource};
 use crate::links::{self, Link, Target};
 use crate::outline::{self, Outline};
 use crate::prompt::{self, Prompt, PromptEvent};
@@ -96,6 +97,11 @@ pub struct Reader {
     /// Block whose output the view keeps in sight until the user scrolls.
     follow: Option<usize>,
     dirty: bool,
+    /// Pictures for the document's image blocks.
+    pub images: Images,
+    /// Whether this document's images were asked for yet. Done on the first
+    /// layout, once `base_dir` and `remote_base` are final.
+    images_requested: bool,
     /// Syntax highlighting per code block, reused across re-renders.
     highlights: Highlights,
     width: u16,
@@ -136,6 +142,8 @@ impl Reader {
             timed_out: HashSet::new(),
             follow: None,
             dirty: false,
+            images: Images::default(),
+            images_requested: false,
             highlights: Highlights::default(),
             width: 0,
             height: 0,
@@ -164,6 +172,42 @@ impl Reader {
         Some(file.to_string())
     }
 
+    /// Start loading every image block's picture.
+    fn request_images(&mut self) {
+        if !self.images.enabled() {
+            return;
+        }
+        let mut urls = Vec::new();
+        doc::visit(&self.doc.blocks, &mut |b| {
+            if let Block::Image { url, .. } = b {
+                urls.push(url.clone());
+            }
+        });
+        for url in urls {
+            if let Some(source) = self.image_source(&url) {
+                self.images.request(&url, source);
+            }
+        }
+    }
+
+    /// Where the picture for an image written as `url` comes from: a web
+    /// URL (GitHub file pages as raw files), relative to a remote document,
+    /// or a file next to this one.
+    pub fn image_source(&self, url: &str) -> Option<ImageSource> {
+        let web = |u: url::Url| {
+            let raw = crate::remote::raw_url(&u).unwrap_or(u);
+            matches!(raw.scheme(), "http" | "https").then(|| ImageSource::Url(raw.to_string()))
+        };
+        if let Ok(abs) = url::Url::parse(url) {
+            return web(abs);
+        }
+        if let Some(base) = &self.remote_base {
+            return web(base.join(url).ok()?);
+        }
+        let path = url.split(['?', '#']).next().unwrap_or(url);
+        Some(ImageSource::File(self.base_dir.join(path)))
+    }
+
     /// Switch to `theme`, re-highlighting code on the next layout.
     pub fn set_theme(&mut self, theme: Theme) {
         self.theme = theme;
@@ -173,6 +217,10 @@ impl Reader {
 
     /// Re-render when the width or run output changed, and keep scroll in range.
     pub fn layout(&mut self, width: u16, height: u16) {
+        if !self.images_requested {
+            self.images_requested = true;
+            self.request_images();
+        }
         if width != self.width || self.dirty {
             self.rendered = render::render_with_runs(
                 &self.doc,
@@ -181,6 +229,7 @@ impl Reader {
                 &self.runs,
                 &self.interpreters,
                 &self.highlights,
+                &self.images.sizes(),
             );
             self.width = width;
             self.dirty = false;
@@ -460,6 +509,7 @@ impl Reader {
         self.codes = codes;
         self.doc = doc;
         self.highlights.clear();
+        self.images_requested = false;
         self.dirty = true;
     }
 
@@ -469,8 +519,9 @@ impl Reader {
         // Without new events, only running blocks' timers move: patch
         // those lines instead of laying out the whole document again.
         // A search re-renders so its matches stay in step with the text.
-        let rerender = reloaded || !events.is_empty() || self.search.is_some();
-        let changed = reloaded || !events.is_empty() || self.is_running();
+        let images = self.images.poll();
+        let rerender = reloaded || images || !events.is_empty() || self.search.is_some();
+        let changed = reloaded || images || !events.is_empty() || self.is_running();
         for event in events {
             match event {
                 RunEvent::Output { id, text, stderr } => {

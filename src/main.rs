@@ -9,7 +9,7 @@ use bastian::config::{self, ColorMode, Confirm};
 use bastian::exec::Interpreters;
 
 use bastian::term::{self, Background};
-use bastian::{browser, doc, output, remote, render, text, themes};
+use bastian::{browser, doc, images, output, remote, render, text, themes};
 
 /// Read Markdown in the terminal, and run its code blocks.
 #[derive(Parser)]
@@ -71,6 +71,10 @@ struct Cli {
     /// Hide the logo at the top of the file browser.
     #[arg(long)]
     no_logo: bool,
+
+    /// Show images in documents as their alt text instead of pictures.
+    #[arg(long)]
+    no_images: bool,
 
     /// Print the effective settings and where each came from, then exit.
     #[arg(long)]
@@ -161,6 +165,7 @@ fn main() -> Result<()> {
             all: cli.all.then_some(true),
             mouse: cli.mouse.then_some(true),
             logo: cli.no_logo.then_some(false),
+            images: cli.no_images.then_some(false),
             ..config::Config::default()
         },
     )?;
@@ -225,7 +230,7 @@ fn main() -> Result<()> {
     };
     let tui = pick_theme || (!cli.print && out.pager.is_none() && stdout_tty);
     // Plain output has no colors, so it skips the background query.
-    let (settings, current) = settings(resolved, themes_dir.as_deref(), tui || out.color)?;
+    let (settings, current) = settings(resolved, themes_dir.as_deref(), tui || out.color, tui)?;
     let theme_files = app::ThemeFiles {
         current,
         ..theme_files
@@ -329,6 +334,7 @@ fn settings(
     r: config::Resolved,
     themes_dir: Option<&std::path::Path>,
     colored: bool,
+    tui: bool,
 ) -> Result<(Settings, String)> {
     let light = colored && r.theme.value == "auto" && term::background() == Some(Background::Light);
     let name = config::theme_name(&r, light).to_string();
@@ -340,6 +346,8 @@ fn settings(
         all: r.all.value,
         mouse: r.mouse.value,
         logo: r.logo.value,
+        // Only the TUI draws pictures.
+        images: (tui && r.images.value).then(images::Support::lazy),
         interpreters: Interpreters::new(r.interpreters),
     };
     Ok((settings, name))

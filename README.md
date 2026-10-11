@@ -81,6 +81,12 @@ kitty, WezTerm, Ghostty, Windows Terminal, recent tmux with `hyperlinks` in
 `terminal-features`, …): web links open as they are, relative links as files
 next to the document (or against the URL of a remote document).
 
+An image on a line of its own is shown as a picture in the reader (kitty,
+iTerm2 and sixel graphics where the terminal supports them, colored
+half-blocks elsewhere), from a file next to the document or a URL. Images in
+running text, SVGs (such as most badges) and printed output keep their alt
+text.
+
 The open document reloads when the file changes on disk.
 
 Remote documents (URLs, `github.com/owner/repo`, `gitlab.com/group/project`)
@@ -134,6 +140,7 @@ pager = false         # true: show documents in $PAGER instead of the TUI
 all = false           # true: also list hidden and gitignored files
 mouse = false         # true: scroll with the mouse wheel
 logo = true           # false: no logo at the top of the file browser (--no-logo)
+images = true         # false: show images as their alt text (--no-images)
 line_numbers = false  # true behaves like --line-numbers
 
 [interpreters]
@@ -155,7 +162,8 @@ settings and where each one came from. To read a file literally named
 
 Each setting can also come from the environment: `BASTIAN_THEME`,
 `BASTIAN_DARK_THEME`, `BASTIAN_LIGHT_THEME`, `BASTIAN_WIDTH`, `BASTIAN_CONFIRM`, `BASTIAN_LINE_NUMBERS`, `BASTIAN_COLOR`,
-`BASTIAN_PAGER`, `BASTIAN_ALL`, `BASTIAN_MOUSE` and `BASTIAN_LOGO`. Precedence is
+`BASTIAN_PAGER`, `BASTIAN_ALL`, `BASTIAN_MOUSE`, `BASTIAN_LOGO` and
+`BASTIAN_IMAGES`. Precedence is
 defaults < config file < environment < command-line flags.
 
 ## Themes

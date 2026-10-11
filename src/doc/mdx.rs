@@ -70,7 +70,13 @@ impl Mapper {
                 level: h.depth,
                 inlines: self.inlines(&h.children),
             }),
-            Node::Paragraph(p) => out.push(Block::Paragraph(self.inlines(&p.children))),
+            Node::Paragraph(p) => match p.children.as_slice() {
+                [Node::Image(i)] => out.push(Block::Image {
+                    alt: i.alt.clone(),
+                    url: i.url.clone(),
+                }),
+                children => out.push(Block::Paragraph(self.inlines(children))),
+            },
             Node::Blockquote(q) => out.push(Block::Quote(self.blocks(&q.children))),
             Node::List(l) => out.push(Block::List {
                 start: l.ordered.then(|| u64::from(l.start.unwrap_or(1))),

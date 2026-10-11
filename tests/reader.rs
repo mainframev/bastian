@@ -203,6 +203,7 @@ fn remote_documents_resolve_links_and_always_confirm() {
         all: false,
         mouse: false,
         logo: true,
+        images: None,
     };
     let mut r = settings.remote(RemoteDoc {
         name: "README.md".into(),
@@ -313,4 +314,29 @@ fn links_are_terminal_hyperlinks() {
         2
     );
     assert_eq!(r.hyperlink_target("#top"), None);
+}
+
+#[test]
+fn image_sources_resolve_like_links() {
+    use bastian::images::Source;
+    let mut r = Reader::new("t.md".into(), parse("x\n"), Theme::dark(), 80);
+    r.base_dir = std::path::PathBuf::from("/docs");
+    assert_eq!(
+        r.image_source("img/a.png?raw=1"),
+        Some(Source::File("/docs/img/a.png".into()))
+    );
+    assert_eq!(
+        r.image_source("https://github.com/o/r/blob/main/shot.png"),
+        Some(Source::Url(
+            "https://raw.githubusercontent.com/o/r/main/shot.png".into()
+        ))
+    );
+    assert_eq!(r.image_source("data:image/png;base64,AAAA"), None);
+    r.remote_base = Some(url::Url::parse("https://github.com/o/r/blob/main/README.md").unwrap());
+    assert_eq!(
+        r.image_source("docs/b.png"),
+        Some(Source::Url(
+            "https://raw.githubusercontent.com/o/r/main/docs/b.png".into()
+        ))
+    );
 }

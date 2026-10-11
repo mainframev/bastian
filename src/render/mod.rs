@@ -37,7 +37,27 @@ pub struct Rendered {
     pub links: Vec<LinkSpan>,
     /// Rendered line where each top-level block starts.
     pub block_starts: Vec<usize>,
+    /// Rows reserved for pictures, to draw over.
+    pub images: Vec<ImageSlot>,
 }
+
+/// Where a picture goes: `rows` blank lines from `line`, `cols` wide,
+/// starting `col` columns in (after list or quote prefixes).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImageSlot {
+    pub url: String,
+    pub line: usize,
+    pub col: usize,
+    pub cols: u16,
+    pub rows: u16,
+}
+
+/// Size in terminal cells of each image that's ready to show, by URL as
+/// written in the document.
+pub type ImageSizes = HashMap<String, (u16, u16)>;
+
+/// Pictures taller than this many rows are scaled down.
+const MAX_IMAGE_ROWS: u16 = 24;
 
 /// A link's text on one rendered line.
 #[derive(Debug, Clone, PartialEq)]
@@ -67,6 +87,7 @@ pub fn render(doc: &Document, width: u16, theme: &Theme) -> Rendered {
         &HashMap::new(),
         &Interpreters::default(),
         &Highlights::default(),
+        &ImageSizes::new(),
     )
 }
 
@@ -90,12 +111,14 @@ pub fn render_with_runs(
     runs: &HashMap<usize, BlockRun>,
     interpreters: &Interpreters,
     highlights: &Highlights,
+    images: &ImageSizes,
 ) -> Rendered {
     let r = Renderer {
         theme,
         runs,
         interpreters,
         highlights,
+        images,
         link_runs: RefCell::default(),
     };
     let width = usize::from(width).max(10);
@@ -114,6 +137,7 @@ pub fn render_with_runs(
     let links = locate_links(&out.lines, &r.link_runs.into_inner(), theme);
     Rendered {
         block_starts: out.starts,
+        images: out.images,
         lines: out.lines,
         src_line: Vec::new(),
         anchors,
@@ -173,6 +197,7 @@ fn locate_links(lines: &[Line], runs: &[(String, usize)], t: &Theme) -> Vec<Link
 struct Out {
     lines: Vec<Line<'static>>,
     codes: Vec<CodeRange>,
+    images: Vec<ImageSlot>,
     /// Rendered line where each block passed to `blocks` begins.
     starts: Vec<usize>,
 }
@@ -210,6 +235,14 @@ impl Out {
                 lines: c.lines.start + offset..c.lines.end + offset,
                 output_end: c.output_end + offset,
             }));
+        // Prefixes are as wide on every line of a block, so either will do.
+        let indent: usize = rest.iter().chain(first).map(Span::width).max().unwrap_or(0);
+        self.images
+            .extend(other.images.into_iter().map(|s| ImageSlot {
+                line: s.line + offset,
+                col: s.col + indent,
+                ..s
+            }));
     }
 }
 
@@ -218,6 +251,7 @@ struct Renderer<'a> {
     runs: &'a HashMap<usize, BlockRun>,
     interpreters: &'a Interpreters,
     highlights: &'a Highlights,
+    images: &'a ImageSizes,
     /// Link runs in the order they were styled, for `locate_links`.
     link_runs: RefCell<Vec<(String, usize)>>,
 }
@@ -269,10 +303,36 @@ impl Renderer<'_> {
                 header,
                 rows,
             } => self.table(align, header, rows, width),
+            Block::Image { alt, url } => self.image(alt, url, width),
             Block::Rule => Out::from(vec![Line::styled(
                 "─".repeat(width),
                 Style::default().fg(t.muted),
             )]),
+        }
+    }
+
+    /// A picture: blank rows to draw it over, then its alt text as a
+    /// caption. Until it's loaded (or where it can't be shown), just the
+    /// alt text.
+    fn image(&self, alt: &str, url: &str, width: usize) -> Out {
+        let caption = Style::default().fg(self.theme.muted);
+        let Some(&(w, h)) = self.images.get(url) else {
+            return Out::from(wrap(&[(format!("[image: {alt}]"), caption)], width));
+        };
+        let (cols, rows) = fit_image(w, h, width as u16);
+        let mut lines = vec![Line::default(); usize::from(rows)];
+        if !alt.is_empty() {
+            lines.extend(wrap(&[(alt.to_string(), caption)], width));
+        }
+        Out {
+            images: vec![ImageSlot {
+                url: url.to_string(),
+                line: 0,
+                col: 0,
+                cols,
+                rows,
+            }],
+            ..Out::from(lines)
         }
     }
 
@@ -377,7 +437,7 @@ impl Renderer<'_> {
         Out {
             lines,
             codes: vec![range],
-            starts: Vec::new(),
+            ..Out::default()
         }
     }
 
@@ -423,6 +483,7 @@ impl Renderer<'_> {
         let range = self.add_run_panel(c, &mut lines, width);
         src_line.resize(lines.len(), None);
         Rendered {
+            images: Vec::new(),
             block_starts: Vec::new(),
             links: Vec::new(),
             code_blocks: vec![range],
@@ -610,6 +671,19 @@ pub fn run_status(run: &BlockRun, t: &Theme) -> Line<'static> {
     Line::from(status)
 }
 
+/// Scale a `w`×`h` cell picture to at most `width` columns and
+/// `MAX_IMAGE_ROWS` rows, keeping its shape.
+fn fit_image(w: u16, h: u16, width: u16) -> (u16, u16) {
+    let (w, h) = (f32::from(w.max(1)), f32::from(h.max(1)));
+    let scale = (f32::from(width.max(1)) / w)
+        .min(f32::from(MAX_IMAGE_ROWS) / h)
+        .min(1.0);
+    (
+        ((w * scale).round() as u16).max(1),
+        ((h * scale).round() as u16).max(1),
+    )
+}
+
 /// A column's minimum width never exceeds this, so one long word can't
 /// starve the other columns; longer words are split.
 const MAX_MIN_COLUMN: usize = 12;
@@ -792,5 +866,33 @@ mod tests {
             "{:?}",
             to_plain(&r.lines)
         );
+    }
+
+    #[test]
+    fn images_reserve_rows_once_loaded() {
+        let doc = parse("- item\n\n  ![A cat](cat.png)\n");
+        let placeholder = render(&doc, 40, &Theme::dark());
+        assert!(placeholder.images.is_empty());
+        assert!(to_plain(&placeholder.lines).contains("[image: A cat]"));
+
+        let sizes = ImageSizes::from([("cat.png".to_string(), (60, 40))]);
+        let r = render_with_runs(
+            &doc,
+            40,
+            &Theme::dark(),
+            &HashMap::new(),
+            &Interpreters::default(),
+            &Highlights::default(),
+            &sizes,
+        );
+        let [slot] = r.images.as_slice() else {
+            panic!("expected one slot: {:?}", r.images);
+        };
+        // Scaled to the 38 columns inside the list indent, keeping its shape.
+        assert_eq!((slot.col, slot.cols, slot.rows), (2, 36, 24));
+        assert_eq!(fit_image(60, 40, 38), (36, 24));
+        assert_eq!(fit_image(10, 5, 38), (10, 5));
+        let caption = plain(&r.lines[slot.line + usize::from(slot.rows)]);
+        assert_eq!(caption.trim(), "A cat");
     }
 }

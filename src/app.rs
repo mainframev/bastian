@@ -38,6 +38,8 @@ pub struct Settings {
     pub mouse: bool,
     /// Show the logo at the top of the file browser.
     pub logo: bool,
+    /// How to draw pictures; `None` leaves images as their alt text.
+    pub images: Option<crate::images::Support>,
 }
 
 impl Settings {
@@ -47,6 +49,7 @@ impl Settings {
         r.assume_yes = self.assume_yes;
         r.interpreters = self.interpreters.clone();
         r.line_numbers = self.line_numbers;
+        r.images = crate::images::Images::new(self.images.clone());
         r
     }
 
@@ -487,6 +490,7 @@ mod tests {
             all: false,
             mouse: true,
             logo: true,
+            images: None,
         };
         let src: String = (0..50).map(|i| format!("line {i}\n\n")).collect();
         let mut reader = settings.reader("t".into(), doc::parse(&src), PathBuf::from("."));

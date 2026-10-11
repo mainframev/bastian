@@ -62,6 +62,8 @@ struct Builder {
     root: Vec<Block>,
     stack: Vec<Frame>,
     inlines: Vec<Inline>,
+    /// Image URLs among the pending `inlines`.
+    images: Vec<String>,
     style: InlineStyle,
     strong: u32,
     emphasis: u32,
@@ -152,7 +154,10 @@ impl Builder {
             Tag::Emphasis => self.set_count(|b| &mut b.emphasis, 1),
             Tag::Strikethrough => self.set_count(|b| &mut b.strike, 1),
             Tag::Link { dest_url, .. } => self.style.link = Some(dest_url.into_string()),
-            Tag::Image { .. } => self.push_text("[image: "),
+            Tag::Image { dest_url, .. } => {
+                self.images.push(dest_url.into_string());
+                self.push_text("[image: ");
+            }
             Tag::MetadataBlock(_) => self.metadata = true,
             _ => {}
         }
@@ -164,6 +169,7 @@ impl Builder {
             TagEnd::Heading(_) => {
                 let level = self.heading.take().unwrap_or(1);
                 let inlines = std::mem::take(&mut self.inlines);
+                self.images.clear();
                 self.push_block(Block::Heading { level, inlines });
             }
             TagEnd::BlockQuote(_) => {
@@ -198,6 +204,7 @@ impl Builder {
             }
             TagEnd::TableCell => {
                 let cell = std::mem::take(&mut self.inlines);
+                self.images.clear();
                 if let Some(t) = &mut self.table {
                     t.row.push(cell);
                 }
@@ -256,7 +263,12 @@ impl Builder {
             return;
         }
         let inlines = std::mem::take(&mut self.inlines);
-        self.push_block(Block::Paragraph(inlines));
+        let images = std::mem::take(&mut self.images);
+        let block = match images.as_slice() {
+            [url] => image_block(&inlines, url),
+            _ => None,
+        };
+        self.push_block(block.unwrap_or(Block::Paragraph(inlines)));
     }
 
     fn push_block(&mut self, block: Block) {
@@ -281,6 +293,20 @@ impl Builder {
 }
 
 /// Language token of a fence info string: `sh {name=x}` and `sh{name=x}` give `sh`.
+/// The image block for a paragraph that is nothing but `[image: alt]`
+/// (not wrapped in a link, which would be lost).
+fn image_block(inlines: &[Inline], url: &str) -> Option<Block> {
+    if inlines.iter().any(|i| i.style.link.is_some()) {
+        return None;
+    }
+    let text = super::plain_text(inlines);
+    let alt = text.trim().strip_prefix("[image: ")?.strip_suffix(']')?;
+    Some(Block::Image {
+        alt: alt.to_string(),
+        url: url.to_string(),
+    })
+}
+
 fn lang_of(info: &str) -> Option<String> {
     let lang = info
         .split(|c: char| c.is_whitespace() || c == '{' || c == ',')
@@ -394,5 +420,23 @@ mod tests {
             panic!("expected paragraph");
         };
         assert_eq!(inl[1].style.link.as_deref(), Some("https://x.dev"));
+    }
+
+    #[test]
+    fn image_only_paragraphs_become_image_blocks() {
+        let doc = parse(
+            "![Screenshot](img/shot.png)\n\nText ![inline](a.png) here\n\n[![linked](b.png)](https://x.dev)\n",
+        );
+        assert_eq!(
+            doc.blocks[0],
+            Block::Image {
+                alt: "Screenshot".into(),
+                url: "img/shot.png".into()
+            }
+        );
+        assert!(matches!(doc.blocks[1], Block::Paragraph(_)));
+        assert!(matches!(doc.blocks[2], Block::Paragraph(_)));
+        let mdx = crate::doc::parse_for("![Logo](logo.png)\n", Some(std::path::Path::new("x.mdx")));
+        assert!(matches!(&mdx.blocks[0], Block::Image { url, .. } if url == "logo.png"));
     }
 }

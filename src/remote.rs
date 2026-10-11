@@ -126,10 +126,10 @@ pub fn fetch(source: &Source) -> Result<RemoteDoc> {
     }
 }
 
-/// The raw-file URL behind a file page:
+/// The raw-file URL behind a file page, for documents and images:
 /// `github.com/o/r/blob/<ref>/<path>` → `raw.githubusercontent.com/o/r/<ref>/<path>`,
 /// and GitLab's `…/-/blob/…` → `…/-/raw/…` on any host.
-fn raw_url(url: &Url) -> Option<Url> {
+pub fn raw_url(url: &Url) -> Option<Url> {
     let path = url.path();
     let raw = if url.host_str() == Some("github.com") {
         let mut parts = path.trim_start_matches('/').splitn(4, '/');
@@ -168,6 +168,30 @@ fn agent() -> ureq::Agent {
 /// GET `url` as text, with clear errors for HTTP failures and GitHub's rate
 /// limit. `GITHUB_TOKEN` is sent to api.github.com when set.
 fn get(agent: &ureq::Agent, url: &str, accept: &str) -> Result<String> {
+    respond(agent, url, accept)?
+        .body_mut()
+        .with_config()
+        .limit(MAX_BYTES)
+        .read_to_string()
+        .with_context(|| format!("reading {url}"))
+}
+
+/// GET `url` as raw bytes (e.g. an image), up to `limit` bytes.
+pub fn fetch_bytes(url: &str, limit: u64) -> Result<Vec<u8>> {
+    respond(&agent(), url, "*/*")?
+        .body_mut()
+        .with_config()
+        .limit(limit)
+        .read_to_vec()
+        .with_context(|| format!("reading {url}"))
+}
+
+/// Send the GET and turn HTTP failures into errors.
+fn respond(
+    agent: &ureq::Agent,
+    url: &str,
+    accept: &str,
+) -> Result<ureq::http::Response<ureq::Body>> {
     let mut req = agent
         .get(url)
         .header("Accept", accept)
@@ -178,19 +202,14 @@ fn get(agent: &ureq::Agent, url: &str, accept: &str) -> Result<String> {
     {
         req = req.header("Authorization", format!("Bearer {token}"));
     }
-    let mut resp = req.call().with_context(|| format!("fetching {url}"))?;
+    let resp = req.call().with_context(|| format!("fetching {url}"))?;
     let status = resp.status().as_u16();
     let rate_limited = resp
         .headers()
         .get("x-ratelimit-remaining")
         .is_some_and(|v| v == "0");
     match status {
-        200..=299 => resp
-            .body_mut()
-            .with_config()
-            .limit(MAX_BYTES)
-            .read_to_string()
-            .with_context(|| format!("reading {url}")),
+        200..=299 => Ok(resp),
         403 | 429 if rate_limited => {
             bail!("GitHub rate limit reached fetching {url}; set GITHUB_TOKEN to raise it")
         }

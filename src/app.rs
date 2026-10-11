@@ -40,6 +40,18 @@ impl Settings {
         r
     }
 
+    /// A reader for a fetched document. Its code blocks run in the current
+    /// directory and always ask first; it has no file to watch or edit.
+    pub fn remote(&self, doc: crate::remote::RemoteDoc) -> Reader {
+        let fake_path = std::path::PathBuf::from(doc.base.path());
+        let parsed = doc::parse_for(&doc.text, Some(&fake_path));
+        let mut r = self.reader(doc.name, parsed, PathBuf::from("."));
+        r.text = doc.text;
+        r.remote_base = Some(doc.base);
+        r.untrusted = true;
+        r
+    }
+
     /// Open a file in a reader that reloads when the file changes.
     pub fn open(&self, path: &Path, name: String) -> Result<Reader> {
         let src = crate::text::read_text(path)?;
@@ -144,6 +156,17 @@ impl App {
                 let name = display_name(&path);
                 match self.settings.open(&path, name) {
                     Ok(next) => {
+                        if let Some(prev) = self.reader.replace(next) {
+                            self.history.push(prev);
+                        }
+                    }
+                    Err(err) => self.set_message(format!("{err:#}")),
+                }
+            }
+            reader::Action::OpenRemote(url) => {
+                match crate::remote::fetch(&crate::remote::Source::Url(url)) {
+                    Ok(doc) => {
+                        let next = self.settings.remote(doc);
                         if let Some(prev) = self.reader.replace(next) {
                             self.history.push(prev);
                         }

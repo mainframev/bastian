@@ -24,6 +24,8 @@ bastian docs/           # browse another directory
 bastian -a              # also list hidden and gitignored files
 bastian README.md       # read a file
 cat notes.md | bastian -
+bastian github.com/owner/repo         # a repository's README (GitLab too)
+bastian https://example.com/doc.md    # any Markdown URL
 bastian -p README.md    # print instead of opening the TUI
 bastian --pager README.md  # page it through $PAGER (default less -R)
 bastian --color always README.md | less -R
@@ -66,6 +68,12 @@ In the browser: `j/k` to move, `h/l` (or `←/→`) for the previous/next page,
 all keys, `q` to quit.
 
 The open document reloads when the file changes on disk.
+
+Remote documents (URLs, `github.com/owner/repo`, `gitlab.com/group/project`)
+resolve relative links against their URL, so `L` can follow them to other
+remote Markdown files. Their code blocks run in the current directory and
+always ask first, even with `--yes`. Set `GITHUB_TOKEN` to avoid GitHub's
+anonymous rate limit.
 
 `.mdx` files are parsed as MDX: front matter, `import`/`export` and
 `{/* comments */}` are hidden, components show as muted tag lines around their

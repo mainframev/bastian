@@ -97,7 +97,7 @@ fn help_closes_on_any_key() {
 fn edit_needs_a_file() {
     let mut r = reader("text\n");
     assert!(matches!(key(&mut r, KeyCode::Char('e')), Action::None));
-    assert_eq!(r.message.as_deref(), Some("stdin has no file to edit"));
+    assert_eq!(r.message.as_deref(), Some("no local file to edit"));
 
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("doc.md");
@@ -186,4 +186,30 @@ fn c_copies_the_whole_document() {
         _ => panic!("expected copy"),
     }
     assert_eq!(r.message.as_deref(), Some("copied document (3 lines)"));
+}
+
+#[test]
+fn remote_documents_resolve_links_and_always_confirm() {
+    let mut r =
+        reader("See [guide](docs/guide.md) and [logo](img/logo.png).\n\n```sh\necho hi\n```\n");
+    r.remote_base = Some(url::Url::parse("https://example.com/repo/README.md").unwrap());
+    r.untrusted = true;
+    r.assume_yes = true;
+
+    key(&mut r, KeyCode::Char('L'));
+    match key(&mut r, KeyCode::Enter) {
+        Action::OpenRemote(u) => assert_eq!(u.as_str(), "https://example.com/repo/docs/guide.md"),
+        _ => panic!("expected OpenRemote"),
+    }
+    key(&mut r, KeyCode::Char('L'));
+    key(&mut r, KeyCode::Char('j'));
+    assert!(matches!(
+        key(&mut r, KeyCode::Enter),
+        Action::OpenExternal(u) if u == "https://example.com/repo/img/logo.png"
+    ));
+
+    // --yes doesn't skip confirmation for an untrusted document.
+    key(&mut r, KeyCode::Tab);
+    key(&mut r, KeyCode::Enter);
+    assert_eq!(r.confirm, Some(vec![0]));
 }

@@ -9,7 +9,7 @@ use bastian::config::{self, CliOverrides, ColorMode, Confirm, ThemeName};
 use bastian::exec::Interpreters;
 use bastian::render::theme::Theme;
 use bastian::term::{self, Background};
-use bastian::{browser, doc, output, render, text};
+use bastian::{browser, doc, output, remote, render, text};
 
 /// Read Markdown in the terminal, and run its code blocks.
 #[derive(Parser)]
@@ -18,8 +18,9 @@ struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
 
-    /// Markdown file to read, `-` for stdin, or a directory to browse.
-    /// Defaults to browsing the current directory.
+    /// Markdown file to read, `-` for stdin, a directory to browse, an
+    /// http(s) URL, or github.com/owner/repo or gitlab.com/group/project for
+    /// a repository's README. Defaults to browsing the current directory.
     path: Option<PathBuf>,
 
     /// Maximum width of the rendered document [default: 100].
@@ -137,7 +138,20 @@ fn main() -> Result<()> {
     let tui = !cli.print && out.pager.is_none() && stdout_tty;
     let path = cli.path.unwrap_or_else(|| PathBuf::from("."));
 
-    let app = if path.is_dir() {
+    // A URL or github.com/gitlab.com repository, unless a local file of
+    // that name exists.
+    let remote = (!path.exists())
+        .then(|| path.to_str().and_then(remote::classify))
+        .flatten();
+    let app = if let Some(source) = remote {
+        let fetched = remote::fetch(&source)?;
+        if !tui {
+            let fake = PathBuf::from(fetched.base.path());
+            return print(&doc::parse_for(&fetched.text, Some(&fake)), &settings, &out);
+        }
+        let reader = settings.remote(fetched);
+        app::App::read(reader, settings)
+    } else if path.is_dir() {
         if !tui {
             for e in browser::discover(&path, settings.all) {
                 println!("{}", e.rel);

@@ -18,6 +18,8 @@ pub enum Action {
     Quit,
     /// Open a Markdown document in bastian.
     OpenDocument(PathBuf),
+    /// Fetch and open a remote Markdown document.
+    OpenRemote(url::Url),
     /// Hand a URL or file to the system opener.
     OpenExternal(String),
     /// Put text on the clipboard.
@@ -76,6 +78,11 @@ pub struct Reader {
     pub source: Option<PathBuf>,
     /// The document's source text, for copying it whole.
     pub text: String,
+    /// Set for documents fetched over HTTP: links resolve against this URL.
+    pub remote_base: Option<url::Url>,
+    /// The document came from somewhere untrusted (a remote URL): every
+    /// code block run asks first, even with `--yes`.
+    pub untrusted: bool,
     modified: Option<SystemTime>,
     last_check: Instant,
     pub interpreters: Interpreters,
@@ -115,6 +122,8 @@ impl Reader {
             line_numbers: false,
             source: None,
             text: String::new(),
+            remote_base: None,
+            untrusted: false,
             modified: None,
             last_check: Instant::now(),
             interpreters: Interpreters::default(),
@@ -319,7 +328,7 @@ impl Reader {
         let must_ask = ids
             .iter()
             .any(|&id| self.code(id).is_some_and(|c| c.attrs.confirm));
-        if self.assume_yes && !must_ask {
+        if self.assume_yes && !must_ask && !self.untrusted {
             self.start_queue(ids);
         } else {
             self.confirm = Some(ids);
@@ -552,6 +561,18 @@ impl Reader {
     }
 
     fn follow_link(&mut self, url: &str) -> Action {
+        if let Some(base) = &self.remote_base
+            && !url.starts_with('#')
+        {
+            return match crate::remote::resolve_link(base, url) {
+                Some(target) if crate::remote::is_document(&target) => Action::OpenRemote(target),
+                Some(target) => Action::OpenExternal(target.to_string()),
+                None => {
+                    self.message = Some(format!("can't resolve link {url}"));
+                    Action::None
+                }
+            };
+        }
         match links::resolve(url, &self.base_dir) {
             Target::Document(path) => Action::OpenDocument(path),
             Target::External(target) => Action::OpenExternal(target),
@@ -668,7 +689,7 @@ impl Reader {
             KeyCode::Char('#') => self.line_numbers = !self.line_numbers,
             KeyCode::Char('e') => match &self.source {
                 Some(path) => return Action::Edit(path.clone(), self.source_line()),
-                None => self.message = Some("stdin has no file to edit".into()),
+                None => self.message = Some("no local file to edit".into()),
             },
             KeyCode::Char('c') if !ctrl => {
                 if self.text.is_empty() {

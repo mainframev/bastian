@@ -8,6 +8,7 @@ pub mod links;
 pub mod output;
 pub mod prompt;
 pub mod reader;
+pub mod remote;
 pub mod render;
 pub mod term;
 pub mod text;

@@ -9,7 +9,7 @@ use bastian::config::{self, CliOverrides, ColorMode, Confirm, ThemeName};
 use bastian::exec::Interpreters;
 use bastian::render::theme::Theme;
 use bastian::term::{self, Background};
-use bastian::{browser, doc, output, render};
+use bastian::{browser, doc, output, render, text};
 
 /// Read Markdown in the terminal, and run its code blocks.
 #[derive(Parser)]
@@ -30,6 +30,10 @@ struct Cli {
     /// Run code blocks without asking first. Blocks marked `confirm` still ask.
     #[arg(short, long)]
     yes: bool,
+
+    /// Also list hidden and gitignored files in the browser.
+    #[arg(short, long)]
+    all: bool,
 
     /// Show line numbers in the reader.
     #[arg(short = 'n', long)]
@@ -68,6 +72,7 @@ fn main() -> Result<()> {
             line_numbers: cli.line_numbers.then_some(true),
             color: cli.color,
             pager: cli.pager.then_some(true),
+            all: cli.all.then_some(true),
         },
     )?;
     let stdout_tty = std::io::stdout().is_terminal();
@@ -93,17 +98,18 @@ fn main() -> Result<()> {
 
     let app = if path.is_dir() {
         if !tui {
-            for e in browser::discover(&path) {
+            for e in browser::discover(&path, settings.all) {
                 println!("{}", e.rel);
             }
             return Ok(());
         }
         app::App::browse(path, settings)
     } else if path.as_os_str() == "-" {
-        let mut src = String::new();
+        let mut bytes = Vec::new();
         std::io::stdin()
-            .read_to_string(&mut src)
+            .read_to_end(&mut bytes)
             .context("reading stdin")?;
+        let src = text::decode(&bytes).context("reading stdin")?;
         let doc = doc::parse(&src);
         if !tui {
             return print(&doc, &settings, &out);
@@ -112,8 +118,7 @@ fn main() -> Result<()> {
         app::App::read(reader, settings)
     } else {
         if !tui {
-            let src = std::fs::read_to_string(&path)
-                .with_context(|| format!("reading {}", path.display()))?;
+            let src = text::read_text(&path)?;
             return print(&doc::parse_for(&src, Some(&path)), &settings, &out);
         }
         let reader = settings.open(&path, path.display().to_string())?;
@@ -141,6 +146,7 @@ fn settings(r: config::Resolved) -> Settings {
         max_width: r.width.value,
         assume_yes: r.confirm.value == Confirm::Never,
         line_numbers: r.line_numbers.value,
+        all: r.all.value,
         interpreters: Interpreters::new(r.interpreters),
     }
 }

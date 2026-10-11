@@ -18,6 +18,8 @@ pub struct Config {
     pub color: Option<ColorMode>,
     /// Page printed output through `$PAGER` instead of writing it out.
     pub pager: Option<bool>,
+    /// List hidden and gitignored files in the browser.
+    pub all: Option<bool>,
     /// Language → command line; the block source is appended as the last
     /// argument. An empty list stops that language from running.
     pub interpreters: HashMap<String, Vec<String>>,
@@ -107,6 +109,7 @@ pub struct CliOverrides {
     pub line_numbers: Option<bool>,
     pub color: Option<ColorMode>,
     pub pager: Option<bool>,
+    pub all: Option<bool>,
 }
 
 /// Every effective setting, resolved once at startup. All modes (TUI,
@@ -119,6 +122,7 @@ pub struct Resolved {
     pub line_numbers: Setting<bool>,
     pub color: Setting<ColorMode>,
     pub pager: Setting<bool>,
+    pub all: Setting<bool>,
     pub interpreters: HashMap<String, Vec<String>>,
 }
 
@@ -166,6 +170,12 @@ pub fn resolve(file: Config, env: &EnvMap, cli: CliOverrides) -> Result<Resolved
             file.pager,
             env_value(env, "BASTIAN_PAGER", parse_bool, "true or false")?,
             cli.pager,
+        ),
+        all: pick(
+            false,
+            file.all,
+            env_value(env, "BASTIAN_ALL", parse_bool, "true or false")?,
+            cli.all,
         ),
         interpreters: file.interpreters,
     })

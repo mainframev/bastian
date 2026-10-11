@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::clipboard::CopyToClipboard;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -26,6 +26,8 @@ pub struct Settings {
     pub interpreters: Interpreters,
     /// Show line numbers in readers.
     pub line_numbers: bool,
+    /// Browse hidden and gitignored files too.
+    pub all: bool,
 }
 
 impl Settings {
@@ -40,8 +42,7 @@ impl Settings {
 
     /// Open a file in a reader that reloads when the file changes.
     pub fn open(&self, path: &Path, name: String) -> Result<Reader> {
-        let src =
-            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        let src = crate::text::read_text(path)?;
         let mut r = self.reader(name, doc::parse_for(&src, Some(path)), base_dir(path));
         r.watch(path.to_path_buf());
         Ok(r)
@@ -62,7 +63,7 @@ pub struct App {
 impl App {
     pub fn browse(root: PathBuf, settings: Settings) -> Self {
         Self {
-            browser: Some(Browser::new(root)),
+            browser: Some(Browser::with_options(root, settings.all)),
             reader: None,
             history: Vec::new(),
             edit: None,

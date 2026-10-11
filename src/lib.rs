@@ -10,4 +10,5 @@ pub mod prompt;
 pub mod reader;
 pub mod render;
 pub mod term;
+pub mod text;
 pub mod ui;

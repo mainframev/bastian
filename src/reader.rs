@@ -373,7 +373,7 @@ impl Reader {
             return false;
         }
         self.modified = modified;
-        match std::fs::read_to_string(path) {
+        match crate::text::read_text(path) {
             Ok(src) => {
                 self.replace_doc(crate::doc::parse_for(&src, Some(path)));
                 self.message = Some("reloaded".into());

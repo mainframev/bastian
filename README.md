@@ -21,6 +21,7 @@ cargo install --path .
 ```sh {norun}
 bastian                 # browse Markdown files under the current directory
 bastian docs/           # browse another directory
+bastian -a              # also list hidden and gitignored files
 bastian README.md       # read a file
 cat notes.md | bastian -
 bastian -p README.md    # print instead of opening the TUI
@@ -104,6 +105,7 @@ width = 100           # maximum document width
 confirm = "always"    # "never" behaves like --yes
 color = "auto"        # printed output: "auto", "always" or "never"
 pager = false         # true: show documents in $PAGER instead of the TUI
+all = false           # true: also list hidden and gitignored files
 line_numbers = false  # true behaves like --line-numbers
 
 [interpreters]
@@ -118,8 +120,8 @@ off and `CLICOLOR_FORCE=1` turns it on for pipes. Without `-w` it uses the
 terminal width (up to 120 columns), or 80 when there's no terminal.
 
 Each setting can also come from the environment: `BASTIAN_THEME`,
-`BASTIAN_WIDTH`, `BASTIAN_CONFIRM`, `BASTIAN_LINE_NUMBERS`, `BASTIAN_COLOR` and
-`BASTIAN_PAGER`. Precedence is
+`BASTIAN_WIDTH`, `BASTIAN_CONFIRM`, `BASTIAN_LINE_NUMBERS`, `BASTIAN_COLOR`,
+`BASTIAN_PAGER` and `BASTIAN_ALL`. Precedence is
 defaults < config file < environment < command-line flags.
 
 ## Development

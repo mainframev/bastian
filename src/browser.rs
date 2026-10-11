@@ -32,6 +32,8 @@ pub enum Action {
 
 pub struct Browser {
     pub root: PathBuf,
+    /// List hidden and gitignored files too.
+    pub all: bool,
     pub entries: Vec<Entry>,
     /// Indices into `entries` that match the filter, best first.
     pub visible: Vec<usize>,
@@ -55,8 +57,14 @@ impl Browser {
     /// Start browsing `root`. Files are found in the background; call
     /// `tick` to pick them up.
     pub fn new(root: PathBuf) -> Self {
+        Self::with_options(root, false)
+    }
+
+    /// Like `new`; `all` also lists hidden and gitignored files.
+    pub fn with_options(root: PathBuf, all: bool) -> Self {
         let mut b = Self {
             root,
+            all,
             visible: Vec::new(),
             entries: Vec::new(),
             selected: 0,
@@ -78,7 +86,8 @@ impl Browser {
     pub fn rescan(&mut self) {
         let (tx, rx) = mpsc::channel();
         let root = self.root.clone();
-        std::thread::spawn(move || scan(&root, tx));
+        let all = self.all;
+        std::thread::spawn(move || scan(&root, all, tx));
         self.entries.clear();
         self.refilter();
         self.incoming = Some(rx);
@@ -270,9 +279,9 @@ fn is_navigation(key: &KeyEvent) -> bool {
 
 /// Markdown files under `root`, honoring .gitignore and skipping hidden
 /// paths, newest first.
-pub fn discover(root: &Path) -> Vec<Entry> {
+pub fn discover(root: &Path, all: bool) -> Vec<Entry> {
     let (tx, rx) = mpsc::channel();
-    scan(root, tx);
+    scan(root, all, tx);
     let mut entries: Vec<Entry> = rx.into_iter().collect();
     sort(&mut entries);
     entries
@@ -283,38 +292,48 @@ fn sort(entries: &mut [Entry]) {
 }
 
 /// Walk `root` on several threads, sending each Markdown file as it's found.
-/// Returns when the walk is done.
-pub fn scan(root: &Path, tx: Sender<Entry>) {
-    ignore::WalkBuilder::new(root).build_parallel().run(|| {
-        let tx = tx.clone();
-        Box::new(move |result| {
-            let Ok(d) = result else {
-                return WalkState::Continue;
-            };
-            if !d.file_type().is_some_and(|t| t.is_file()) || !is_markdown(d.path()) {
-                return WalkState::Continue;
-            }
-            let path = d.path().to_path_buf();
-            let meta = d.metadata().ok();
-            let entry = Entry {
-                rel: path
-                    .strip_prefix(root)
-                    .unwrap_or(&path)
-                    .display()
-                    .to_string(),
-                title: read_title(&path),
-                modified: meta.as_ref().and_then(|m| m.modified().ok()),
-                created: meta
-                    .as_ref()
-                    .and_then(|m| m.created().or_else(|_| m.modified()).ok()),
-                path,
-            };
-            if tx.send(entry).is_err() {
-                return WalkState::Quit;
-            }
-            WalkState::Continue
-        })
-    });
+/// Returns when the walk is done. Hidden and gitignored paths are skipped
+/// unless `all` is set; unreadable entries and broken symlinks are skipped.
+pub fn scan(root: &Path, all: bool, tx: Sender<Entry>) {
+    ignore::WalkBuilder::new(root)
+        .hidden(!all)
+        .git_ignore(!all)
+        .git_global(!all)
+        .git_exclude(!all)
+        .ignore(!all)
+        // Even with `all`, git's own data is never documentation.
+        .filter_entry(|e| e.file_name() != ".git")
+        .build_parallel()
+        .run(|| {
+            let tx = tx.clone();
+            Box::new(move |result| {
+                let Ok(d) = result else {
+                    return WalkState::Continue;
+                };
+                if !d.file_type().is_some_and(|t| t.is_file()) || !is_markdown(d.path()) {
+                    return WalkState::Continue;
+                }
+                let path = d.path().to_path_buf();
+                let meta = d.metadata().ok();
+                let entry = Entry {
+                    rel: path
+                        .strip_prefix(root)
+                        .unwrap_or(&path)
+                        .display()
+                        .to_string(),
+                    title: read_title(&path),
+                    modified: meta.as_ref().and_then(|m| m.modified().ok()),
+                    created: meta
+                        .as_ref()
+                        .and_then(|m| m.created().or_else(|_| m.modified()).ok()),
+                    path,
+                };
+                if tx.send(entry).is_err() {
+                    return WalkState::Quit;
+                }
+                WalkState::Continue
+            })
+        });
 }
 
 /// Bytes read from the start of each file to find its title.
@@ -325,7 +344,7 @@ fn read_title(path: &Path) -> Option<String> {
     std::fs::File::open(path)
         .and_then(|f| f.take(TITLE_PREFIX).read_to_end(&mut buf))
         .ok()?;
-    title_of(&String::from_utf8_lossy(&buf))
+    title_of(&crate::text::decode_lossy(&buf))
 }
 
 /// `title:` from YAML front matter, else the first `# ` heading.
@@ -354,9 +373,12 @@ fn title_of(src: &str) -> Option<String> {
 }
 
 fn is_markdown(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "md" | "markdown" | "mdx"))
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+        matches!(
+            e.to_ascii_lowercase().as_str(),
+            "md" | "markdown" | "mdx" | "mdown" | "mkdn" | "mkd"
+        )
+    })
 }
 
 /// First ATX `# ` heading outside fenced code, without a full parse.
@@ -403,9 +425,24 @@ mod tests {
         // .gitignore is only honored inside a git repository.
         std::fs::create_dir(root.join(".git")).unwrap();
 
-        let mut rels: Vec<String> = discover(root).into_iter().map(|e| e.rel).collect();
+        let mut rels: Vec<String> = discover(root, false).into_iter().map(|e| e.rel).collect();
         rels.sort();
         assert_eq!(rels, ["README.md", "docs/guide.markdown"]);
+
+        // With `all`, hidden and ignored files are listed too.
+        std::fs::create_dir_all(root.join(".notes")).unwrap();
+        std::fs::write(root.join(".notes/todo.mkd"), "# todo\n").unwrap();
+        let mut rels: Vec<String> = discover(root, true).into_iter().map(|e| e.rel).collect();
+        rels.sort();
+        assert_eq!(
+            rels,
+            [
+                ".notes/todo.mkd",
+                "README.md",
+                "build/out.md",
+                "docs/guide.markdown"
+            ]
+        );
     }
 
     fn wait_for_scan(b: &mut Browser) {

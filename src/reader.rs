@@ -4,7 +4,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::doc::{Block, CodeBlock, Document};
+use crate::doc::{self, Block, CodeBlock, Document};
 use crate::exec::{BlockRun, Interpreters, RunEvent, RunSpec, Runner, Status};
 use crate::links::{self, Link, Target};
 use crate::prompt::{Prompt, PromptEvent};
@@ -100,8 +100,7 @@ pub struct Reader {
 
 impl Reader {
     pub fn new(name: String, doc: Document, theme: Theme, max_width: u16) -> Self {
-        let mut codes = Vec::new();
-        collect_code(&doc.blocks, &mut codes);
+        let codes = collect_code(&doc.blocks);
         Self {
             name,
             doc,
@@ -412,8 +411,7 @@ impl Reader {
     /// Swap in a new version of the document, keeping scroll and any run
     /// state whose block still exists.
     pub fn replace_doc(&mut self, doc: Document) {
-        let mut codes = Vec::new();
-        collect_code(&doc.blocks, &mut codes);
+        let codes = collect_code(&doc.blocks);
         self.runs
             .retain(|id, run| *id < codes.len() || run.is_running());
         if self.focus.is_some_and(|id| id >= codes.len()) {
@@ -716,26 +714,22 @@ fn mtime(path: &std::path::Path) -> Option<SystemTime> {
 
 fn heading_texts(blocks: &[Block]) -> Vec<String> {
     let mut out = Vec::new();
-    for b in blocks {
-        match b {
-            Block::Heading { inlines, .. } => out.push(crate::doc::plain_text(inlines)),
-            Block::Quote(inner) => out.extend(heading_texts(inner)),
-            Block::List { items, .. } => items.iter().for_each(|i| out.extend(heading_texts(i))),
-            _ => {}
+    doc::visit(blocks, &mut |b| {
+        if let Block::Heading { inlines, .. } = b {
+            out.push(doc::plain_text(inlines));
         }
-    }
+    });
     out
 }
 
-fn collect_code(blocks: &[Block], out: &mut Vec<CodeBlock>) {
-    for b in blocks {
-        match b {
-            Block::Code(c) => out.push(c.clone()),
-            Block::Quote(inner) => collect_code(inner, out),
-            Block::List { items, .. } => items.iter().for_each(|i| collect_code(i, out)),
-            _ => {}
+fn collect_code(blocks: &[Block]) -> Vec<CodeBlock> {
+    let mut out = Vec::new();
+    doc::visit(blocks, &mut |b| {
+        if let Block::Code(c) = b {
+            out.push(c.clone());
         }
-    }
+    });
+    out
 }
 
 /// Find `query` in the rendered lines. Smart case: a lowercase query matches

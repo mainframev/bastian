@@ -1,6 +1,6 @@
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
-use super::{Align, Attrs, Block, CodeBlock, Document, Inline, InlineStyle};
+use super::{Align, Attrs, Block, CodeBlock, Document, Inline, InlineStyle, push_inline};
 
 pub fn parse(src: &str) -> Document {
     let opts = Options::ENABLE_TABLES
@@ -36,6 +36,17 @@ enum Frame {
         items: Vec<Vec<Block>>,
     },
     Item(Vec<Block>),
+}
+
+impl From<Alignment> for Align {
+    fn from(a: Alignment) -> Self {
+        match a {
+            Alignment::None => Align::None,
+            Alignment::Left => Align::Left,
+            Alignment::Center => Align::Center,
+            Alignment::Right => Align::Right,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -127,15 +138,7 @@ impl Builder {
             Tag::Table(aligns) => {
                 self.flush();
                 self.table = Some(TableState {
-                    align: aligns
-                        .into_iter()
-                        .map(|a| match a {
-                            Alignment::None => Align::None,
-                            Alignment::Left => Align::Left,
-                            Alignment::Center => Align::Center,
-                            Alignment::Right => Align::Right,
-                        })
-                        .collect(),
+                    align: aligns.into_iter().map(Align::from).collect(),
                     ..TableState::default()
                 });
             }
@@ -184,8 +187,7 @@ impl Builder {
             }
             TagEnd::CodeBlock => {
                 if let Some((info, src)) = self.code.take() {
-                    let id = self.next_code_id;
-                    self.next_code_id += 1;
+                    let id = self.next_id();
                     self.push_block(Block::Code(CodeBlock {
                         id,
                         lang: lang_of(&info),
@@ -239,17 +241,12 @@ impl Builder {
     }
 
     fn push_text(&mut self, text: &str) {
-        // Merge with the previous run when the style matches to keep spans few.
-        if let Some(last) = self.inlines.last_mut()
-            && last.style == self.style
-        {
-            last.text.push_str(text);
-            return;
-        }
-        self.inlines.push(Inline {
-            text: text.to_string(),
-            style: self.style.clone(),
-        });
+        push_inline(&mut self.inlines, text, &self.style);
+    }
+
+    fn next_id(&mut self) -> usize {
+        self.next_code_id += 1;
+        self.next_code_id - 1
     }
 
     /// Turn pending inline text into a paragraph. Tight list items emit text

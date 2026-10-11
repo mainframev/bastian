@@ -1,11 +1,14 @@
 //! Documents fetched over HTTP: plain URLs and GitHub/GitLab repository
 //! READMEs. Relative links in a remote document resolve against `base`.
 
+use std::path::Path;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::Value;
 use url::Url;
+
+use crate::doc::{self, Document};
 
 /// Upper bound on a fetched document.
 const MAX_BYTES: u64 = 5 * 1024 * 1024;
@@ -26,6 +29,14 @@ pub struct RemoteDoc {
     /// Where relative links resolve from.
     pub base: Url,
     pub text: String,
+}
+
+impl RemoteDoc {
+    /// Parse the text, judging Markdown, MDX or a code file by the URL's
+    /// path as if it were a local file name.
+    pub fn parse(&self) -> Document {
+        doc::parse_for(&self.text, Some(Path::new(self.base.path())))
+    }
 }
 
 /// Recognize `http(s)://…`, `github.com/owner/repo` and

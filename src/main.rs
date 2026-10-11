@@ -183,8 +183,7 @@ fn main() -> Result<()> {
     let app = if let Some(source) = remote {
         let fetched = remote::fetch(&source)?;
         if !tui {
-            let fake = PathBuf::from(fetched.base.path());
-            return print(&doc::parse_for(&fetched.text, Some(&fake)), &settings, &out);
+            return print(&fetched.parse(), &settings, &out);
         }
         let reader = settings.remote(fetched);
         app::App::read(reader, settings)

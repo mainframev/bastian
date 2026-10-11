@@ -49,8 +49,7 @@ impl Settings {
     /// A reader for a fetched document. Its code blocks run in the current
     /// directory and always ask first; it has no file to watch or edit.
     pub fn remote(&self, doc: crate::remote::RemoteDoc) -> Reader {
-        let fake_path = std::path::PathBuf::from(doc.base.path());
-        let parsed = doc::parse_for(&doc.text, Some(&fake_path));
+        let parsed = doc.parse();
         let mut r = self.reader(doc.name, parsed, PathBuf::from("."));
         r.text = doc.text;
         r.remote_base = Some(doc.base);

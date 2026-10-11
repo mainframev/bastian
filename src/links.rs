@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::doc::{Block, Document, Inline};
+use crate::doc::{self, Block, Document, Inline};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Link {
@@ -12,26 +12,18 @@ pub struct Link {
 /// partly bold link) are merged into one.
 pub fn collect(doc: &Document) -> Vec<Link> {
     let mut out = Vec::new();
-    walk(&doc.blocks, &mut out);
-    out
-}
-
-fn walk(blocks: &[Block], out: &mut Vec<Link>) {
-    for b in blocks {
-        match b {
-            Block::Heading { inlines, .. } | Block::Paragraph(inlines) => {
-                inline_links(inlines, out)
-            }
-            Block::List { items, .. } => items.iter().for_each(|i| walk(i, out)),
-            Block::Quote(inner) => walk(inner, out),
-            Block::Table { header, rows, .. } => {
-                for cell in header.iter().chain(rows.iter().flatten()) {
-                    inline_links(cell, out);
-                }
-            }
-            Block::Code(_) | Block::Rule | Block::Label(_) => {}
+    doc::visit(&doc.blocks, &mut |b| match b {
+        Block::Heading { inlines, .. } | Block::Paragraph(inlines) => {
+            inline_links(inlines, &mut out)
         }
-    }
+        Block::Table { header, rows, .. } => {
+            for cell in header.iter().chain(rows.iter().flatten()) {
+                inline_links(cell, &mut out);
+            }
+        }
+        _ => {}
+    });
+    out
 }
 
 fn inline_links(inlines: &[Inline], out: &mut Vec<Link>) {

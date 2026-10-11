@@ -70,6 +70,34 @@ impl Document {
     }
 }
 
+/// Call `f` on every block in document order, descending into quotes and
+/// list items.
+pub fn visit<'a>(blocks: &'a [Block], f: &mut impl FnMut(&'a Block)) {
+    for b in blocks {
+        f(b);
+        match b {
+            Block::Quote(inner) => visit(inner, f),
+            Block::List { items, .. } => items.iter().for_each(|i| visit(i, f)),
+            _ => {}
+        }
+    }
+}
+
+/// Append `text` to `out`, merging with the last run when the style matches
+/// to keep spans few.
+fn push_inline(out: &mut Vec<Inline>, text: &str, style: &InlineStyle) {
+    if let Some(last) = out.last_mut()
+        && last.style == *style
+    {
+        last.text.push_str(text);
+    } else {
+        out.push(Inline {
+            text: text.to_string(),
+            style: style.clone(),
+        });
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
     Heading {

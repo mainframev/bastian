@@ -6,7 +6,7 @@
 use markdown::mdast::{AlignKind, AttributeContent, AttributeValue, Node};
 use markdown::{Constructs, MdxSignal, ParseOptions};
 
-use super::{Align, Attrs, Block, CodeBlock, Document, Inline, InlineStyle};
+use super::{Align, Attrs, Block, CodeBlock, Document, Inline, InlineStyle, push_inline};
 
 /// Parse MDX, or `None` when the source isn't valid MDX (e.g. broken JSX),
 /// so the caller can fall back to the plain Markdown parser.
@@ -51,6 +51,11 @@ struct Mapper {
 }
 
 impl Mapper {
+    fn next_id(&mut self) -> usize {
+        self.next_code_id += 1;
+        self.next_code_id - 1
+    }
+
     fn blocks(&mut self, nodes: &[Node]) -> Vec<Block> {
         let mut out = Vec::new();
         for node in nodes {
@@ -77,8 +82,7 @@ impl Mapper {
                     (Some(lang), None) => lang.clone(),
                     (None, _) => String::new(),
                 };
-                let id = self.next_code_id;
-                self.next_code_id += 1;
+                let id = self.next_id();
                 out.push(Block::Code(CodeBlock {
                     id,
                     lang: c.lang.clone(),
@@ -87,11 +91,7 @@ impl Mapper {
                 }));
             }
             Node::Math(m) => out.push(Block::Code(CodeBlock {
-                id: {
-                    let id = self.next_code_id;
-                    self.next_code_id += 1;
-                    id
-                },
+                id: self.next_id(),
                 lang: Some("math".into()),
                 attrs: Attrs::default(),
                 src: format!("{}\n", m.value),
@@ -108,16 +108,7 @@ impl Mapper {
                 });
                 let header = rows.next().unwrap_or_default();
                 out.push(Block::Table {
-                    align: t
-                        .align
-                        .iter()
-                        .map(|a| match a {
-                            AlignKind::None => Align::None,
-                            AlignKind::Left => Align::Left,
-                            AlignKind::Center => Align::Center,
-                            AlignKind::Right => Align::Right,
-                        })
-                        .collect(),
+                    align: t.align.iter().map(Align::from).collect(),
                     header,
                     rows: rows.collect(),
                 });
@@ -180,13 +171,7 @@ impl Mapper {
 
     fn inline(&mut self, node: &Node, style: &InlineStyle, out: &mut Vec<Inline>) {
         let push = |out: &mut Vec<Inline>, text: String, style: InlineStyle| {
-            if let Some(last) = out.last_mut()
-                && last.style == style
-            {
-                last.text.push_str(&text);
-            } else {
-                out.push(Inline { text, style });
-            }
+            push_inline(out, &text, &style);
         };
         let with = |f: &dyn Fn(&mut InlineStyle)| {
             let mut s = style.clone();
@@ -288,6 +273,17 @@ fn expr(value: &str) -> String {
 
 fn close_tag(name: Option<&str>) -> String {
     format!("</{}>", name.unwrap_or(""))
+}
+
+impl From<&AlignKind> for Align {
+    fn from(a: &AlignKind) -> Self {
+        match a {
+            AlignKind::None => Align::None,
+            AlignKind::Left => Align::Left,
+            AlignKind::Center => Align::Center,
+            AlignKind::Right => Align::Right,
+        }
+    }
 }
 
 #[cfg(test)]

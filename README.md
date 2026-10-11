@@ -52,7 +52,8 @@ uname -sm
 | `Esc`, `h` | back to the previous document or the browser |
 | `q` | quit |
 
-In the browser: `j/k` to move, `/` to filter, `Enter` to open, `q` to quit.
+In the browser: `j/k` to move, `ctrl-d/u` and `ctrl-f/b` to page, `/` to filter,
+`Enter` to open, `q` to quit.
 
 The open document reloads when the file changes on disk.
 

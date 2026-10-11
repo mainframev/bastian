@@ -6,7 +6,7 @@ use std::time::SystemTime;
 use ignore::WalkState;
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::prompt::{Prompt, PromptEvent};
 
@@ -95,7 +95,10 @@ impl Browser {
             }
         }
         if received {
-            let selected = self.selected_entry().map(|e| e.path.clone());
+            // Until the user moves off the first row, stay at the top.
+            let selected = (self.selected > 0)
+                .then(|| self.selected_entry().map(|e| e.path.clone()))
+                .flatten();
             sort(&mut self.entries);
             self.refilter();
             // Keep the cursor on the same file while the list grows.
@@ -179,7 +182,12 @@ impl Browser {
         }
 
         let page = self.height.max(1) as isize;
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
+            KeyCode::Char('d') if ctrl => self.move_by(page / 2),
+            KeyCode::Char('u') if ctrl => self.move_by(-page / 2),
+            KeyCode::Char('f') if ctrl => self.move_by(page),
+            KeyCode::Char('b') if ctrl => self.move_by(-page),
             KeyCode::Char('q') => return Action::Quit,
             KeyCode::Esc if !self.filter.is_empty() => {
                 self.filter.clear();
@@ -403,6 +411,60 @@ mod tests {
         b.tick();
         assert_eq!(b.selected_entry().unwrap().path, picked);
         assert!(!b.is_scanning());
+    }
+
+    #[test]
+    fn cursor_stays_on_top_row_while_scanning() {
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..30 {
+            std::fs::write(dir.path().join(format!("f{i}.md")), "x\n").unwrap();
+        }
+        let mut b = Browser::new(dir.path().to_path_buf());
+        wait_for_scan(&mut b);
+        assert_eq!(b.selected, 0);
+    }
+
+    #[test]
+    fn ctrl_paging_moves_selection() {
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..40 {
+            std::fs::write(dir.path().join(format!("f{i}.md")), "x\n").unwrap();
+        }
+        let mut b = Browser::new(dir.path().to_path_buf());
+        wait_for_scan(&mut b);
+        b.layout(10);
+        let ctrl = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
+        b.on_key(ctrl('d'));
+        assert_eq!(b.selected, 5);
+        b.on_key(ctrl('f'));
+        assert_eq!(b.selected, 15);
+        b.on_key(ctrl('u'));
+        assert_eq!(b.selected, 10);
+        b.on_key(ctrl('b'));
+        assert_eq!(b.selected, 0);
+        // Clamped at both ends.
+        b.on_key(ctrl('b'));
+        assert_eq!(b.selected, 0);
+        for _ in 0..10 {
+            b.on_key(ctrl('f'));
+        }
+        assert_eq!(b.selected, 39);
+    }
+
+    #[test]
+    fn ctrl_u_in_filter_clears_text_instead_of_paging() {
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..20 {
+            std::fs::write(dir.path().join(format!("f{i}.md")), "x\n").unwrap();
+        }
+        let mut b = Browser::new(dir.path().to_path_buf());
+        wait_for_scan(&mut b);
+        b.layout(10);
+        b.selected = 8;
+        b.on_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+        b.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE));
+        b.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        assert_eq!(b.prompt.as_ref().unwrap().text, "");
     }
 
     #[test]

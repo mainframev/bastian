@@ -68,6 +68,10 @@ struct Cli {
     #[arg(long)]
     mouse: bool,
 
+    /// Hide the logo at the top of the file browser.
+    #[arg(long)]
+    no_logo: bool,
+
     /// Print the effective settings and where each came from, then exit.
     #[arg(long)]
     print_config: bool,
@@ -156,6 +160,7 @@ fn main() -> Result<()> {
             pager: cli.pager.then_some(true),
             all: cli.all.then_some(true),
             mouse: cli.mouse.then_some(true),
+            logo: cli.no_logo.then_some(false),
             ..config::Config::default()
         },
     )?;
@@ -334,6 +339,7 @@ fn settings(
         line_numbers: r.line_numbers.value,
         all: r.all.value,
         mouse: r.mouse.value,
+        logo: r.logo.value,
         interpreters: Interpreters::new(r.interpreters),
     };
     Ok((settings, name))

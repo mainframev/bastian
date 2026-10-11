@@ -28,6 +28,8 @@ pub struct Config {
     pub all: Option<bool>,
     /// Scroll with the mouse wheel.
     pub mouse: Option<bool>,
+    /// Show the logo at the top of the file browser.
+    pub logo: Option<bool>,
     /// Language → command line; the block source is appended as the last
     /// argument. An empty list stops that language from running.
     pub interpreters: HashMap<String, Vec<String>>,
@@ -144,6 +146,7 @@ pub const TEMPLATE: &str = r#"# bastian configuration. Every key is optional; co
 # pager = false         # show documents in $PAGER instead of the TUI
 # all = false           # also list hidden and gitignored files
 # mouse = false         # scroll with the mouse wheel
+# logo = true           # show the logo at the top of the file browser
 
 # [interpreters]
 # The block source is appended as the last argument.
@@ -180,6 +183,7 @@ pub fn describe(r: &Resolved, file: Option<&Path>) -> String {
         row("pager", &r.pager),
         row("all", &r.all),
         row("mouse", &r.mouse),
+        row("logo", &r.logo),
     ];
     // Line the source comments up, at least two spaces after the value.
     let w = rows.iter().map(|(text, _)| text.len()).max().unwrap_or(0) + 2;
@@ -242,6 +246,7 @@ pub struct Resolved {
     pub pager: Setting<bool>,
     pub all: Setting<bool>,
     pub mouse: Setting<bool>,
+    pub logo: Setting<bool>,
     pub interpreters: HashMap<String, Vec<String>>,
 }
 
@@ -278,6 +283,7 @@ pub fn resolve(file: Config, env: &EnvMap, cli: Config) -> Result<Resolved> {
         pager: setting("pager", false, file.pager, cli.pager, env)?,
         all: setting("all", false, file.all, cli.all, env)?,
         mouse: setting("mouse", false, file.mouse, cli.mouse, env)?,
+        logo: setting("logo", true, file.logo, cli.logo, env)?,
         interpreters: file.interpreters,
     })
 }

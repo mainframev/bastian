@@ -202,6 +202,7 @@ fn remote_documents_resolve_links_and_always_confirm() {
         line_numbers: false,
         all: false,
         mouse: false,
+        logo: true,
     };
     let mut r = settings.remote(RemoteDoc {
         name: "README.md".into(),

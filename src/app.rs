@@ -36,6 +36,8 @@ pub struct Settings {
     /// Scroll with the mouse wheel (captures the mouse, so terminal text
     /// selection needs a modifier key).
     pub mouse: bool,
+    /// Show the logo at the top of the file browser.
+    pub logo: bool,
 }
 
 impl Settings {
@@ -434,7 +436,7 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<Option<String
                 if let Some(r) = &mut app.reader {
                     ui::reader::draw(f, r);
                 } else if let Some(b) = &mut app.browser {
-                    ui::browser::draw(f, b, &app.settings.theme);
+                    ui::browser::draw(f, b, &app.settings.theme, app.settings.logo);
                 }
                 if let Some((p, _)) = &app.picker {
                     ui::picker::draw(f, &app.settings.theme, p);
@@ -484,6 +486,7 @@ mod tests {
             line_numbers: false,
             all: false,
             mouse: true,
+            logo: true,
         };
         let src: String = (0..50).map(|i| format!("line {i}\n\n")).collect();
         let mut reader = settings.reader("t".into(), doc::parse(&src), PathBuf::from("."));

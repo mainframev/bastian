@@ -122,6 +122,7 @@ color = "auto"        # printed output: "auto", "always" or "never"
 pager = false         # true: show documents in $PAGER instead of the TUI
 all = false           # true: also list hidden and gitignored files
 mouse = false         # true: scroll with the mouse wheel
+logo = true           # false: no logo at the top of the file browser (--no-logo)
 line_numbers = false  # true behaves like --line-numbers
 
 [interpreters]
@@ -143,7 +144,7 @@ settings and where each one came from. To read a file literally named
 
 Each setting can also come from the environment: `BASTIAN_THEME`,
 `BASTIAN_DARK_THEME`, `BASTIAN_LIGHT_THEME`, `BASTIAN_WIDTH`, `BASTIAN_CONFIRM`, `BASTIAN_LINE_NUMBERS`, `BASTIAN_COLOR`,
-`BASTIAN_PAGER`, `BASTIAN_ALL` and `BASTIAN_MOUSE`. Precedence is
+`BASTIAN_PAGER`, `BASTIAN_ALL`, `BASTIAN_MOUSE` and `BASTIAN_LOGO`. Precedence is
 defaults < config file < environment < command-line flags.
 
 ## Themes

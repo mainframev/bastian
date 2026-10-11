@@ -35,14 +35,14 @@ const HELP: &[(&str, &str)] = &[
 /// shorter, so the gap after every entry stays one row.
 const ENTRY_ROWS: u16 = 4;
 
-pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
-    // Layout: a title badge (or the `Find:` line while
-    // filtering), the document count, then the list.
+pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, show_logo: bool) {
+    // Layout: the logo (or the `Find:` line while filtering; just that
+    // line's row without the logo), the document count, then the list.
     // The page indicator goes under the list (each entry already ends with
     // a blank row) with a blank row between it and the status bar.
     let [_, top, _, count_row, _, list, pager_row, _, status] = Layout::vertical([
         Constraint::Length(1),
-        Constraint::Length(logo::HEIGHT),
+        Constraint::Length(if show_logo { logo::HEIGHT } else { 1 }),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
@@ -60,7 +60,7 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
             .as_ref()
             .map_or(b.filter.as_str(), |p| p.text.as_str());
         frame.render_widget(status::find_line(t, text, b.prompt.is_some()), inset(top));
-    } else {
+    } else if show_logo {
         logo::draw(frame, inset(top), t);
     }
 

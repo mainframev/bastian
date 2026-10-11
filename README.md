@@ -48,12 +48,14 @@ uname -sm
 | `o` | show/hide a block's output |
 | `y` | copy focused block (OSC 52) |
 | `L` | list links; follow one with `Enter` |
+| `e` | edit the file in `$VISUAL`, `$EDITOR` or `vi` |
 | `?` | key help |
 | `Esc`, `h` | back to the previous document or the browser |
 | `q` | quit |
 
 In the browser: `j/k` to move, `ctrl-d/u` and `ctrl-f/b` to page, `/` to filter,
-`Enter` to open, `q` to quit.
+`Enter` to open, `e` to edit, `r` to rescan for new or deleted files, `?` for
+all keys, `q` to quit.
 
 The open document reloads when the file changes on disk.
 

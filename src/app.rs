@@ -9,6 +9,7 @@ use ratatui::crossterm::execute;
 
 use crate::browser::{self, Browser};
 use crate::doc::{self, Document};
+use crate::editor;
 use crate::exec::Interpreters;
 use crate::links;
 use crate::reader::{self, Reader};
@@ -51,6 +52,8 @@ pub struct App {
     pub browser: Option<Browser>,
     pub reader: Option<Reader>,
     pub history: Vec<Reader>,
+    /// File to open in the editor once the current event is handled.
+    edit: Option<PathBuf>,
 }
 
 impl App {
@@ -59,6 +62,7 @@ impl App {
             browser: Some(Browser::new(root)),
             reader: None,
             history: Vec::new(),
+            edit: None,
             settings,
         }
     }
@@ -68,6 +72,7 @@ impl App {
             browser: None,
             reader: Some(reader),
             history: Vec::new(),
+            edit: None,
             settings,
         }
     }
@@ -103,6 +108,10 @@ impl App {
                 }
                 true
             }
+            browser::Action::Edit(path) => {
+                self.edit = Some(path);
+                true
+            }
         }
     }
 
@@ -130,6 +139,7 @@ impl App {
                     self.set_message(format!("could not open {target}: {err}"));
                 }
             }
+            reader::Action::Edit(path) => self.edit = Some(path),
             reader::Action::Copy(text) => {
                 // OSC 52 asks the terminal to set the clipboard, which also
                 // works over ssh. Terminals without support ignore it.
@@ -146,7 +156,29 @@ impl App {
     fn set_message(&mut self, msg: String) {
         if let Some(r) = &mut self.reader {
             r.message = Some(msg);
+        } else if let Some(b) = &mut self.browser {
+            b.message = Some(msg);
         }
+    }
+
+    /// Hand the terminal to the user's editor, then take it back. An open
+    /// reader picks up the changes through its file watch.
+    fn run_editor(&mut self, terminal: &mut DefaultTerminal, path: &Path) -> Result<()> {
+        let cmd = editor::command();
+        ratatui::restore();
+        let result = editor::open_with(&cmd, path);
+        *terminal = ratatui::init();
+        terminal.clear()?;
+        match result {
+            Ok(status) if status.success() => {}
+            // The shell's "command not found" status.
+            Ok(status) if status.code() == Some(127) => {
+                self.set_message(format!("editor not found: {cmd} (set $VISUAL or $EDITOR)"));
+            }
+            Ok(status) => self.set_message(format!("{cmd} exited with {status}")),
+            Err(err) => self.set_message(format!("could not run {cmd}: {err}")),
+        }
+        Ok(())
     }
 }
 
@@ -194,6 +226,9 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<()> {
         if event::poll(TICK)? {
             if !app.on_event(event::read()?) {
                 return Ok(());
+            }
+            if let Some(path) = app.edit.take() {
+                app.run_editor(terminal, &path)?;
             }
             redraw = true;
         }

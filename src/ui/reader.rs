@@ -2,11 +2,10 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, Padding, Paragraph};
+use ratatui::widgets::Paragraph;
 
 use super::status::{self, Left};
 use crate::reader::{LinkPicker, Reader};
-use crate::render::theme::Theme;
 
 /// Columns of left margin around the document.
 pub const MARGIN: u16 = 2;
@@ -91,10 +90,13 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
         (Some(_), _) => Left::Text("enter accept · esc clear"),
         (None, Some(m)) => Left::Error(m),
         (None, None) if r.focus.is_some() => {
-            hint = format!("{}  enter run · R all · x stop · y copy · ? keys", r.name);
+            hint = format!("{}  enter run · R all · x stop · y copy · ? more", r.name);
             Left::Text(&hint)
         }
-        (None, None) => Left::Text(&r.name),
+        (None, None) => {
+            hint = format!("{}  e edit · ? more", r.name);
+            Left::Text(&hint)
+        }
     };
     status::draw(frame, status, &r.theme, left, &right);
 
@@ -120,35 +122,13 @@ const HELP: &[(&str, &str)] = &[
     ("o", "show/hide output"),
     ("y", "copy focused block"),
     ("L", "list links"),
+    ("e", "edit in $VISUAL/$EDITOR"),
     ("Esc, h", "back"),
     ("q", "quit"),
 ];
 
 fn draw_help(frame: &mut Frame, r: &Reader) {
-    let t = &r.theme;
-    let key_w = HELP
-        .iter()
-        .map(|(k, _)| k.chars().count())
-        .max()
-        .unwrap_or(0);
-    let mut lines: Vec<Line> = HELP
-        .iter()
-        .map(|(k, what)| {
-            Line::from(vec![
-                Span::styled(
-                    format!("{k:<key_w$}  "),
-                    Style::default().fg(t.accent).bold(),
-                ),
-                Span::styled(*what, Style::default().fg(t.text)),
-            ])
-        })
-        .collect();
-    lines.push(Line::default());
-    lines.push(Line::styled(
-        "any key to close",
-        Style::default().fg(t.muted),
-    ));
-    modal(frame, t, " keys ", lines);
+    status::help(frame, &r.theme, HELP);
 }
 
 fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
@@ -191,40 +171,7 @@ fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
         picker.selected + 1,
         picker.links.len()
     );
-    modal(frame, t, &title, lines);
-}
-
-/// A bordered box centered on screen.
-fn modal(frame: &mut Frame, t: &Theme, title: &str, lines: Vec<Line>) {
-    let area = frame.area();
-    let inner_w = lines
-        .iter()
-        .map(Line::width)
-        .chain(std::iter::once(title.chars().count()))
-        .max()
-        .unwrap_or(20);
-    let width = (inner_w as u16 + 4).min(area.width);
-    let height = (lines.len() as u16 + 2).min(area.height);
-    let rect = Rect::new(
-        area.x + area.width.saturating_sub(width) / 2,
-        area.y + area.height.saturating_sub(height) / 2,
-        width,
-        height,
-    );
-    frame.render_widget(Clear, rect);
-    frame.render_widget(
-        Paragraph::new(lines).block(
-            Block::bordered()
-                .title(Span::styled(
-                    title.to_string(),
-                    Style::default().fg(t.accent),
-                ))
-                .border_style(Style::default().fg(t.accent))
-                .padding(Padding::horizontal(1))
-                .style(Style::default().bg(t.surface)),
-        ),
-        rect,
-    );
+    status::modal(frame, t, &title, lines);
 }
 
 fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {
@@ -256,7 +203,7 @@ fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {
             Span::styled(" cancel", Style::default().fg(t.subtle)),
         ]),
     ];
-    modal(frame, t, " run ", lines);
+    status::modal(frame, t, " run ", lines);
 }
 
 /// `Find:` line above the document, with the match count on the right.

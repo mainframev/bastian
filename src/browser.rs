@@ -27,6 +27,7 @@ pub enum Action {
     None,
     Quit,
     Open(PathBuf),
+    Edit(PathBuf),
 }
 
 pub struct Browser {
@@ -45,6 +46,8 @@ pub struct Browser {
     incoming: Option<Receiver<Entry>>,
     /// When the scan started, for the loading spinner.
     pub started: std::time::Instant,
+    /// Key help overlay is open.
+    pub help: bool,
     matcher: Matcher,
 }
 
@@ -52,10 +55,7 @@ impl Browser {
     /// Start browsing `root`. Files are found in the background; call
     /// `tick` to pick them up.
     pub fn new(root: PathBuf) -> Self {
-        let (tx, rx) = mpsc::channel();
-        let scan_root = root.clone();
-        std::thread::spawn(move || scan(&scan_root, tx));
-        Self {
+        let mut b = Self {
             root,
             visible: Vec::new(),
             entries: Vec::new(),
@@ -65,10 +65,24 @@ impl Browser {
             message: None,
             height: 0,
             offset: 0,
-            incoming: Some(rx),
+            incoming: None,
             started: std::time::Instant::now(),
+            help: false,
             matcher: Matcher::new(Config::DEFAULT.match_paths()),
-        }
+        };
+        b.rescan();
+        b
+    }
+
+    /// Forget the current list and scan `root` again in the background.
+    pub fn rescan(&mut self) {
+        let (tx, rx) = mpsc::channel();
+        let root = self.root.clone();
+        std::thread::spawn(move || scan(&root, tx));
+        self.entries.clear();
+        self.refilter();
+        self.incoming = Some(rx);
+        self.started = std::time::Instant::now();
     }
 
     pub fn is_scanning(&self) -> bool {
@@ -181,6 +195,11 @@ impl Browser {
             return Action::None;
         }
 
+        if self.help {
+            self.help = false;
+            return Action::None;
+        }
+
         let page = self.height.max(1) as isize;
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
@@ -206,6 +225,13 @@ impl Browser {
                     return Action::Open(e.path.clone());
                 }
             }
+            KeyCode::Char('e') => {
+                if let Some(e) = self.selected_entry() {
+                    return Action::Edit(e.path.clone());
+                }
+            }
+            KeyCode::Char('r') => self.rescan(),
+            KeyCode::Char('?') => self.help = true,
             _ => {}
         }
         Action::None
@@ -465,6 +491,27 @@ mod tests {
         b.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE));
         b.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
         assert_eq!(b.prompt.as_ref().unwrap().text, "");
+    }
+
+    #[test]
+    fn edit_rescan_and_help_keys() {
+        let key = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.md"), "# A\n").unwrap();
+        let mut b = Browser::new(dir.path().to_path_buf());
+        wait_for_scan(&mut b);
+        assert!(matches!(b.on_key(key('e')), Action::Edit(p) if p == dir.path().join("a.md")));
+
+        std::fs::write(dir.path().join("b.md"), "# B\n").unwrap();
+        b.on_key(key('r'));
+        wait_for_scan(&mut b);
+        assert_eq!(b.entries.len(), 2);
+
+        b.on_key(key('?'));
+        assert!(b.help);
+        // The key that closes help does nothing else.
+        assert!(matches!(b.on_key(key('q')), Action::None));
+        assert!(!b.help);
     }
 
     #[test]

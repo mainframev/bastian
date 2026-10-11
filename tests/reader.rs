@@ -92,3 +92,16 @@ fn help_closes_on_any_key() {
     key(&mut r, KeyCode::Char('q'));
     assert!(!r.help, "first key only closes help");
 }
+
+#[test]
+fn edit_needs_a_file() {
+    let mut r = reader("text\n");
+    assert!(matches!(key(&mut r, KeyCode::Char('e')), Action::None));
+    assert_eq!(r.message.as_deref(), Some("stdin has no file to edit"));
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("doc.md");
+    std::fs::write(&path, "text\n").unwrap();
+    r.watch(path.clone());
+    assert!(matches!(key(&mut r, KeyCode::Char('e')), Action::Edit(p) if p == path));
+}

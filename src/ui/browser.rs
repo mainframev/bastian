@@ -15,6 +15,19 @@ use super::status::{self, Left};
 use crate::browser::Browser;
 use crate::render::theme::Theme;
 
+const HELP: &[(&str, &str)] = &[
+    ("j/k  ↓/↑", "move"),
+    ("ctrl-d/u", "half page"),
+    ("ctrl-f/b", "full page"),
+    ("g/G", "first/last"),
+    ("/", "filter"),
+    ("Enter, l", "open"),
+    ("e", "edit in $VISUAL/$EDITOR"),
+    ("r", "rescan for files"),
+    ("Esc", "clear filter"),
+    ("q", "quit"),
+];
+
 /// Rows per entry: title, path line, gap.
 const ENTRY_ROWS: u16 = 3;
 
@@ -128,7 +141,7 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
         (Some(_), _) => Left::Text("enter accept · esc clear"),
         (None, Some(m)) => Left::Error(m),
         (None, None) if !b.filter.is_empty() => Left::Text("/ edit filter · esc clear"),
-        (None, None) => Left::Text("enter open · / filter · q quit"),
+        (None, None) => Left::Text("enter open · / filter · e edit · ? more"),
     };
     let right = if b.visible.is_empty() {
         String::new()
@@ -136,6 +149,10 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
         format!("{}/{}", b.selected + 1, b.visible.len())
     };
     status::draw(frame, status, t, left, &right);
+
+    if b.help {
+        status::help(frame, t, HELP);
+    }
 }
 
 /// Absolute path with the home directory shortened to `~`.

@@ -22,6 +22,8 @@ pub enum Action {
     OpenExternal(String),
     /// Put text on the clipboard.
     Copy(String),
+    /// Open the document's file in the user's editor.
+    Edit(PathBuf),
 }
 
 /// The link list opened with `L`.
@@ -644,6 +646,10 @@ impl Reader {
                 }
             }
             KeyCode::Char('?') => self.help = true,
+            KeyCode::Char('e') => match &self.source {
+                Some(path) => return Action::Edit(path.clone()),
+                None => self.message = Some("stdin has no file to edit".into()),
+            },
             _ => {}
         }
         Action::None

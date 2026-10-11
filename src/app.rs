@@ -1,88 +1,107 @@
-use anyhow::Result;
-use ratatui::DefaultTerminal;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use std::path::{Path, PathBuf};
 
-use crate::doc::Document;
+use anyhow::{Context, Result};
+use ratatui::DefaultTerminal;
+use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+
+use crate::browser::{self, Browser};
+use crate::doc;
+use crate::reader::{self, Reader};
 use crate::render::theme::Theme;
-use crate::render::{self, Rendered};
 use crate::ui;
 
-/// State of the document reader view.
-pub struct Reader {
-    pub name: String,
-    pub doc: Document,
+/// Top-level TUI state: an optional file browser with a reader on top.
+pub struct App {
     pub theme: Theme,
     pub max_width: u16,
-    pub rendered: Rendered,
-    pub scroll: usize,
-    width: u16,
-    height: usize,
+    pub browser: Option<Browser>,
+    pub reader: Option<Reader>,
 }
 
-impl Reader {
-    pub fn new(name: String, doc: Document, theme: Theme, max_width: u16) -> Self {
+impl App {
+    pub fn browse(root: PathBuf, theme: Theme, max_width: u16) -> Self {
         Self {
-            name,
-            doc,
+            browser: Some(Browser::new(root)),
+            reader: None,
             theme,
             max_width,
-            rendered: Rendered::default(),
-            scroll: 0,
-            width: 0,
-            height: 0,
         }
     }
 
-    /// Re-render when the content width changes and keep scroll in range.
-    pub fn layout(&mut self, width: u16, height: u16) {
-        if width != self.width {
-            self.rendered = render::render(&self.doc, width, &self.theme);
-            self.width = width;
+    pub fn read(reader: Reader) -> Self {
+        Self {
+            theme: reader.theme.clone(),
+            max_width: reader.max_width,
+            browser: None,
+            reader: Some(reader),
         }
-        self.height = usize::from(height);
-        self.scroll = self.scroll.min(self.max_scroll());
     }
 
-    pub fn max_scroll(&self) -> usize {
-        self.rendered.lines.len().saturating_sub(self.height)
+    fn open(&mut self, path: &Path, name: String) -> Result<()> {
+        let src =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        self.reader = Some(Reader::new(
+            name,
+            doc::parse(&src),
+            self.theme.clone(),
+            self.max_width,
+        ));
+        Ok(())
     }
 
-    fn scroll_by(&mut self, delta: isize) {
-        self.scroll = self
-            .scroll
-            .saturating_add_signed(delta)
-            .min(self.max_scroll());
-    }
-
-    /// Returns false when the reader should close.
-    fn on_key(&mut self, key: KeyEvent) -> bool {
-        let page = self.height.max(1) as isize;
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-        match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => return false,
-            KeyCode::Char('c') if ctrl => return false,
-            KeyCode::Char('d') if ctrl => self.scroll_by(page / 2),
-            KeyCode::Char('u') if ctrl => self.scroll_by(-page / 2),
-            KeyCode::Char('j') | KeyCode::Down => self.scroll_by(1),
-            KeyCode::Char('k') | KeyCode::Up => self.scroll_by(-1),
-            KeyCode::Char(' ' | 'f') | KeyCode::PageDown => self.scroll_by(page),
-            KeyCode::Char('b') | KeyCode::PageUp => self.scroll_by(-page),
-            KeyCode::Char('g') | KeyCode::Home => self.scroll = 0,
-            KeyCode::Char('G') | KeyCode::End => self.scroll = self.max_scroll(),
-            _ => {}
+    /// Returns false when the app should exit.
+    fn on_event(&mut self, event: Event) -> bool {
+        let Event::Key(key) = event else { return true };
+        if key.kind != KeyEventKind::Press {
+            return true;
         }
-        true
+        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            return false;
+        }
+
+        if let Some(r) = &mut self.reader {
+            return match r.on_key(key) {
+                reader::Action::None => true,
+                reader::Action::Quit => false,
+                reader::Action::Back => {
+                    self.reader = None;
+                    self.browser.is_some()
+                }
+            };
+        }
+
+        let Some(b) = &mut self.browser else {
+            return false;
+        };
+        match b.on_key(key) {
+            browser::Action::None => true,
+            browser::Action::Quit => false,
+            browser::Action::Open(path) => {
+                let name = b
+                    .selected_entry()
+                    .map_or_else(|| path.display().to_string(), |e| e.rel.clone());
+                if let Err(err) = self.open(&path, name)
+                    && let Some(b) = &mut self.browser
+                {
+                    b.message = Some(format!("{err:#}"));
+                }
+                true
+            }
+        }
     }
 }
 
-pub fn run(terminal: &mut DefaultTerminal, mut reader: Reader) -> Result<()> {
+pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<()> {
     loop {
-        terminal.draw(|f| ui::reader::draw(f, &mut reader))?;
-        match event::read()? {
-            Event::Key(key) if key.kind == KeyEventKind::Press && !reader.on_key(key) => {
-                return Ok(());
+        terminal.draw(|f| {
+            if let Some(r) = &mut app.reader {
+                ui::reader::draw(f, r);
+            } else if let Some(b) = &mut app.browser {
+                ui::browser::draw(f, b, &app.theme);
             }
-            _ => {}
+        })?;
+        if !app.on_event(event::read()?) {
+            return Ok(());
         }
     }
 }

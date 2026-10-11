@@ -13,6 +13,10 @@ pub struct Theme {
     pub heading: Color,
     pub link: Color,
     pub code: Color,
+    /// Background of search matches, and of the current match.
+    pub match_bg: Color,
+    pub current_bg: Color,
+    pub err: Color,
     /// syntect theme name used for code highlighting.
     pub syntax: &'static str,
 }
@@ -35,6 +39,9 @@ impl Theme {
             heading: hex(0xebbcba),
             link: hex(0x9ccfd8),
             code: hex(0xebbcba),
+            match_bg: hex(0x524f67),
+            current_bg: hex(0xf6c177),
+            err: hex(0xeb6f92),
             syntax: "base16-ocean.dark",
         }
     }
@@ -52,6 +59,9 @@ impl Theme {
             heading: hex(0xd7827e),
             link: hex(0x56949f),
             code: hex(0xd7827e),
+            match_bg: hex(0xcecacd),
+            current_bg: hex(0xea9d34),
+            err: hex(0xb4637a),
             syntax: "InspiredGitHub",
         }
     }

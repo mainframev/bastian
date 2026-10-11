@@ -1,17 +1,18 @@
 use std::io::{IsTerminal, Read};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
 
 use bastian::render::theme::Theme;
-use bastian::{app, doc, render};
+use bastian::{app, browser, doc, reader, render};
 
 /// Read Markdown in the terminal, and run its code blocks.
 #[derive(Parser)]
 #[command(version)]
 struct Cli {
-    /// Markdown file to read, or `-` for stdin. Defaults to README.md.
+    /// Markdown file to read, `-` for stdin, or a directory to browse.
+    /// Defaults to browsing the current directory.
     path: Option<PathBuf>,
 
     /// Maximum width of the rendered document.
@@ -35,28 +36,39 @@ enum ThemeName {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let (name, src) = read_source(cli.path)?;
-    let doc = doc::parse(&src);
     let theme = match cli.theme {
         ThemeName::Dark => Theme::dark(),
         ThemeName::Light => Theme::light(),
     };
+    let tui = !cli.print && std::io::stdout().is_terminal();
+    let path = cli.path.unwrap_or_else(|| PathBuf::from("."));
 
-    if cli.print || !std::io::stdout().is_terminal() {
-        let rendered = render::render(&doc, cli.width, &theme);
-        println!("{}", render::to_plain(&rendered.lines));
-        return Ok(());
-    }
+    let app = if path.is_dir() {
+        if !tui {
+            for e in browser::discover(&path) {
+                println!("{}", e.rel);
+            }
+            return Ok(());
+        }
+        app::App::browse(path, theme, cli.width)
+    } else {
+        let (name, src) = read_source(&path)?;
+        let doc = doc::parse(&src);
+        if !tui {
+            let rendered = render::render(&doc, cli.width, &theme);
+            println!("{}", render::to_plain(&rendered.lines));
+            return Ok(());
+        }
+        app::App::read(reader::Reader::new(name, doc, theme, cli.width))
+    };
 
-    let reader = app::Reader::new(name, doc, theme, cli.width);
     let mut terminal = ratatui::init();
-    let result = app::run(&mut terminal, reader);
+    let result = app::run(&mut terminal, app);
     ratatui::restore();
     result
 }
 
-fn read_source(path: Option<PathBuf>) -> Result<(String, String)> {
-    let path = path.unwrap_or_else(|| PathBuf::from("README.md"));
+fn read_source(path: &Path) -> Result<(String, String)> {
     if path.as_os_str() == "-" {
         let mut src = String::new();
         std::io::stdin()
@@ -64,13 +76,7 @@ fn read_source(path: Option<PathBuf>) -> Result<(String, String)> {
             .context("reading stdin")?;
         return Ok(("stdin".to_string(), src));
     }
-    if path.is_dir() {
-        bail!(
-            "{} is a directory; the file browser is not implemented yet",
-            path.display()
-        );
-    }
     let src =
-        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     Ok((path.display().to_string(), src))
 }

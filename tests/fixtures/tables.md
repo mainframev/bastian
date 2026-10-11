@@ -1,0 +1,11 @@
+# Tables
+
+| Left | Center | Right | Notes |
+|:-----|:------:|------:|-------|
+| a | **bold** | 1 | short |
+| longer cell | `code` | 22222 | a long description that has to wrap inside its column at narrow widths |
+| 漢字 | ✓ | 3 | wide characters keep their columns aligned |
+
+| Only |
+|------|
+| one column |

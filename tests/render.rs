@@ -82,3 +82,38 @@ fn markdown_and_unknown_extensions_stay_markdown() {
             .is_empty()
     );
 }
+
+#[test]
+fn tables_40() {
+    snapshot("tables", 40);
+}
+
+#[test]
+fn tables_80() {
+    snapshot("tables", 80);
+}
+
+#[test]
+fn links_40() {
+    snapshot("links", 40);
+}
+
+#[test]
+fn outline_80() {
+    snapshot("outline", 80);
+}
+
+/// Colors as printed with `--color always`, under a few themes, so palette
+/// and highlighting changes show up in review.
+#[test]
+fn themed_ansi() {
+    let src = "# Title\n\nSome *text* with `code` and a [link](https://x.dev).\n\n```rust\nfn main() { let s = \"hi\"; }\n```\n\n> quote\n";
+    for name in ["tokyonight-night", "catppuccin-latte", "gruvbox-dark"] {
+        let theme = bastian::themes::load(name, None).unwrap();
+        let rendered = render(&parse(src), 50, &theme);
+        insta::assert_snapshot!(
+            format!("ansi_{name}"),
+            bastian::render::to_ansi(&rendered.lines)
+        );
+    }
+}

@@ -1,0 +1,18 @@
+---
+source: tests/render.rs
+expression: to_plain(&rendered.lines)
+---
+ Links
+
+See the documentation and the setup
+guide, or jump to the end. Adjacent: ab.
+
+• A link in a list item that is long
+  enough to wrap across lines
+
+│ Quoted link.
+
+## The end
+
+Mail mailto:someone@example.com or visit
+https://example.com.

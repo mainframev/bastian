@@ -74,7 +74,11 @@ pub fn fetch(source: &Source) -> Result<RemoteDoc> {
     let agent = agent();
     match source {
         Source::Url(url) => {
-            let text = get(&agent, url.as_str(), "text/markdown, text/plain, */*")?;
+            // A file page on GitHub/GitLab is HTML; read the raw file behind
+            // it. Links still resolve against the page, so they open as pages
+            // in a browser and Markdown ones come back here as raw files.
+            let raw = raw_url(url).unwrap_or_else(|| url.clone());
+            let text = get(&agent, raw.as_str(), "text/markdown, text/plain, */*")?;
             Ok(RemoteDoc {
                 name: url.to_string(),
                 base: url.clone(),
@@ -120,6 +124,31 @@ pub fn fetch(source: &Source) -> Result<RemoteDoc> {
             })
         }
     }
+}
+
+/// The raw-file URL behind a file page:
+/// `github.com/o/r/blob/<ref>/<path>` → `raw.githubusercontent.com/o/r/<ref>/<path>`,
+/// and GitLab's `…/-/blob/…` → `…/-/raw/…` on any host.
+fn raw_url(url: &Url) -> Option<Url> {
+    let path = url.path();
+    let raw = if url.host_str() == Some("github.com") {
+        let mut parts = path.trim_start_matches('/').splitn(4, '/');
+        let (owner, repo, blob, rest) =
+            (parts.next()?, parts.next()?, parts.next()?, parts.next()?);
+        if blob != "blob" || rest.is_empty() {
+            return None;
+        }
+        format!("https://raw.githubusercontent.com/{owner}/{repo}/{rest}")
+    } else if path.contains("/-/blob/") {
+        let mut raw = url.clone();
+        raw.set_path(&gitlab_raw(path));
+        raw.set_query(None);
+        raw.set_fragment(None);
+        return Some(raw);
+    } else {
+        return None;
+    };
+    Url::parse(&raw).ok()
 }
 
 /// `…/-/blob/main/README.md` → `…/-/raw/main/README.md`.
@@ -232,6 +261,31 @@ mod tests {
             gitlab_raw("https://gitlab.com/g/p/-/blob/main/README.md"),
             "https://gitlab.com/g/p/-/raw/main/README.md"
         );
+    }
+
+    #[test]
+    fn file_pages_map_to_raw_files() {
+        let raw = |u: &str| raw_url(&Url::parse(u).unwrap()).map(|u| u.to_string());
+        assert_eq!(
+            raw("https://github.com/microsoft/fluentui/blob/master/README.md").as_deref(),
+            Some("https://raw.githubusercontent.com/microsoft/fluentui/master/README.md")
+        );
+        assert_eq!(
+            raw("https://github.com/o/r/blob/v1.2/docs/a%20b.md?plain=1#usage").as_deref(),
+            Some("https://raw.githubusercontent.com/o/r/v1.2/docs/a%20b.md")
+        );
+        assert_eq!(
+            raw("https://gitlab.example.com/g/sub/p/-/blob/main/README.md#top").as_deref(),
+            Some("https://gitlab.example.com/g/sub/p/-/raw/main/README.md")
+        );
+        // Already raw, a repository page, or another site: fetched as given.
+        assert_eq!(
+            raw("https://raw.githubusercontent.com/o/r/main/README.md"),
+            None
+        );
+        assert_eq!(raw("https://github.com/o/r/tree/main/docs"), None);
+        assert_eq!(raw("https://github.com/o/r/blob/"), None);
+        assert_eq!(raw("https://example.com/blob/x.md"), None);
     }
 
     #[test]

@@ -26,6 +26,7 @@ bastian README.md       # read a file
 cat notes.md | bastian -
 bastian github.com/owner/repo         # a repository's README (GitLab too)
 bastian https://example.com/doc.md    # any Markdown URL
+bastian https://github.com/o/r/blob/main/docs/guide.md  # file pages are read raw
 bastian -p README.md    # print instead of opening the TUI
 bastian --pager README.md  # page it through $PAGER (default less -R)
 bastian --color always README.md | less -R

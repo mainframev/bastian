@@ -338,8 +338,13 @@ pub fn scan(root: &Path, all: bool, tx: Sender<Entry>) {
         .git_global(!all)
         .git_exclude(!all)
         .ignore(!all)
+        // Hidden paths are skipped here too: a .gitignore `!` rule (e.g.
+        // `!/.config/` in a dotfiles repo) would otherwise bring them back.
         // Even with `all`, git's own data is never documentation.
-        .filter_entry(|e| e.file_name() != ".git")
+        .filter_entry(move |e| {
+            let name = e.file_name();
+            name != ".git" && (all || e.depth() == 0 || !name.as_encoded_bytes().starts_with(b"."))
+        })
         .build_parallel()
         .run(|| {
             let tx = tx.clone();
@@ -444,6 +449,36 @@ mod tests {
             Some("Real")
         );
         assert_eq!(first_heading("## only h2\n"), None);
+    }
+
+    #[test]
+    fn gitignore_exceptions_do_not_show_hidden_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".config/app")).unwrap();
+        std::fs::create_dir(root.join(".git")).unwrap();
+        std::fs::write(root.join(".gitignore"), "/*\n!/.config/\n!/README.md\n").unwrap();
+        std::fs::write(root.join("README.md"), "# Readme\n").unwrap();
+        std::fs::write(root.join(".config/app/notes.md"), "# notes\n").unwrap();
+        std::fs::write(root.join(".hidden.md"), "# hidden\n").unwrap();
+
+        let rels = |all| {
+            let mut r: Vec<String> = discover(root, all).into_iter().map(|e| e.rel).collect();
+            r.sort();
+            r
+        };
+        assert_eq!(rels(false), ["README.md"]);
+        assert_eq!(
+            rels(true),
+            [".config/app/notes.md", ".hidden.md", "README.md"]
+        );
+
+        // A hidden directory given as the root is still browsed.
+        let inner: Vec<String> = discover(&root.join(".config"), false)
+            .into_iter()
+            .map(|e| e.rel)
+            .collect();
+        assert_eq!(inner, ["app/notes.md"]);
     }
 
     #[test]

@@ -86,6 +86,8 @@ pub enum Block {
     Quote(Vec<Block>),
     Code(CodeBlock),
     Table {
+        /// Per-column alignment; may be shorter than the widest row.
+        align: Vec<Align>,
         header: Vec<Vec<Inline>>,
         rows: Vec<Vec<Vec<Inline>>>,
     },
@@ -93,6 +95,16 @@ pub enum Block {
     /// A muted single-line marker, e.g. an MDX component's opening or
     /// closing tag.
     Label(String),
+}
+
+/// Horizontal alignment of a table column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Align {
+    #[default]
+    None,
+    Left,
+    Center,
+    Right,
 }
 
 #[derive(Debug, Clone, PartialEq)]

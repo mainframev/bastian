@@ -24,7 +24,7 @@ fn walk(blocks: &[Block], out: &mut Vec<Link>) {
             }
             Block::List { items, .. } => items.iter().for_each(|i| walk(i, out)),
             Block::Quote(inner) => walk(inner, out),
-            Block::Table { header, rows } => {
+            Block::Table { header, rows, .. } => {
                 for cell in header.iter().chain(rows.iter().flatten()) {
                     inline_links(cell, out);
                 }

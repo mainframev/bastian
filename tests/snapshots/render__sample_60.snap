@@ -44,7 +44,7 @@ wrap it across more than one line at narrow widths.
 
 ────────────────────────────────────────────────────────────
 
-Tool    │ Language │ Notes
-────────┼──────────┼────────────────
-ratatui │ Rust     │ the TUI library
-bastian │ Rust     │ reads and runs
+ Tool    │ Language │ Notes
+─────────┼──────────┼─────────────────
+ ratatui │ Rust     │ the TUI library
+ bastian │ Rust     │ reads and runs

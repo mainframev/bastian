@@ -1,6 +1,6 @@
-use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{Alignment, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
-use super::{Attrs, Block, CodeBlock, Document, Inline, InlineStyle};
+use super::{Align, Attrs, Block, CodeBlock, Document, Inline, InlineStyle};
 
 pub fn parse(src: &str) -> Document {
     let opts = Options::ENABLE_TABLES
@@ -40,6 +40,7 @@ enum Frame {
 
 #[derive(Default)]
 struct TableState {
+    align: Vec<Align>,
     header: Vec<Vec<Inline>>,
     rows: Vec<Vec<Vec<Inline>>>,
     row: Vec<Vec<Inline>>,
@@ -123,9 +124,20 @@ impl Builder {
                 };
                 self.code = Some((info, String::new()));
             }
-            Tag::Table(_) => {
+            Tag::Table(aligns) => {
                 self.flush();
-                self.table = Some(TableState::default());
+                self.table = Some(TableState {
+                    align: aligns
+                        .into_iter()
+                        .map(|a| match a {
+                            Alignment::None => Align::None,
+                            Alignment::Left => Align::Left,
+                            Alignment::Center => Align::Center,
+                            Alignment::Right => Align::Right,
+                        })
+                        .collect(),
+                    ..TableState::default()
+                });
             }
             Tag::TableHead | Tag::TableRow => {
                 if let Some(t) = &mut self.table {
@@ -203,6 +215,7 @@ impl Builder {
             TagEnd::Table => {
                 if let Some(t) = self.table.take() {
                     self.push_block(Block::Table {
+                        align: t.align,
                         header: t.header,
                         rows: t.rows,
                     });
@@ -350,11 +363,29 @@ mod tests {
     #[test]
     fn table() {
         let doc = parse("| a | b |\n|---|---|\n| 1 | 2 |\n");
-        let Block::Table { header, rows } = &doc.blocks[0] else {
+        let Block::Table {
+            align,
+            header,
+            rows,
+        } = &doc.blocks[0]
+        else {
             panic!("expected table");
         };
+        assert_eq!(align, &[Align::None, Align::None]);
         assert_eq!(header.len(), 2);
         assert_eq!(plain_text(&rows[0][1]), "2");
+    }
+
+    #[test]
+    fn table_alignment() {
+        let doc = parse("| a | b | c | d |\n|:--|:-:|--:|---|\n");
+        let Block::Table { align, .. } = &doc.blocks[0] else {
+            panic!("expected table");
+        };
+        assert_eq!(
+            align,
+            &[Align::Left, Align::Center, Align::Right, Align::None]
+        );
     }
 
     #[test]

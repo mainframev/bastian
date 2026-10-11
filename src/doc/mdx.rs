@@ -3,10 +3,10 @@
 //! are dropped; JSX components become muted label lines around their
 //! rendered Markdown children.
 
-use markdown::mdast::{AttributeContent, AttributeValue, Node};
+use markdown::mdast::{AlignKind, AttributeContent, AttributeValue, Node};
 use markdown::{Constructs, MdxSignal, ParseOptions};
 
-use super::{Attrs, Block, CodeBlock, Document, Inline, InlineStyle};
+use super::{Align, Attrs, Block, CodeBlock, Document, Inline, InlineStyle};
 
 /// Parse MDX, or `None` when the source isn't valid MDX (e.g. broken JSX),
 /// so the caller can fall back to the plain Markdown parser.
@@ -110,6 +110,16 @@ impl Mapper {
                 });
                 let header = rows.next().unwrap_or_default();
                 out.push(Block::Table {
+                    align: t
+                        .align
+                        .iter()
+                        .map(|a| match a {
+                            AlignKind::None => Align::None,
+                            AlignKind::Left => Align::Left,
+                            AlignKind::Center => Align::Center,
+                            AlignKind::Right => Align::Right,
+                        })
+                        .collect(),
                     header,
                     rows: rows.collect(),
                 });
@@ -415,5 +425,15 @@ Use <Badge>new</Badge> for the inline API and {props.version} too.
         // parse_for then falls back to plain Markdown instead of failing.
         let doc = crate::doc::parse_for("<Callout>\n\ntext\n", Some(std::path::Path::new("a.mdx")));
         assert!(!doc.blocks.is_empty());
+    }
+
+    #[test]
+    fn table_alignment() {
+        let doc = parse("| a | b | c |\n|:--|:-:|--:|\n| 1 | 2 | 3 |\n").unwrap();
+        let Block::Table { align, rows, .. } = &doc.blocks[0] else {
+            panic!("expected table");
+        };
+        assert_eq!(align, &[Align::Left, Align::Center, Align::Right]);
+        assert_eq!(plain_text(&rows[0][2]), "3");
     }
 }

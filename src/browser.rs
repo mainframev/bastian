@@ -18,6 +18,9 @@ pub struct Entry {
     pub rel: String,
     pub title: Option<String>,
     pub modified: Option<SystemTime>,
+    /// Creation time, or the modification time where the filesystem
+    /// doesn't record one.
+    pub created: Option<SystemTime>,
 }
 
 pub enum Action {
@@ -228,6 +231,7 @@ pub fn scan(root: &Path, tx: Sender<Entry>) {
                 return WalkState::Continue;
             }
             let path = d.path().to_path_buf();
+            let meta = d.metadata().ok();
             let entry = Entry {
                 rel: path
                     .strip_prefix(root)
@@ -235,7 +239,10 @@ pub fn scan(root: &Path, tx: Sender<Entry>) {
                     .display()
                     .to_string(),
                 title: read_title(&path),
-                modified: d.metadata().ok().and_then(|m| m.modified().ok()),
+                modified: meta.as_ref().and_then(|m| m.modified().ok()),
+                created: meta
+                    .as_ref()
+                    .and_then(|m| m.created().or_else(|_| m.modified()).ok()),
                 path,
             };
             if tx.send(entry).is_err() {
@@ -389,6 +396,7 @@ mod tests {
             rel: "new.md".into(),
             title: None,
             modified: Some(SystemTime::now() + std::time::Duration::from_secs(60)),
+            created: None,
         })
         .unwrap();
         drop(tx);

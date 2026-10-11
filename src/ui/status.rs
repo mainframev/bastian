@@ -5,13 +5,11 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use unicode_width::UnicodeWidthStr;
 
-use crate::prompt::Prompt;
 use crate::render::theme::Theme;
 
 /// What the left side of the status bar shows.
 pub enum Left<'a> {
     Text(&'a str),
-    Prompt(&'a Prompt),
     Error(&'a str),
 }
 
@@ -23,14 +21,6 @@ pub fn draw(frame: &mut Frame, area: Rect, t: &Theme, left: Left, right: &str) {
     match left {
         Left::Text(s) => spans.push(Span::styled(format!(" {s}"), Style::default().fg(t.text))),
         Left::Error(s) => spans.push(Span::styled(format!(" {s}"), Style::default().fg(t.err))),
-        Left::Prompt(p) => {
-            spans.push(Span::styled(
-                format!(" {}", p.label),
-                Style::default().fg(t.accent),
-            ));
-            spans.push(Span::styled(p.text.clone(), Style::default().fg(t.text)));
-            spans.push(Span::styled("▏", Style::default().fg(t.accent)));
-        }
     }
 
     // One column of padding on each side of the right-hand text.
@@ -46,4 +36,17 @@ pub fn draw(frame: &mut Frame, area: Rect, t: &Theme, left: Left, right: &str) {
         .style(bg),
         r,
     );
+}
+
+/// The `Find:` line shown above a list or document while searching, like glow.
+/// `editing` draws a cursor after the text.
+pub fn find_line(t: &Theme, text: &str, editing: bool) -> Line<'static> {
+    let mut spans = vec![
+        Span::styled("Find: ", Style::default().fg(t.warn).bold()),
+        Span::styled(text.to_string(), Style::default().fg(t.text)),
+    ];
+    if editing {
+        spans.push(Span::styled(" ", Style::default().bg(t.accent)));
+    }
+    Line::from(spans)
 }

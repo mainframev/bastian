@@ -12,8 +12,17 @@ use crate::render::theme::Theme;
 pub const MARGIN: u16 = 2;
 
 pub fn draw(frame: &mut Frame, r: &mut Reader) {
-    let [body, status] =
-        Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
+    // While searching, a `Find:` line sits above the document.
+    let finding = r.prompt.is_some() || r.search.is_some();
+    let [find, body, status] = Layout::vertical([
+        Constraint::Length(if finding { 2 } else { 0 }),
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .areas(frame.area());
+    if finding {
+        draw_find(frame, r, find);
+    }
 
     let width = body.width.saturating_sub(MARGIN * 2).min(r.max_width);
     r.layout(width, body.height);
@@ -75,13 +84,11 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
             let (i, n) = r.focus_position().unwrap_or((0, 0));
             format!("block {i}/{n}  {pct:>3}%")
         }
-        Some(s) if s.matches.is_empty() => format!("no matches  {pct:>3}%"),
-        Some(s) => format!("{}/{}  {pct:>3}%", s.current + 1, s.matches.len()),
-        None => format!("{} lines  {pct:>3}%", r.rendered.lines.len()),
+        _ => format!("{} lines  {pct:>3}%", r.rendered.lines.len()),
     };
     let hint;
     let left = match (&r.prompt, &r.message) {
-        (Some(p), _) => Left::Prompt(p),
+        (Some(_), _) => Left::Text("enter accept · esc clear"),
         (None, Some(m)) => Left::Error(m),
         (None, None) if r.focus.is_some() => {
             hint = format!("{}  enter run · R all · x stop · y copy · ? keys", r.name);
@@ -250,6 +257,34 @@ fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {
         ]),
     ];
     modal(frame, t, " run ", lines);
+}
+
+/// `Find:` line above the document, with the match count on the right.
+fn draw_find(frame: &mut Frame, r: &Reader, area: Rect) {
+    let t = &r.theme;
+    let area = Rect {
+        x: area.x + MARGIN,
+        width: area.width.saturating_sub(MARGIN * 2),
+        height: 1,
+        ..area
+    };
+    let text = match (&r.prompt, &r.search) {
+        (Some(p), _) => p.text.as_str(),
+        (None, Some(s)) => s.query.as_str(),
+        (None, None) => "",
+    };
+    let count = match &r.search {
+        Some(s) if s.matches.is_empty() => "no matches".to_string(),
+        Some(s) => format!("{}/{}", s.current + 1, s.matches.len()),
+        None => String::new(),
+    };
+    let [left, right] = Layout::horizontal([
+        Constraint::Min(1),
+        Constraint::Length(count.chars().count() as u16),
+    ])
+    .areas(area);
+    frame.render_widget(status::find_line(t, text, r.prompt.is_some()), left);
+    frame.render_widget(Span::styled(count, Style::default().fg(t.muted)), right);
 }
 
 /// Restyle char ranges of `line`, splitting spans where needed.

@@ -1,6 +1,9 @@
 use std::path::Path;
 use std::time::SystemTime;
 
+use jiff::Timestamp;
+use jiff::tz::TimeZone;
+
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
@@ -16,8 +19,14 @@ use crate::render::theme::Theme;
 const ENTRY_ROWS: u16 = 3;
 
 pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
-    let [header, list, status] = Layout::vertical([
-        Constraint::Length(2),
+    // Laid out like glow: a title badge (or the `Find:` line while
+    // filtering), the document count, then the list.
+    let [_, top, _, count_row, _, list, status] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
         Constraint::Min(1),
         Constraint::Length(1),
     ])
@@ -29,21 +38,44 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
         ..r
     };
 
-    let mut count = if b.filter.is_empty() {
+    let finding = b.prompt.is_some() || !b.filter.is_empty();
+    if finding {
+        let text = b
+            .prompt
+            .as_ref()
+            .map_or(b.filter.as_str(), |p| p.text.as_str());
+        frame.render_widget(status::find_line(t, text, b.prompt.is_some()), inset(top));
+    } else {
+        frame.render_widget(
+            Span::styled(" bastian ", Style::default().fg(t.warn).bg(t.h1_bg).bold()),
+            inset(top),
+        );
+    }
+
+    let count = if b.filter.is_empty() {
         format!("{} documents", b.entries.len())
     } else {
         format!("{} of {} documents", b.visible.len(), b.entries.len())
     };
+    // `~/project  1953 documents`: the directory, then its count. A long
+    // path is shortened from the left so the count always fits.
+    let count_row = inset(count_row);
+    let mut tail = vec![Span::raw("  ")];
     if b.is_scanning() {
-        count = format!("{} {count}", spinner(b));
+        tail.push(Span::styled(
+            format!("{} ", spinner(b)),
+            Style::default().fg(t.accent),
+        ));
     }
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(display_root(&b.root), Style::default().fg(t.heading).bold()),
-            Span::styled(format!("  {count}"), Style::default().fg(t.muted)),
-        ])),
-        inset(header),
+    tail.push(Span::styled(count, Style::default().fg(t.muted)));
+    let tail_w: usize = tail.iter().map(Span::width).sum();
+    let root = shorten_left(
+        &display_root(&b.root),
+        (count_row.width as usize).saturating_sub(tail_w),
     );
+    let mut spans = vec![Span::styled(root, Style::default().fg(t.heading).bold())];
+    spans.extend(tail);
+    frame.render_widget(Line::from(spans), count_row);
 
     b.layout(usize::from(list.height / ENTRY_ROWS));
     let mut lines = Vec::new();
@@ -57,7 +89,7 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
         };
         lines.push(Line::styled(msg, Style::default().fg(t.muted)));
     }
-    let now = SystemTime::now();
+    let tz = TimeZone::system();
     for (row, &idx) in b.visible.iter().enumerate().skip(b.offset).take(b.height) {
         let e = &b.entries[idx];
         let selected = row == b.selected;
@@ -71,18 +103,18 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
         } else {
             Style::default().fg(t.text)
         };
-        let title = e.title.clone().unwrap_or_else(|| {
-            e.path
-                .file_name()
-                .map_or_else(|| e.rel.clone(), |n| n.to_string_lossy().into_owned())
-        });
+        // Like glow: the path (or the document's title) over its date.
+        let title = e.title.clone().unwrap_or_else(|| e.rel.clone());
         lines.push(Line::from(vec![
             bar.clone(),
             Span::styled(title, title_style),
         ]));
-        let mut meta = e.rel.clone();
-        if let Some(m) = e.modified {
-            meta.push_str(&format!(" · {}", ago(now, m)));
+        let mut meta = e.created.map(|c| format_time(c, &tz)).unwrap_or_default();
+        if e.title.is_some() {
+            if !meta.is_empty() {
+                meta.push_str(" · ");
+            }
+            meta.push_str(&e.rel);
         }
         lines.push(Line::from(vec![
             bar,
@@ -93,9 +125,9 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
     frame.render_widget(Paragraph::new(lines), inset(list));
 
     let left = match (&b.prompt, &b.message) {
-        (Some(p), _) => Left::Prompt(p),
+        (Some(_), _) => Left::Text("enter accept · esc clear"),
         (None, Some(m)) => Left::Error(m),
-        (None, None) if !b.filter.is_empty() => Left::Text(&b.filter),
+        (None, None) if !b.filter.is_empty() => Left::Text("/ edit filter · esc clear"),
         (None, None) => Left::Text("enter open · / filter · q quit"),
     };
     let right = if b.visible.is_empty() {
@@ -116,24 +148,34 @@ fn display_root(root: &Path) -> String {
     }
 }
 
+/// Keep the last `max` columns of `s`, marking the cut with `…`.
+fn shorten_left(s: &str, max: usize) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= max {
+        return s.to_string();
+    }
+    if max == 0 {
+        return String::new();
+    }
+    let keep = &chars[chars.len() - (max - 1)..];
+    format!("…{}", keep.iter().collect::<String>())
+}
+
 /// Braille spinner frame for the running scan, advancing every 80 ms.
 fn spinner(b: &Browser) -> char {
     const FRAMES: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
     FRAMES[(b.started.elapsed().as_millis() / 80) as usize % FRAMES.len()]
 }
 
-/// Coarse relative time, e.g. "3 days ago".
-pub fn ago(now: SystemTime, then: SystemTime) -> String {
-    let secs = now.duration_since(then).map_or(0, |d| d.as_secs());
-    let (n, unit) = match secs {
-        0..60 => return "just now".to_string(),
-        60..3600 => (secs / 60, "minute"),
-        3600..86_400 => (secs / 3600, "hour"),
-        86_400..2_592_000 => (secs / 86_400, "day"),
-        2_592_000..31_536_000 => (secs / 2_592_000, "month"),
-        _ => (secs / 31_536_000, "year"),
-    };
-    format!("{n} {unit}{} ago", if n == 1 { "" } else { "s" })
+/// Absolute local time like glow shows it: `06 Aug 2026 02:20 CEST`.
+pub fn format_time(t: SystemTime, tz: &TimeZone) -> String {
+    match Timestamp::try_from(t) {
+        Ok(ts) => ts
+            .to_zoned(tz.clone())
+            .strftime("%d %b %Y %H:%M %Z")
+            .to_string(),
+        Err(_) => String::new(),
+    }
 }
 
 #[cfg(test)]
@@ -142,14 +184,18 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn relative_times() {
-        let now = SystemTime::now();
-        assert_eq!(ago(now, now), "just now");
-        assert_eq!(ago(now, now - Duration::from_secs(60)), "1 minute ago");
-        assert_eq!(
-            ago(now, now - Duration::from_secs(3 * 86_400)),
-            "3 days ago"
-        );
-        assert_eq!(ago(now, now + Duration::from_secs(10)), "just now");
+    fn shortens_paths_from_the_left() {
+        assert_eq!(shorten_left("~/code/app", 20), "~/code/app");
+        assert_eq!(shorten_left("~/code/app", 6), "…e/app");
+        assert_eq!(shorten_left("~/code/app", 0), "");
+    }
+
+    #[test]
+    fn formats_like_glow() {
+        let t = SystemTime::UNIX_EPOCH + Duration::from_secs(1_786_000_000);
+        let utc = TimeZone::UTC;
+        assert_eq!(format_time(t, &utc), "06 Aug 2026 07:06 UTC");
+        let berlin = TimeZone::get("Europe/Berlin").unwrap();
+        assert_eq!(format_time(t, &berlin), "06 Aug 2026 09:06 CEST");
     }
 }

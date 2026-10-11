@@ -103,7 +103,7 @@ fn edit_needs_a_file() {
     let path = dir.path().join("doc.md");
     std::fs::write(&path, "text\n").unwrap();
     r.watch(path.clone());
-    assert!(matches!(key(&mut r, KeyCode::Char('e')), Action::Edit(p) if p == path));
+    assert!(matches!(key(&mut r, KeyCode::Char('e')), Action::Edit(p, _) if p == path));
 }
 
 #[test]
@@ -141,4 +141,49 @@ fn line_number_gutter_fits_in_terminal() {
     let digits = usize::from(gutter - 1);
     let start = usize::from(MARGIN);
     assert_eq!(&row[start..start + digits + 1], format!("{:>digits$} ", 1));
+}
+
+#[test]
+fn blocks_remember_their_source_lines() {
+    let doc = parse("# Title\n\npara one\nstill one\n\n- a\n- b\n\n```sh\nx\n```\n");
+    assert_eq!(doc.lines, [0, 2, 5, 8]);
+    let mdx = bastian::doc::parse_for(
+        "---\ntitle: t\n---\n\n# H\n\n<Note>\ninside\n</Note>\n",
+        Some(std::path::Path::new("a.mdx")),
+    );
+    assert_eq!(mdx.lines.len(), mdx.blocks.len());
+    assert_eq!(mdx.lines[0], 4, "heading after front matter");
+}
+
+#[test]
+fn edit_opens_at_the_top_visible_source_line() {
+    let src: String = (0..60).map(|i| format!("paragraph {i}\n\n")).collect();
+    let mut r = reader(&src);
+    r.source = Some("doc.md".into());
+    r.layout(80, 10);
+    match key(&mut r, KeyCode::Char('e')) {
+        Action::Edit(_, line) => assert_eq!(line, Some(1)),
+        _ => panic!("expected edit"),
+    }
+    // Scroll to paragraph 20 (rendered line 40, source line 41).
+    for _ in 0..40 {
+        key(&mut r, KeyCode::Char('j'));
+    }
+    match key(&mut r, KeyCode::Char('e')) {
+        Action::Edit(_, line) => assert_eq!(line, Some(41)),
+        _ => panic!("expected edit"),
+    }
+}
+
+#[test]
+fn c_copies_the_whole_document() {
+    let mut r = reader("# A\n\ntext\n");
+    assert!(matches!(key(&mut r, KeyCode::Char('c')), Action::None));
+    assert_eq!(r.message.as_deref(), Some("nothing to copy"));
+    r.text = "# A\n\ntext\n".into();
+    match key(&mut r, KeyCode::Char('c')) {
+        Action::Copy(t) => assert_eq!(t, "# A\n\ntext\n"),
+        _ => panic!("expected copy"),
+    }
+    assert_eq!(r.message.as_deref(), Some("copied document (3 lines)"));
 }

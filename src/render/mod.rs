@@ -25,7 +25,11 @@ pub struct Rendered {
     pub lines: Vec<Line<'static>>,
     /// Source line (0-based) each rendered line starts, when known; wrapped
     /// continuations are `None`. Empty when the document has no mapping.
+    /// Only code files fill this; it drives source-numbered gutters.
     pub src_line: Vec<Option<usize>>,
+    /// `(rendered line, source line)` pairs, ascending, where top-level
+    /// blocks (or code-file lines) start.
+    pub anchors: Vec<(usize, usize)>,
     /// Line range occupied by each code block, in document order.
     pub code_blocks: Vec<CodeRange>,
 }
@@ -63,9 +67,16 @@ pub fn render_with_runs(
         return r.code_file(c, width);
     }
     let out = r.blocks(&doc.blocks, width, true);
+    let anchors = out
+        .starts
+        .iter()
+        .copied()
+        .zip(doc.lines.iter().copied())
+        .collect();
     Rendered {
         lines: out.lines,
         src_line: Vec::new(),
+        anchors,
         code_blocks: out.codes,
     }
 }
@@ -74,6 +85,8 @@ pub fn render_with_runs(
 struct Out {
     lines: Vec<Line<'static>>,
     codes: Vec<CodeRange>,
+    /// Rendered line where each block passed to `blocks` begins.
+    starts: Vec<usize>,
 }
 
 impl Out {
@@ -118,6 +131,7 @@ impl Renderer<'_> {
                 out.blank();
             }
             let part = self.block(block, width);
+            out.starts.push(out.lines.len());
             out.append(part, &[], &[]);
         }
         out
@@ -130,6 +144,7 @@ impl Renderer<'_> {
             Block::Paragraph(inlines) => Out {
                 lines: wrap(&self.runs(inlines, Style::default().fg(t.text)), width),
                 codes: Vec::new(),
+                starts: Vec::new(),
             },
             Block::List { start, items } => self.list(*start, items, width),
             Block::Quote(inner) => {
@@ -146,6 +161,7 @@ impl Renderer<'_> {
             Block::Label(text) => Out {
                 lines: wrap(&[(text.clone(), Style::default().fg(t.muted))], width),
                 codes: Vec::new(),
+                starts: Vec::new(),
             },
             Block::Table { header, rows } => self.table(header, rows, width),
             Block::Rule => Out {
@@ -154,6 +170,7 @@ impl Renderer<'_> {
                     Style::default().fg(t.muted),
                 )],
                 codes: Vec::new(),
+                starts: Vec::new(),
             },
         }
     }
@@ -182,6 +199,7 @@ impl Renderer<'_> {
         Out {
             lines,
             codes: Vec::new(),
+            starts: Vec::new(),
         }
     }
 
@@ -270,6 +288,7 @@ impl Renderer<'_> {
                 lines: 0..len,
                 output_end,
             }],
+            starts: Vec::new(),
         }
     }
 
@@ -299,6 +318,11 @@ impl Renderer<'_> {
                 lines: 0..len,
                 output_end: lines.len(),
             }],
+            anchors: src_line
+                .iter()
+                .enumerate()
+                .filter_map(|(i, s)| s.map(|s| (i, s)))
+                .collect(),
             lines,
             src_line,
         }
@@ -413,6 +437,7 @@ impl Renderer<'_> {
         Out {
             lines,
             codes: Vec::new(),
+            starts: Vec::new(),
         }
     }
 

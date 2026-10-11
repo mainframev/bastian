@@ -44,6 +44,7 @@ fn code_file(src: &str, lang: &str) -> Document {
             info: lang.to_string(),
             src,
         })],
+        lines: vec![0],
         code_file: true,
     }
 }
@@ -52,6 +53,9 @@ fn code_file(src: &str, lang: &str) -> Document {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Document {
     pub blocks: Vec<Block>,
+    /// Source line (0-based) where each top-level block starts, parallel to
+    /// `blocks`. May be empty when unknown.
+    pub lines: Vec<usize>,
     /// A source file rather than Markdown: rendered bare, with source
     /// line numbers.
     pub code_file: bool,

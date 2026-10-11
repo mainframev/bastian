@@ -114,7 +114,8 @@ fn main() -> Result<()> {
         if !tui {
             return print(&doc, &settings, &out);
         }
-        let reader = settings.reader("stdin".into(), doc, PathBuf::from("."));
+        let mut reader = settings.reader("stdin".into(), doc, PathBuf::from("."));
+        reader.text = src;
         app::App::read(reader, settings)
     } else {
         if !tui {

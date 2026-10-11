@@ -48,6 +48,7 @@ impl Settings {
         let mut r = self.reader(name, doc, base_dir(path));
         // Source files always show their line numbers.
         r.line_numbers |= code_file;
+        r.text = src;
         r.watch(path.to_path_buf());
         Ok(r)
     }
@@ -61,7 +62,9 @@ pub struct App {
     pub reader: Option<Reader>,
     pub history: Vec<Reader>,
     /// File to open in the editor once the current event is handled.
-    edit: Option<PathBuf>,
+    edit: Option<(PathBuf, Option<usize>)>,
+    /// Set by ctrl-z; the run loop suspends bastian like a shell job.
+    suspend: bool,
 }
 
 impl App {
@@ -71,6 +74,7 @@ impl App {
             reader: None,
             history: Vec::new(),
             edit: None,
+            suspend: false,
             settings,
         }
     }
@@ -81,6 +85,7 @@ impl App {
             reader: Some(reader),
             history: Vec::new(),
             edit: None,
+            suspend: false,
             settings,
         }
     }
@@ -93,6 +98,10 @@ impl App {
         }
         if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
             return false;
+        }
+        if key.code == KeyCode::Char('z') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            self.suspend = true;
+            return true;
         }
 
         if let Some(r) = &mut self.reader {
@@ -117,7 +126,7 @@ impl App {
                 true
             }
             browser::Action::Edit(path) => {
-                self.edit = Some(path);
+                self.edit = Some((path, None));
                 true
             }
         }
@@ -147,7 +156,7 @@ impl App {
                     self.set_message(format!("could not open {target}: {err}"));
                 }
             }
-            reader::Action::Edit(path) => self.edit = Some(path),
+            reader::Action::Edit(path, line) => self.edit = Some((path, line)),
             reader::Action::Copy(text) => {
                 // OSC 52 asks the terminal to set the clipboard, which also
                 // works over ssh. Terminals without support ignore it.
@@ -171,10 +180,15 @@ impl App {
 
     /// Hand the terminal to the user's editor, then take it back. An open
     /// reader picks up the changes through its file watch.
-    fn run_editor(&mut self, terminal: &mut DefaultTerminal, path: &Path) -> Result<()> {
+    fn run_editor(
+        &mut self,
+        terminal: &mut DefaultTerminal,
+        path: &Path,
+        line: Option<usize>,
+    ) -> Result<()> {
         let cmd = editor::command();
         ratatui::restore();
-        let result = editor::open_with(&cmd, path);
+        let result = editor::open_with(&cmd, path, line);
         *terminal = ratatui::init();
         terminal.clear()?;
         match result {
@@ -208,6 +222,23 @@ pub fn base_dir(path: &Path) -> PathBuf {
     }
 }
 
+/// Stop like a shell job (ctrl-z), restoring the terminal first and taking
+/// it back when resumed with `fg`.
+fn suspend(terminal: &mut DefaultTerminal) -> Result<()> {
+    #[cfg(unix)]
+    {
+        ratatui::restore();
+        // SAFETY: raise(3) with a standard signal; SIGTSTP's default action
+        // stops the process until SIGCONT.
+        unsafe { libc::raise(libc::SIGTSTP) };
+        *terminal = ratatui::init();
+        terminal.clear()?;
+    }
+    #[cfg(not(unix))]
+    let _ = terminal;
+    Ok(())
+}
+
 /// How often to wake up for process output while waiting for keys.
 const TICK: Duration = Duration::from_millis(100);
 
@@ -235,8 +266,11 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<()> {
             if !app.on_event(event::read()?) {
                 return Ok(());
             }
-            if let Some(path) = app.edit.take() {
-                app.run_editor(terminal, &path)?;
+            if let Some((path, line)) = app.edit.take() {
+                app.run_editor(terminal, &path, line)?;
+            }
+            if std::mem::take(&mut app.suspend) {
+                suspend(terminal)?;
             }
             redraw = true;
         }

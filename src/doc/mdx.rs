@@ -27,9 +27,20 @@ pub fn parse(src: &str) -> Option<Document> {
     };
     let root = markdown::to_mdast(src, &options).ok()?;
     let mut m = Mapper::default();
-    let blocks = m.blocks(root.children()?);
+    let mut blocks = Vec::new();
+    let mut lines = Vec::new();
+    for node in root.children()? {
+        let before = blocks.len();
+        m.block(node, &mut blocks);
+        // mdast lines are 1-based.
+        let line = node
+            .position()
+            .map_or(0, |p| p.start.line.saturating_sub(1));
+        lines.extend(std::iter::repeat_n(line, blocks.len() - before));
+    }
     Some(Document {
         blocks,
+        lines,
         code_file: false,
     })
 }

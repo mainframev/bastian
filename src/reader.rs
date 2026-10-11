@@ -22,8 +22,8 @@ pub enum Action {
     OpenExternal(String),
     /// Put text on the clipboard.
     Copy(String),
-    /// Open the document's file in the user's editor.
-    Edit(PathBuf),
+    /// Open the document's file in the user's editor, at a 1-based line.
+    Edit(PathBuf, Option<usize>),
 }
 
 /// The link list opened with `L`.
@@ -74,6 +74,8 @@ pub struct Reader {
     pub line_numbers: bool,
     /// File the document came from, watched for changes.
     pub source: Option<PathBuf>,
+    /// The document's source text, for copying it whole.
+    pub text: String,
     modified: Option<SystemTime>,
     last_check: Instant,
     pub interpreters: Interpreters,
@@ -112,6 +114,7 @@ impl Reader {
             help: false,
             line_numbers: false,
             source: None,
+            text: String::new(),
             modified: None,
             last_check: Instant::now(),
             interpreters: Interpreters::default(),
@@ -146,6 +149,18 @@ impl Reader {
         self.height = usize::from(height);
         self.follow_output();
         self.scroll = self.scroll.min(self.max_scroll());
+    }
+
+    /// 1-based source line of the block at the top of the view, if the
+    /// document maps rendered lines back to its source.
+    pub fn source_line(&self) -> Option<usize> {
+        self.rendered
+            .anchors
+            .iter()
+            .rev()
+            .find(|(rendered, _)| *rendered <= self.scroll)
+            .or_else(|| self.rendered.anchors.first())
+            .map(|(_, src)| src + 1)
     }
 
     pub fn max_scroll(&self) -> usize {
@@ -376,6 +391,7 @@ impl Reader {
         match crate::text::read_text(path) {
             Ok(src) => {
                 self.replace_doc(crate::doc::parse_for(&src, Some(path)));
+                self.text = src;
                 self.message = Some("reloaded".into());
             }
             Err(e) => self.message = Some(format!("reload failed: {e}")),
@@ -651,9 +667,18 @@ impl Reader {
             KeyCode::Char('?') => self.help = true,
             KeyCode::Char('#') => self.line_numbers = !self.line_numbers,
             KeyCode::Char('e') => match &self.source {
-                Some(path) => return Action::Edit(path.clone()),
+                Some(path) => return Action::Edit(path.clone(), self.source_line()),
                 None => self.message = Some("stdin has no file to edit".into()),
             },
+            KeyCode::Char('c') if !ctrl => {
+                if self.text.is_empty() {
+                    self.message = Some("nothing to copy".into());
+                } else {
+                    let lines = self.text.lines().count();
+                    self.message = Some(format!("copied document ({lines} lines)"));
+                    return Action::Copy(self.text.clone());
+                }
+            }
             _ => {}
         }
         Action::None

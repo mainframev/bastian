@@ -8,8 +8,21 @@ pub fn parse(src: &str) -> Document {
         | Options::ENABLE_TASKLISTS
         | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
         | Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS;
+    let newlines: Vec<usize> = src.match_indices('\n').map(|(i, _)| i).collect();
+    let line_of = |offset: usize| newlines.partition_point(|&n| n < offset);
     let mut b = Builder::default();
-    for event in Parser::new_ext(src, opts) {
+    let mut depth = 0usize;
+    for (event, range) in Parser::new_ext(src, opts).into_offset_iter() {
+        // Remember where each top-level construct starts, for mapping
+        // rendered lines back to the source (e.g. to open an editor there).
+        if depth == 0 && matches!(event, Event::Start(_) | Event::Rule) {
+            b.block_start = line_of(range.start);
+        }
+        match &event {
+            Event::Start(_) => depth += 1,
+            Event::End(_) => depth = depth.saturating_sub(1),
+            _ => {}
+        }
         b.event(event);
     }
     b.finish()
@@ -43,6 +56,10 @@ struct Builder {
     strike: u32,
     heading: Option<u8>,
     code: Option<(String, String)>,
+    /// Source line where the current top-level construct starts.
+    block_start: usize,
+    /// Source line of each root block, parallel to `root`.
+    lines: Vec<usize>,
     /// Inside YAML/TOML front matter, which isn't shown.
     metadata: bool,
     table: Option<TableState>,
@@ -237,7 +254,10 @@ impl Builder {
         match self.stack.last_mut() {
             Some(Frame::Quote(blocks) | Frame::Item(blocks)) => blocks.push(block),
             // Blocks never appear directly inside a list, only inside items.
-            Some(Frame::List { .. }) | None => self.root.push(block),
+            Some(Frame::List { .. }) | None => {
+                self.root.push(block);
+                self.lines.push(self.block_start);
+            }
         }
     }
 
@@ -245,6 +265,7 @@ impl Builder {
         self.flush();
         Document {
             blocks: self.root,
+            lines: self.lines,
             code_file: false,
         }
     }

@@ -11,7 +11,7 @@ use bastian::exec::Interpreters;
 use bastian::term::{self, Background};
 use bastian::{browser, doc, images, output, remote, render, text, themes};
 
-/// Read Markdown in the terminal, and run its code blocks.
+/// Read Markdown in the terminal: browse, search and follow your docs.
 #[derive(Parser)]
 #[command(version, after_help = config_help(), args_conflicts_with_subcommands = true)]
 #[allow(

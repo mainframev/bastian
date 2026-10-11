@@ -85,6 +85,14 @@ struct Cli {
     #[arg(long, overrides_with = "images")]
     no_images: bool,
 
+    /// How the file browser marks the selected file [default: bar].
+    #[arg(long, value_enum, value_name = "STYLE")]
+    selector: Option<config::Selector>,
+
+    /// How the file browser lays out each file [default: cards].
+    #[arg(long, value_enum, value_name = "LAYOUT")]
+    browser_layout: Option<config::BrowserLayout>,
+
     /// Print the effective settings and where each came from, then exit.
     #[arg(long)]
     print_config: bool,
@@ -179,6 +187,8 @@ fn main() -> Result<()> {
                 (_, true) => Some(false),
                 _ => None,
             },
+            selector: cli.selector,
+            browser_layout: cli.browser_layout,
             ..config::Config::default()
         },
     )?;
@@ -362,6 +372,8 @@ fn settings(
         // Only the TUI draws pictures.
         images: (tui && r.images.value).then(images::Support::detect),
         show_images: r.images.value,
+        selector: r.selector.value,
+        browser_layout: r.browser_layout.value,
         interpreters: Interpreters::new(r.interpreters),
     };
     Ok((settings, name))

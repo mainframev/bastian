@@ -32,6 +32,10 @@ pub struct Config {
     pub logo: Option<bool>,
     /// Show pictures for images in documents, where the terminal can.
     pub images: Option<bool>,
+    /// How the file browser marks the selected file.
+    pub selector: Option<Selector>,
+    /// How the file browser lays out each file.
+    pub browser_layout: Option<BrowserLayout>,
     /// Language → command line; the block source is appended as the last
     /// argument. An empty list stops that language from running.
     pub interpreters: HashMap<String, Vec<String>>,
@@ -55,6 +59,30 @@ pub enum ColorMode {
     Auto,
     Always,
     Never,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum Selector {
+    // `│` beside the selected file (the default), `┃`, `▌`, `❯` beside its
+    // title only, or a highlighted background. Plain comments: doc
+    // comments would switch `--help` to clap's long layout.
+    #[default]
+    Bar,
+    Thick,
+    Block,
+    Arrow,
+    Highlight,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum BrowserLayout {
+    // Title, path and date on rows of their own (the default), or one row
+    // per file.
+    #[default]
+    Cards,
+    Compact,
 }
 
 pub fn path() -> Option<PathBuf> {
@@ -150,6 +178,9 @@ pub const TEMPLATE: &str = r#"# bastian configuration. Every key is optional; co
 # mouse = false         # scroll with the mouse wheel
 # logo = true           # show the logo at the top of the file browser
 # images = true         # show pictures for images in documents (`i` toggles)
+# selector = "bar"      # marks the selected file: "bar", "thick", "block",
+#                       # "arrow" or "highlight"
+# browser_layout = "cards"  # "cards" (title, path, date) or "compact" (one row)
 
 # [interpreters]
 # The block source is appended as the last argument.
@@ -188,6 +219,8 @@ pub fn describe(r: &Resolved, file: Option<&Path>) -> String {
         row("mouse", &r.mouse),
         row("logo", &r.logo),
         row("images", &r.images),
+        row("selector", &r.selector),
+        row("browser_layout", &r.browser_layout),
     ];
     // Line the source comments up, at least two spaces after the value.
     let w = rows.iter().map(|(text, _)| text.len()).max().unwrap_or(0) + 2;
@@ -252,6 +285,8 @@ pub struct Resolved {
     pub mouse: Setting<bool>,
     pub logo: Setting<bool>,
     pub images: Setting<bool>,
+    pub selector: Setting<Selector>,
+    pub browser_layout: Setting<BrowserLayout>,
     pub interpreters: HashMap<String, Vec<String>>,
 }
 
@@ -290,6 +325,20 @@ pub fn resolve(file: Config, env: &EnvMap, cli: Config) -> Result<Resolved> {
         mouse: setting("mouse", false, file.mouse, cli.mouse, env)?,
         logo: setting("logo", true, file.logo, cli.logo, env)?,
         images: setting("images", true, file.images, cli.images, env)?,
+        selector: setting(
+            "selector",
+            Selector::default(),
+            file.selector,
+            cli.selector,
+            env,
+        )?,
+        browser_layout: setting(
+            "browser_layout",
+            BrowserLayout::default(),
+            file.browser_layout,
+            cli.browser_layout,
+            env,
+        )?,
         interpreters: file.interpreters,
     })
 }
@@ -487,7 +536,7 @@ macro_rules! enum_value {
         }
     )*};
 }
-enum_value!(Confirm, ColorMode);
+enum_value!(Confirm, ColorMode, Selector, BrowserLayout);
 
 fn enum_name<T: ValueEnum>(v: &T) -> String {
     v.to_possible_value()
@@ -663,6 +712,8 @@ mod tests {
             ("BASTIAN_CONFIRM", "NEVER"),
             ("BASTIAN_LINE_NUMBERS", "yes"),
             ("BASTIAN_THEME", ""),
+            ("BASTIAN_SELECTOR", "Arrow"),
+            ("BASTIAN_BROWSER_LAYOUT", "compact"),
         ]);
         let r = resolve(Config::default(), &e, Config::default()).unwrap();
         assert_eq!(
@@ -679,8 +730,22 @@ mod tests {
                 source: Source::Env
             }
         );
+        assert_eq!(r.selector.value, Selector::Arrow);
+        assert_eq!(r.browser_layout.value, BrowserLayout::Compact);
         // Empty means unset.
         assert_eq!(r.theme.source, Source::Default);
+
+        let err = resolve(
+            Config::default(),
+            &env(&[("BASTIAN_SELECTOR", "star")]),
+            Config::default(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("expected bar, thick, block, arrow or highlight"),
+            "{err}"
+        );
 
         let err = resolve(
             Config::default(),
@@ -706,6 +771,8 @@ mod tests {
             color = "never"
             pager = true
             mouse = true
+            selector = "highlight"
+            browser_layout = "compact"
             [interpreters]
             ruby = ["ruby", "-e"]
             fish = []
@@ -719,6 +786,8 @@ mod tests {
         assert_eq!(c.color, Some(ColorMode::Never));
         assert_eq!(c.pager, Some(true));
         assert_eq!(c.mouse, Some(true));
+        assert_eq!(c.selector, Some(Selector::Highlight));
+        assert_eq!(c.browser_layout, Some(BrowserLayout::Compact));
         assert_eq!(c.interpreters["ruby"], ["ruby", "-e"]);
         assert!(c.interpreters["fish"].is_empty());
     }

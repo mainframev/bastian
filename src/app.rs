@@ -42,6 +42,10 @@ pub struct Settings {
     pub images: Option<crate::images::Support>,
     /// Draw pictures for images; off leaves them as their alt text.
     pub show_images: bool,
+    /// How the file browser marks the selected file.
+    pub selector: crate::config::Selector,
+    /// How the file browser lays out each file.
+    pub browser_layout: crate::config::BrowserLayout,
 }
 
 impl Settings {
@@ -467,7 +471,13 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<Option<String
                 if let Some(r) = &mut app.reader {
                     ui::reader::draw(f, r);
                 } else if let Some(b) = &mut app.browser {
-                    ui::browser::draw(f, b, &app.settings.theme, app.settings.logo);
+                    let s = &app.settings;
+                    let look = ui::browser::Look {
+                        logo: s.logo,
+                        selector: s.selector,
+                        layout: s.browser_layout,
+                    };
+                    ui::browser::draw(f, b, &s.theme, look);
                 }
                 if let Some((p, _)) = &app.picker {
                     ui::picker::draw(f, &app.settings.theme, p);
@@ -519,6 +529,8 @@ mod tests {
             logo: true,
             images: None,
             show_images: false,
+            selector: crate::config::Selector::Bar,
+            browser_layout: crate::config::BrowserLayout::Cards,
         }
     }
 
@@ -622,6 +634,8 @@ mod tests {
             logo: true,
             images: None,
             show_images: false,
+            selector: crate::config::Selector::Bar,
+            browser_layout: crate::config::BrowserLayout::Cards,
         };
         let src: String = (0..50).map(|i| format!("line {i}\n\n")).collect();
         let mut reader = settings.reader("t".into(), doc::parse(&src), PathBuf::from("."));

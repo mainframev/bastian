@@ -4,15 +4,18 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
 use super::inset;
 use super::logo;
 use super::status;
-use crate::browser::Browser;
+use crate::browser::{Browser, Entry};
+use crate::config::{BrowserLayout, Selector};
 use crate::render::theme::Theme;
 
 const HELP: &[(&str, &str)] = &[
@@ -30,12 +33,22 @@ const HELP: &[(&str, &str)] = &[
     ("q", "quit"),
 ];
 
-/// Rows per entry at most: title, path, date, gap. Pages hold as many
-/// entries as fit at this height; entries without a path line are a row
-/// shorter, so the gap after every entry stays one row.
-const ENTRY_ROWS: u16 = 4;
+/// Rows per card at most: title, path, date, gap. Pages hold as many
+/// entries as fit at this height; cards without a path line are a row
+/// shorter, so the gap after every card stays one row.
+const CARD_ROWS: u16 = 4;
 
-pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, show_logo: bool) {
+/// How the file list looks, from the settings.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Look {
+    /// The logo at the top.
+    pub logo: bool,
+    pub selector: Selector,
+    pub layout: BrowserLayout,
+}
+
+pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, look: Look) {
+    let show_logo = look.logo;
     // Layout: the logo (or the `Find:` line while filtering; just that
     // line's row without the logo), the document count, then the list.
     // The page indicator goes under the list (each entry already ends with
@@ -67,7 +80,11 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, show_logo: bool) {
     } else {
         format!("{} of {} documents", b.visible.len(), b.entries.len())
     };
-    b.layout(usize::from(list.height / ENTRY_ROWS));
+    let entry_rows = match look.layout {
+        BrowserLayout::Cards => CARD_ROWS,
+        BrowserLayout::Compact => 1,
+    };
+    b.layout(usize::from(list.height / entry_rows));
 
     let (page, pages) = b.page();
     if pages > 1 {
@@ -105,45 +122,46 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, show_logo: bool) {
         lines.push(Line::styled(msg, Style::default().fg(t.muted)));
     }
     let tz = TimeZone::system();
+    let list_area = inset(list);
+    // Rows of the selected entry, for the highlight selector.
+    let mut selected_rows = 0..0;
     for (row, &idx) in b.visible.iter().enumerate().skip(b.offset()).take(b.height) {
         let e = &b.entries[idx];
         let selected = row == b.selected;
-        let bar = if selected {
-            Span::styled("│ ", Style::default().fg(t.accent))
-        } else {
-            Span::raw("  ")
-        };
-        let title_style = status::row_style(t, selected);
-        // Title, then progressively quieter path and date lines. The path
-        // is left out when it would just repeat the title (a top-level file
-        // without a title).
-        let title = e.title.clone().unwrap_or_else(|| {
-            e.path
-                .file_name()
-                .map_or_else(|| e.rel.clone(), |n| n.to_string_lossy().into_owned())
-        });
-        let show_path = e.rel != title;
-        lines.push(Line::from(vec![
-            bar.clone(),
-            Span::styled(title, title_style),
-        ]));
-        if show_path {
-            lines.push(Line::from(vec![
-                bar.clone(),
-                Span::styled(e.rel.clone(), Style::default().fg(t.subtle)),
-            ]));
-        }
+        let start = lines.len();
         let date = e.created.map(|c| format_time(c, &tz)).unwrap_or_default();
-        lines.push(Line::from(vec![
-            bar,
-            Span::styled(
-                date,
-                Style::default().fg(t.muted).add_modifier(Modifier::DIM),
-            ),
-        ]));
-        lines.push(Line::default());
+        match look.layout {
+            BrowserLayout::Cards => {
+                lines.extend(card_lines(e, &date, t, look.selector, selected));
+            }
+            BrowserLayout::Compact => lines.push(compact_line(
+                e,
+                &date,
+                t,
+                look.selector,
+                selected,
+                usize::from(list_area.width),
+            )),
+        }
+        if selected {
+            selected_rows = start..lines.len();
+        }
+        if look.layout == BrowserLayout::Cards {
+            lines.push(Line::default());
+        }
     }
-    frame.render_widget(Paragraph::new(lines), inset(list));
+    frame.render_widget(Paragraph::new(lines), list_area);
+    if look.selector == Selector::Highlight && !selected_rows.is_empty() {
+        let band = Rect {
+            y: list_area.y + selected_rows.start as u16,
+            height: selected_rows.len() as u16,
+            ..list_area
+        }
+        .intersection(list_area);
+        frame
+            .buffer_mut()
+            .set_style(band, Style::default().bg(t.surface));
+    }
     // In entries, so the thumb moves a page at a time like the list.
     status::scrollbar(frame, t, list, b.visible.len(), b.height, b.offset());
 
@@ -163,6 +181,107 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, show_logo: bool) {
     if b.help {
         status::help(frame, t, HELP);
     }
+}
+
+/// What goes beside each row of an entry: `first` is its title row.
+fn marker(selector: Selector, selected: bool, first: bool, t: &Theme) -> Span<'static> {
+    let glyph = match selector {
+        _ if !selected => None,
+        Selector::Bar => Some("│"),
+        Selector::Thick => Some("┃"),
+        Selector::Block => Some("▌"),
+        Selector::Arrow if first => Some("❯"),
+        Selector::Arrow | Selector::Highlight => None,
+    };
+    match glyph {
+        Some(g) => Span::styled(format!("{g} "), Style::default().fg(t.accent)),
+        None => Span::raw("  "),
+    }
+}
+
+/// The name an entry is listed under: its title, else its file name.
+fn title(e: &Entry) -> String {
+    e.title.clone().unwrap_or_else(|| {
+        e.path
+            .file_name()
+            .map_or_else(|| e.rel.clone(), |n| n.to_string_lossy().into_owned())
+    })
+}
+
+/// Title, then progressively quieter path and date lines. The path is left
+/// out when it would just repeat the title (a top-level file without a
+/// title).
+fn card_lines(
+    e: &Entry,
+    date: &str,
+    t: &Theme,
+    selector: Selector,
+    selected: bool,
+) -> Vec<Line<'static>> {
+    let mark = |first| marker(selector, selected, first, t);
+    let title = title(e);
+    let show_path = e.rel != title;
+    let mut lines = vec![Line::from(vec![
+        mark(true),
+        Span::styled(title, status::row_style(t, selected)),
+    ])];
+    if show_path {
+        lines.push(Line::from(vec![
+            mark(false),
+            Span::styled(e.rel.clone(), Style::default().fg(t.subtle)),
+        ]));
+    }
+    lines.push(Line::from(vec![
+        mark(false),
+        Span::styled(
+            date.to_string(),
+            Style::default().fg(t.muted).add_modifier(Modifier::DIM),
+        ),
+    ]));
+    lines
+}
+
+/// `❯ Title  path/to/file.md          06 Aug 2026 09:06 CEST`: one row in
+/// `width` columns. The date stays at the right edge; the title is cut
+/// before it, and the path only gets the room left over.
+fn compact_line(
+    e: &Entry,
+    date: &str,
+    t: &Theme,
+    selector: Selector,
+    selected: bool,
+    width: usize,
+) -> Line<'static> {
+    const GAP: usize = 2;
+    let mark = marker(selector, selected, true, t);
+    let title = title(e);
+    let show_path = e.rel != title;
+    let date_w = if date.is_empty() {
+        0
+    } else {
+        date.width() + GAP
+    };
+    let room = width.saturating_sub(mark.width() + date_w);
+    let title = shorten_right(&title, room);
+    let mut spans = vec![mark];
+    let mut used = title.width();
+    spans.push(Span::styled(title, status::row_style(t, selected)));
+    let path_room = room.saturating_sub(used + GAP);
+    // A path cut down to a few columns says nothing; leave it out.
+    if show_path && path_room >= 8 {
+        let path = shorten_left(&e.rel, path_room);
+        used += GAP + path.width();
+        spans.push(Span::raw(" ".repeat(GAP)));
+        spans.push(Span::styled(path, Style::default().fg(t.subtle)));
+    }
+    if date_w > 0 && room > 0 {
+        spans.push(Span::raw(" ".repeat(room - used + GAP)));
+        spans.push(Span::styled(
+            date.to_string(),
+            Style::default().fg(t.muted).add_modifier(Modifier::DIM),
+        ));
+    }
+    Line::from(spans)
 }
 
 /// Width of the page track, in cells.
@@ -190,6 +309,27 @@ fn shorten_left(s: &str, max: usize) -> String {
     }
     let keep = &chars[chars.len() - (max - 1)..];
     format!("…{}", keep.iter().collect::<String>())
+}
+
+/// Keep the first `max` columns of `s`, marking the cut with `…`.
+fn shorten_right(s: &str, max: usize) -> String {
+    if s.width() <= max {
+        return s.to_string();
+    }
+    let mut out = String::new();
+    let mut w = 0;
+    for c in s.chars() {
+        let cw = c.width().unwrap_or(0);
+        if w + cw + 1 > max {
+            break;
+        }
+        out.push(c);
+        w += cw;
+    }
+    if max > 0 {
+        out.push('…');
+    }
+    out
 }
 
 /// Braille spinner frame for the running scan, advancing every 80 ms.
@@ -249,6 +389,15 @@ mod tests {
     /// Browse a tree with `top.md` (no title) and `docs/guide.md` (titled),
     /// then draw the browser into a `w`×`h` screen.
     fn screen(files: usize, logo: bool, h: u16) -> Vec<String> {
+        let look = Look {
+            logo,
+            ..Look::default()
+        };
+        rows(&styled_screen(files, look, h))
+    }
+
+    /// Like `screen`, with any look, keeping the cells' styles.
+    fn styled_screen(files: usize, look: Look, h: u16) -> ratatui::buffer::Buffer {
         use ratatui::{Terminal, backend::TestBackend};
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join("docs")).unwrap();
@@ -268,15 +417,121 @@ mod tests {
         }
         let mut terminal = Terminal::new(TestBackend::new(50, h)).unwrap();
         let t = Theme::dark();
-        terminal.draw(|f| draw(f, &mut b, &t, logo)).unwrap();
-        let buf = terminal.backend().buffer();
-        (0..h)
+        terminal.draw(|f| draw(f, &mut b, &t, look)).unwrap();
+        terminal.backend().buffer().clone()
+    }
+
+    fn rows(buf: &ratatui::buffer::Buffer) -> Vec<String> {
+        let area = buf.area;
+        (0..area.height)
             .map(|y| {
-                (0..50)
+                (0..area.width)
                     .map(|x| buf[(x, y)].symbol().to_string())
                     .collect::<String>()
             })
             .collect()
+    }
+
+    /// Index of the first row containing `s`.
+    fn row_of(rows: &[String], s: &str) -> usize {
+        rows.iter()
+            .position(|r| r.contains(s))
+            .unwrap_or_else(|| panic!("no {s}:\n{}", rows.join("\n")))
+    }
+
+    fn look(selector: Selector, layout: BrowserLayout) -> Look {
+        Look {
+            logo: false,
+            selector,
+            layout,
+        }
+    }
+
+    #[test]
+    fn selectors_mark_only_the_selected_card() {
+        // top.md (selected) is a name and a date; Guide adds a path row.
+        for (selector, glyph, marked) in [
+            (Selector::Bar, '│', 2),
+            (Selector::Thick, '┃', 2),
+            (Selector::Block, '▌', 2),
+            (Selector::Arrow, '❯', 1),
+        ] {
+            let rows = rows(&styled_screen(0, look(selector, BrowserLayout::Cards), 30));
+            let text = rows.join("\n");
+            let with: Vec<usize> = (0..rows.len())
+                .filter(|&i| rows[i].starts_with(&format!("  {glyph} ")))
+                .collect();
+            let top = row_of(&rows, "top.md");
+            assert_eq!(
+                with,
+                (top..top + marked).collect::<Vec<_>>(),
+                "{selector:?}:\n{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn highlight_selector_colors_the_selected_rows() {
+        let t = Theme::dark();
+        let buf = styled_screen(0, look(Selector::Highlight, BrowserLayout::Cards), 30);
+        let rows = rows(&buf);
+        let (top, guide) = (row_of(&rows, "top.md"), row_of(&rows, "Guide"));
+        let bg = |y: usize| buf[(10, y as u16)].bg;
+        assert_eq!(bg(top), t.surface);
+        assert_eq!(bg(top + 1), t.surface, "the date row too");
+        assert_ne!(bg(top + 2), t.surface, "not the gap after it");
+        assert_ne!(bg(guide), t.surface);
+        assert!(!rows.join("").contains('│'));
+    }
+
+    #[test]
+    fn compact_layout_lists_one_file_per_row() {
+        let rows = rows(&styled_screen(
+            0,
+            look(Selector::Bar, BrowserLayout::Compact),
+            30,
+        ));
+        let text = rows.join("\n");
+        let (top, guide) = (row_of(&rows, "top.md"), row_of(&rows, "Guide"));
+        assert_eq!(guide, top + 1, "{text}");
+        assert!(rows[top].starts_with("  │ top.md"), "{text}");
+        // The path follows the title; the date ends at the right margin.
+        assert!(rows[guide].contains("Guide  docs/guide.md"), "{text}");
+        let last = 50 - 1 - usize::from(crate::ui::MARGIN);
+        assert_ne!(rows[guide].chars().nth(last), Some(' '), "{text}");
+        assert_eq!(rows[guide].chars().nth(last + 1), Some(' '), "{text}");
+    }
+
+    #[test]
+    fn compact_pages_hold_a_file_per_list_row() {
+        let rows = rows(&styled_screen(
+            40,
+            look(Selector::Bar, BrowserLayout::Compact),
+            30,
+        ));
+        let text = rows.join("\n");
+        let listed = rows
+            .iter()
+            .filter(|r| r.contains(".md") || r.contains("Guide"))
+            .count();
+        // 30 rows less the eight around the list (padding, find/logo row,
+        // count, gaps, page indicator, status bar).
+        assert_eq!(listed, 22, "{text}");
+        let first = rows.iter().position(|r| r.contains(".md")).unwrap();
+        assert!(
+            rows[first..first + listed]
+                .iter()
+                .all(|r| r.contains(".md") || r.contains("Guide")),
+            "{text}"
+        );
+        assert!(text.contains('━'), "more than one page:\n{text}");
+    }
+
+    #[test]
+    fn shortens_titles_from_the_right() {
+        assert_eq!(shorten_right("Guide", 10), "Guide");
+        assert_eq!(shorten_right("A long title", 6), "A lon…");
+        assert_eq!(shorten_right("Guide", 0), "");
     }
 
     #[test]

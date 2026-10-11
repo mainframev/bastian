@@ -154,6 +154,9 @@ mouse = false         # true: scroll with the mouse wheel
 logo = true           # false: no logo at the top of the file browser (--no-logo)
 images = true         # false: show images as their alt text (--no-images);
                       # `i` toggles them in the reader
+selector = "bar"      # how the browser marks the selected file: "bar",
+                      # "thick", "block", "arrow" or "highlight" (--selector)
+browser_layout = "cards"  # "compact" lists one file per row (--browser-layout)
 line_numbers = false  # true behaves like --line-numbers
 
 [interpreters]

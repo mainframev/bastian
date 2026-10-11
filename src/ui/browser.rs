@@ -35,15 +35,16 @@ const ENTRY_ROWS: u16 = 4;
 pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
     // Laid out like glow: a title badge (or the `Find:` line while
     // filtering), the document count, then the list.
-    // The page indicator goes under the list; each entry already ends with
-    // a blank row, which separates the two.
-    let [_, top, _, count_row, _, list, pager_row, status] = Layout::vertical([
+    // The page indicator goes under the list (each entry already ends with
+    // a blank row) with a blank row between it and the status bar.
+    let [_, top, _, count_row, _, list, pager_row, _, status] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Min(1),
+        Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
     ])

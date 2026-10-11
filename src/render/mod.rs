@@ -1,5 +1,8 @@
+mod ansi;
 mod code;
 pub mod theme;
+
+pub use ansi::to_ansi;
 mod wrap;
 
 use std::collections::HashMap;

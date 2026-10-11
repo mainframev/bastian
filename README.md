@@ -24,6 +24,8 @@ bastian docs/           # browse another directory
 bastian README.md       # read a file
 cat notes.md | bastian -
 bastian -p README.md    # print instead of opening the TUI
+bastian --pager README.md  # page it through $PAGER (default less -R)
+bastian --color always README.md | less -R
 bastian -y runbook.md   # run blocks without confirming each one
 bastian -n README.md    # show line numbers
 ```
@@ -100,6 +102,8 @@ Command-line flags take precedence.
 theme = "dark"        # or "light"
 width = 100           # maximum document width
 confirm = "always"    # "never" behaves like --yes
+color = "auto"        # printed output: "auto", "always" or "never"
+pager = false         # true: show documents in $PAGER instead of the TUI
 line_numbers = false  # true behaves like --line-numbers
 
 [interpreters]
@@ -109,8 +113,13 @@ python = ["uv", "run", "python", "-c"]
 fish = []             # an empty list stops a language from running
 ```
 
+Printed output is colored when it goes to a terminal; `NO_COLOR` turns that
+off and `CLICOLOR_FORCE=1` turns it on for pipes. Without `-w` it uses the
+terminal width (up to 120 columns), or 80 when there's no terminal.
+
 Each setting can also come from the environment: `BASTIAN_THEME`,
-`BASTIAN_WIDTH`, `BASTIAN_CONFIRM` and `BASTIAN_LINE_NUMBERS`. Precedence is
+`BASTIAN_WIDTH`, `BASTIAN_CONFIRM`, `BASTIAN_LINE_NUMBERS`, `BASTIAN_COLOR` and
+`BASTIAN_PAGER`. Precedence is
 defaults < config file < environment < command-line flags.
 
 ## Development

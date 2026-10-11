@@ -14,6 +14,10 @@ pub struct Config {
     pub confirm: Option<Confirm>,
     /// Show rendered line numbers in the reader.
     pub line_numbers: Option<bool>,
+    /// Colored output when printing: auto, always or never.
+    pub color: Option<ColorMode>,
+    /// Page printed output through `$PAGER` instead of writing it out.
+    pub pager: Option<bool>,
     /// Language → command line; the block source is appended as the last
     /// argument. An empty list stops that language from running.
     pub interpreters: HashMap<String, Vec<String>>,
@@ -32,6 +36,16 @@ pub enum Confirm {
     /// Ask before every run (the default).
     Always,
     /// Only ask for blocks marked `confirm`, like `--yes`.
+    Never,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum ColorMode {
+    /// Color when writing to a terminal (or with `CLICOLOR_FORCE`), never
+    /// with `NO_COLOR`.
+    Auto,
+    Always,
     Never,
 }
 
@@ -89,6 +103,8 @@ pub struct CliOverrides {
     pub width: Option<u16>,
     pub confirm: Option<Confirm>,
     pub line_numbers: Option<bool>,
+    pub color: Option<ColorMode>,
+    pub pager: Option<bool>,
 }
 
 /// Every effective setting, resolved once at startup. All modes (TUI,
@@ -99,6 +115,8 @@ pub struct Resolved {
     pub width: Setting<u16>,
     pub confirm: Setting<Confirm>,
     pub line_numbers: Setting<bool>,
+    pub color: Setting<ColorMode>,
+    pub pager: Setting<bool>,
     pub interpreters: HashMap<String, Vec<String>>,
 }
 
@@ -134,6 +152,18 @@ pub fn resolve(file: Config, env: &EnvMap, cli: CliOverrides) -> Result<Resolved
             file.line_numbers,
             env_value(env, "BASTIAN_LINE_NUMBERS", parse_bool, "true or false")?,
             cli.line_numbers,
+        ),
+        color: pick(
+            ColorMode::Auto,
+            file.color,
+            env_value(env, "BASTIAN_COLOR", parse_enum, "auto, always or never")?,
+            cli.color,
+        ),
+        pager: pick(
+            false,
+            file.pager,
+            env_value(env, "BASTIAN_PAGER", parse_bool, "true or false")?,
+            cli.pager,
         ),
         interpreters: file.interpreters,
     })
@@ -236,6 +266,7 @@ mod tests {
             width: Some(60),
             confirm: Some(Confirm::Never),
             line_numbers: Some(true),
+            ..CliOverrides::default()
         };
         let r = resolve(file(), &e, cli).unwrap();
         assert_eq!(
@@ -302,6 +333,8 @@ mod tests {
             width = 80
             confirm = "never"
             line_numbers = true
+            color = "never"
+            pager = true
             [interpreters]
             ruby = ["ruby", "-e"]
             fish = []
@@ -312,6 +345,8 @@ mod tests {
         assert_eq!(c.width, Some(80));
         assert_eq!(c.confirm, Some(Confirm::Never));
         assert_eq!(c.line_numbers, Some(true));
+        assert_eq!(c.color, Some(ColorMode::Never));
+        assert_eq!(c.pager, Some(true));
         assert_eq!(c.interpreters["ruby"], ["ruby", "-e"]);
         assert!(c.interpreters["fish"].is_empty());
     }

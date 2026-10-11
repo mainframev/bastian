@@ -5,6 +5,7 @@ pub mod doc;
 pub mod editor;
 pub mod exec;
 pub mod links;
+pub mod output;
 pub mod prompt;
 pub mod reader;
 pub mod render;

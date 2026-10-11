@@ -17,6 +17,7 @@ ratatui = "0.30.2"
 serde = { version = "1.0.229", features = ["derive"] }
 syntect = "5.3.0"
 toml = "1.1.8"
+tui-big-text = "0.8.10"
 unicode-width = "0.2.2"
 
 [dev-dependencies]

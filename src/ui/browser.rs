@@ -10,6 +10,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
+use super::logo;
 use super::reader::MARGIN;
 use super::status::{self, Left};
 use crate::browser::Browser;
@@ -39,7 +40,7 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
     // a blank row) with a blank row between it and the status bar.
     let [_, top, _, count_row, _, list, pager_row, _, status] = Layout::vertical([
         Constraint::Length(1),
-        Constraint::Length(1),
+        Constraint::Length(logo::HEIGHT),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
@@ -64,10 +65,7 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
             .map_or(b.filter.as_str(), |p| p.text.as_str());
         frame.render_widget(status::find_line(t, text, b.prompt.is_some()), inset(top));
     } else {
-        frame.render_widget(
-            Span::styled(" bastian ", Style::default().fg(t.warn).bg(t.h1_bg).bold()),
-            inset(top),
-        );
+        logo::draw(frame, inset(top), t);
     }
 
     let count = if b.filter.is_empty() {

@@ -68,12 +68,12 @@ fn query_background(timeout: Duration) -> Option<Background> {
     // SAFETY: termios calls on a file descriptor we own, with a zeroed struct
     // that tcgetattr fills before use.
     let mut saved: libc::termios = unsafe { std::mem::zeroed() };
-    if unsafe { libc::tcgetattr(fd, &mut saved) } != 0 {
+    if unsafe { libc::tcgetattr(fd, &raw mut saved) } != 0 {
         return None;
     }
-    let mut raw = saved;
-    unsafe { libc::cfmakeraw(&mut raw) };
-    if unsafe { libc::tcsetattr(fd, libc::TCSANOW, &raw) } != 0 {
+    let mut raw_mode = saved;
+    unsafe { libc::cfmakeraw(&raw mut raw_mode) };
+    if unsafe { libc::tcsetattr(fd, libc::TCSANOW, &raw const raw_mode) } != 0 {
         return None;
     }
 
@@ -93,7 +93,7 @@ fn query_background(timeout: Duration) -> Option<Background> {
             }
         }
     }
-    unsafe { libc::tcsetattr(fd, libc::TCSANOW, &saved) };
+    unsafe { libc::tcsetattr(fd, libc::TCSANOW, &raw const saved) };
     parse_osc11(&String::from_utf8_lossy(&reply))
 }
 
@@ -106,20 +106,20 @@ fn readable(fd: std::os::fd::RawFd, timeout: Duration) -> bool {
     // descriptor we own, and a timeval on the stack, as select(2) expects.
     unsafe {
         let mut set: libc::fd_set = std::mem::zeroed();
-        libc::FD_ZERO(&mut set);
-        libc::FD_SET(fd, &mut set);
+        libc::FD_ZERO(&raw mut set);
+        libc::FD_SET(fd, &raw mut set);
         let mut tv = libc::timeval {
             tv_sec: timeout.as_secs() as libc::time_t,
             tv_usec: timeout.subsec_micros() as libc::suseconds_t,
         };
         libc::select(
             fd + 1,
-            &mut set,
+            &raw mut set,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
-            &mut tv,
+            &raw mut tv,
         ) > 0
-            && libc::FD_ISSET(fd, &set)
+            && libc::FD_ISSET(fd, &raw const set)
     }
 }
 

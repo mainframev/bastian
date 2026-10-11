@@ -56,7 +56,7 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, show_logo: bool) {
     let finding = b.prompt.is_some() || !b.filter.is_empty();
     if finding {
         let text = b.prompt.as_ref().map_or(b.filter.as_str(), |p| p.text());
-        let cursor = b.prompt.as_ref().map(|p| p.cursor());
+        let cursor = b.prompt.as_ref().map(super::super::prompt::Prompt::cursor);
         frame.render_widget(status::find_line(t, text, cursor), inset(top));
     } else if show_logo {
         logo::draw(frame, inset(top), t);

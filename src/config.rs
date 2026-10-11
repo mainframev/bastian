@@ -168,12 +168,12 @@ pub fn describe(r: &Resolved, file: Option<&Path>) -> String {
             Source::Flag => "flag",
         }
     }
+    fn row<T: Value>(key: &str, s: &Setting<T>) -> (String, Source) {
+        (format!("{key} = {}", s.value.toml()), s.source)
+    }
     let mut out = String::new();
     if let Some(f) = file {
         out.push_str(&format!("# config file: {}\n", f.display()));
-    }
-    fn row<T: Value>(key: &str, s: &Setting<T>) -> (String, Source) {
-        (format!("{key} = {}", s.value.toml()), s.source)
     }
     let rows = [
         row("theme", &r.theme),
@@ -357,22 +357,19 @@ fn with_theme(text: &str, name: &str) -> String {
         l.strip_prefix("theme")
             .is_some_and(|rest| rest.trim_start().starts_with('='))
     });
-    match existing {
-        Some(i) => {
-            // Keep a trailing comment on the line.
-            let comment = lines[i]
-                .find('#')
-                .map(|h| lines[i][lines[i][..h].trim_end().len()..].to_string());
-            lines[i] = format!("{line}{}", comment.unwrap_or_default());
-        }
-        None => {
-            // After any leading comment block, before the first key or table.
-            let at = lines[..top]
-                .iter()
-                .position(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty())
-                .unwrap_or(top);
-            lines.insert(at, line);
-        }
+    if let Some(i) = existing {
+        // Keep a trailing comment on the line.
+        let comment = lines[i]
+            .find('#')
+            .map(|h| lines[i][lines[i][..h].trim_end().len()..].to_string());
+        lines[i] = format!("{line}{}", comment.unwrap_or_default());
+    } else {
+        // After any leading comment block, before the first key or table.
+        let at = lines[..top]
+            .iter()
+            .position(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty())
+            .unwrap_or(top);
+        lines.insert(at, line);
     }
     let mut out = lines.join("\n");
     out.push('\n');

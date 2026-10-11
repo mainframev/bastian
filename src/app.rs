@@ -211,8 +211,8 @@ impl App {
     }
 
     /// Returns false when the app should exit.
-    fn on_event(&mut self, event: Event) -> bool {
-        if let Event::Mouse(m) = &event {
+    fn on_event(&mut self, event: &Event) -> bool {
+        if let Event::Mouse(m) = event {
             let step = match m.kind {
                 MouseEventKind::ScrollDown => 1,
                 MouseEventKind::ScrollUp => -1,
@@ -225,7 +225,7 @@ impl App {
             }
             return true;
         }
-        let Event::Key(key) = event else { return true };
+        let Event::Key(key) = *event else { return true };
         if key.kind != KeyEventKind::Press {
             return true;
         }
@@ -449,7 +449,7 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<Option<String
         if event::poll(TICK)? {
             let event = event::read()?;
             let ignored = is_ignored(&event);
-            if !app.on_event(event) {
+            if !app.on_event(&event) {
                 return Ok(app.exit_note.take());
             }
             if let Some((path, line)) = app.edit.take() {
@@ -496,10 +496,10 @@ mod tests {
         let mut reader = settings.reader("t".into(), doc::parse(&src), PathBuf::from("."));
         reader.layout(80, 10);
         let mut app = App::read(reader, settings);
-        assert!(app.on_event(wheel(MouseEventKind::ScrollDown)));
-        assert!(app.on_event(wheel(MouseEventKind::ScrollDown)));
+        assert!(app.on_event(&wheel(MouseEventKind::ScrollDown)));
+        assert!(app.on_event(&wheel(MouseEventKind::ScrollDown)));
         assert_eq!(app.reader.as_ref().unwrap().scroll, 6);
-        app.on_event(wheel(MouseEventKind::ScrollUp));
+        app.on_event(&wheel(MouseEventKind::ScrollUp));
         assert_eq!(app.reader.as_ref().unwrap().scroll, 3);
     }
 }

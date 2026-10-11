@@ -226,7 +226,7 @@ pub fn resolve_link(base: &Url, href: &str) -> Option<Url> {
 /// Whether a resolved link points at a document bastian should open itself.
 pub fn is_document(url: &Url) -> bool {
     let path = url.path().to_ascii_lowercase();
-    crate::doc::is_markdown_ext(path.rsplit('.').next().unwrap_or("")) && path.contains('.')
+    doc::is_markdown_ext(path.rsplit('.').next().unwrap_or("")) && path.contains('.')
 }
 
 #[cfg(test)]

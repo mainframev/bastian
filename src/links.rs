@@ -14,7 +14,7 @@ pub fn collect(doc: &Document) -> Vec<Link> {
     let mut out = Vec::new();
     doc::visit(&doc.blocks, &mut |b| match b {
         Block::Heading { inlines, .. } | Block::Paragraph(inlines) => {
-            inline_links(inlines, &mut out)
+            inline_links(inlines, &mut out);
         }
         Block::Table { header, rows, .. } => {
             for cell in header.iter().chain(rows.iter().flatten()) {

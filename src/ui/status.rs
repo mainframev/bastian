@@ -8,6 +8,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::render::theme::Theme;
 
 /// What the left side of the status bar shows.
+#[derive(Clone, Copy)]
 pub enum Left<'a> {
     Text(&'a str),
     Error(&'a str),

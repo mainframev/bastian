@@ -88,7 +88,7 @@ const SYNTAX_KEYS: &[&str] = &[
     "deleted",
 ];
 
-/// TextMate scopes each `[syntax]` color applies to.
+/// `TextMate` scopes each `[syntax]` color applies to.
 const SCOPES: &[(&str, &str)] = &[
     ("comment", "comment, punctuation.definition.comment"),
     // Grammars scope `fn`, `let`, `class`, `func` etc. as storage.type.
@@ -192,7 +192,7 @@ pub fn exists(name: &str, dir: Option<&Path>) -> bool {
 pub fn load(name: &str, dir: Option<&Path>) -> Result<Theme> {
     let mut chain = Vec::new();
     let (file, origin) = read(name, dir, &mut chain)?;
-    build(file, &origin)
+    build(&file, &origin)
 }
 
 /// The merged file for `name` and where it came from. `chain` holds the
@@ -206,22 +206,17 @@ fn read(name: &str, dir: Option<&Path>, chain: &mut Vec<String>) -> Result<(Them
         bail!("theme `extends` loops: {}", chain.join(" → "));
     }
     chain.push(name.to_string());
-    let (file, origin): (ThemeFile, String) = match path {
-        Some(path) => {
-            let text = std::fs::read_to_string(&path)
-                .with_context(|| format!("reading {}", path.display()))?;
-            let file = toml::from_str(&text)
-                .with_context(|| format!("parsing theme {}", path.display()))?;
-            (file, path.display().to_string())
-        }
-        None => {
-            let src = builtin(name).ok_or_else(|| {
-                anyhow!("unknown theme {name:?}; run `bastian themes` to list them")
-            })?;
-            let file =
-                toml::from_str(src).with_context(|| format!("parsing built-in theme {name}"))?;
-            (file, canonical(name).to_string())
-        }
+    let (file, origin): (ThemeFile, String) = if let Some(path) = path {
+        let text = std::fs::read_to_string(&path)
+            .with_context(|| format!("reading {}", path.display()))?;
+        let file =
+            toml::from_str(&text).with_context(|| format!("parsing theme {}", path.display()))?;
+        (file, path.display().to_string())
+    } else {
+        let src = builtin(name)
+            .ok_or_else(|| anyhow!("unknown theme {name:?}; run `bastian themes` to list them"))?;
+        let file = toml::from_str(src).with_context(|| format!("parsing built-in theme {name}"))?;
+        (file, canonical(name).to_string())
     };
     match file.extends.clone() {
         Some(base) => {
@@ -287,7 +282,7 @@ pub fn list(dir: Option<&Path>) -> Vec<Listing> {
 }
 
 /// Check a parsed file is complete and turn it into a `Theme`.
-fn build(file: ThemeFile, origin: &str) -> Result<Theme> {
+fn build(file: &ThemeFile, origin: &str) -> Result<Theme> {
     check_keys(&file.ui, "ui", UI_KEYS, origin)?;
     check_keys(&file.syntax, "syntax", SYNTAX_KEYS, origin)?;
     let appearance = file
@@ -350,7 +345,7 @@ fn color(s: &str, section: &str, key: &str, origin: &str) -> Result<Color> {
     Ok(Color::Rgb(r, g, b))
 }
 
-/// A highlighter theme mapping the `[syntax]` colors onto TextMate scopes.
+/// A highlighter theme mapping the `[syntax]` colors onto `TextMate` scopes.
 /// Anything unmatched uses the document text color.
 fn syntax_theme(
     text: &str,
@@ -436,7 +431,7 @@ mod tests {
 
     #[test]
     fn incomplete_or_bad_themes_are_errors() {
-        let err = build(file(&with_line("link", "")), "t")
+        let err = build(&file(&with_line("link", "")), "t")
             .unwrap_err()
             .to_string();
         assert!(err.contains("missing ui.link"), "{err}");
@@ -444,18 +439,18 @@ mod tests {
         let src = BUILTINS[0]
             .1
             .replace("[syntax]", "[syntax]\nbogus = \"#000000\"");
-        let err = build(file(&src), "t").unwrap_err().to_string();
+        let err = build(&file(&src), "t").unwrap_err().to_string();
         assert!(err.contains("unknown key `syntax.bogus`"), "{err}");
 
         let src = with_line("accent", "accent = \"purple\"");
-        let err = build(file(&src), "t").unwrap_err().to_string();
+        let err = build(&file(&src), "t").unwrap_err().to_string();
         assert!(err.contains("`ui.accent` = \"purple\""), "{err}");
     }
 
     #[test]
     fn code_takes_the_palette_colors() {
-        let t = load("kanagawa-wave", None).unwrap();
-        let f: ThemeFile = toml::from_str(
+        let theme = load("kanagawa-wave", None).unwrap();
+        let palette: ThemeFile = toml::from_str(
             BUILTINS
                 .iter()
                 .find(|(n, _)| *n == "kanagawa-wave")
@@ -464,13 +459,13 @@ mod tests {
         )
         .unwrap();
         let want = |key: &str| {
-            let (r, g, b) = rgb(&f.syntax[key]).unwrap();
-            Color::Rgb(r, g, b)
+            let (red, green, blue) = rgb(&palette.syntax[key]).unwrap();
+            Color::Rgb(red, green, blue)
         };
         let lines = crate::render::code::highlight(
             "fn main() { let s = \"hi\"; struct Point; }\n",
             Some("rust"),
-            &t,
+            &theme,
         );
         let color_of = |text: &str| {
             lines[0]

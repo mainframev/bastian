@@ -119,7 +119,7 @@ mod tests {
             a.env,
             [("A".into(), "1".into()), ("B".into(), "x=y".into())]
         );
-        assert_eq!(a.timeout, Some(Duration::from_secs(120)));
+        assert_eq!(a.timeout, Some(Duration::from_mins(2)));
         assert!(a.unknown.is_empty());
     }
 
@@ -140,7 +140,7 @@ mod tests {
     fn durations() {
         assert_eq!(parse_duration("500ms"), Some(Duration::from_millis(500)));
         assert_eq!(parse_duration("10"), Some(Duration::from_secs(10)));
-        assert_eq!(parse_duration("1h"), Some(Duration::from_secs(3600)));
+        assert_eq!(parse_duration("1h"), Some(Duration::from_hours(1)));
         assert_eq!(parse_duration("x"), None);
     }
 }

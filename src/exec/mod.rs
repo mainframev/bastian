@@ -40,7 +40,7 @@ impl Interpreters {
         match self.overrides.get(lang) {
             Some(cmd) if cmd.is_empty() => None,
             Some(cmd) => Some(cmd.clone()),
-            None => builtin(lang).map(|c| c.iter().map(|s| s.to_string()).collect()),
+            None => builtin(lang).map(|c| c.iter().map(ToString::to_string).collect()),
         }
     }
 }

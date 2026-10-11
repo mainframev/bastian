@@ -118,7 +118,7 @@ fn to_item(
 ) -> TreeItem<'static, usize> {
     let mut path = parent.to_vec();
     path.push(node.id);
-    paths[node.id] = path.clone();
+    paths[node.id].clone_from(&path);
     if node.children.is_empty() {
         return TreeItem::new_leaf(node.id, node.text);
     }

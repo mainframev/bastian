@@ -488,7 +488,7 @@ impl Reader {
         self.modified = modified;
         match crate::text::read_text(path) {
             Ok(src) => {
-                self.replace_doc(crate::doc::parse_for(&src, Some(path)));
+                self.replace_doc(doc::parse_for(&src, Some(path)));
                 self.text = src;
                 self.message = Some("reloaded".into());
             }

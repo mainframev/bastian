@@ -104,6 +104,10 @@ impl Highlights {
 }
 
 /// Render with each code block's run status and output drawn under it.
+#[allow(
+    clippy::implicit_hasher,
+    reason = "the reader's own maps; no need to be generic over hashers"
+)]
 pub fn render_with_runs(
     doc: &Document,
     width: u16,

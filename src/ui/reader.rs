@@ -380,7 +380,11 @@ fn draw_find(frame: &mut Frame, r: &Reader, area: Rect) {
     ])
     .areas(area);
     frame.render_widget(
-        status::find_line(t, text, r.prompt.as_ref().map(|p| p.cursor())),
+        status::find_line(
+            t,
+            text,
+            r.prompt.as_ref().map(super::super::prompt::Prompt::cursor),
+        ),
         left,
     );
     frame.render_widget(Span::styled(count, Style::default().fg(t.muted)), right);

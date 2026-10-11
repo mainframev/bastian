@@ -35,3 +35,31 @@ url = "2.5.8"
 [dev-dependencies]
 insta = "1.49.0"
 tempfile = "3.27.0"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Too noisy for a TUI binary, or a matter of taste.
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+# Settings structs are flags by nature.
+struct_excessive_bools = "allow"
+# Terminal geometry is u16 cells against usize indexes everywhere.
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+# `push_str(&format!(..))` reads better than `let _ = write!(..)` into a
+# String, which can't fail anyway.
+format_push_string = "allow"
+format_collect = "allow"
+# Cheap extras beyond pedantic.
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"

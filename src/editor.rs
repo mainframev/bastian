@@ -92,11 +92,7 @@ mod tests {
             format!("#!/bin/sh\necho \"$@\" > '{}'\n", log.display()),
         )
         .unwrap();
-        std::process::Command::new("chmod")
-            .arg("+x")
-            .arg(&fake)
-            .status()
-            .unwrap();
+        Command::new("chmod").arg("+x").arg(&fake).status().unwrap();
         open_with(&fake.display().to_string(), &path, Some(42)).unwrap();
         let args = std::fs::read_to_string(&log).unwrap();
         assert_eq!(args.trim(), format!("+42 {}", path.display()));

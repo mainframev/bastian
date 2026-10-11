@@ -116,7 +116,7 @@ impl Browser {
         let (tx, rx) = mpsc::channel();
         let root = self.root.clone();
         let all = self.all;
-        std::thread::spawn(move || scan(&root, all, tx));
+        std::thread::spawn(move || scan(&root, all, &tx));
         self.entries.clear();
         self.refilter();
         self.incoming = Some(rx);
@@ -255,23 +255,20 @@ impl Browser {
             KeyCode::Char('u') if ctrl => self.move_by(-page / 2),
             KeyCode::Char('f') if ctrl => self.move_by(page),
             KeyCode::Char('b') if ctrl => self.move_by(-page),
-            KeyCode::Char('q') => return Action::Quit,
             KeyCode::Esc if !self.filter.is_empty() => {
                 self.filter.clear();
                 self.refilter();
             }
-            KeyCode::Esc => return Action::Quit,
+            KeyCode::Char('q') | KeyCode::Esc => return Action::Quit,
             KeyCode::Char('/') => self.prompt = Some(Prompt::new(&self.filter)),
             KeyCode::Char('j' | 'n') if ctrl => self.move_by(1),
             KeyCode::Char('k' | 'p') if ctrl => self.move_by(-1),
             KeyCode::Char('j') | KeyCode::Down => self.move_by(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_by(-1),
-            KeyCode::PageDown => self.move_by(page),
-            KeyCode::PageUp => self.move_by(-page),
             KeyCode::Char('g') | KeyCode::Home => self.selected = 0,
             KeyCode::Char('G') | KeyCode::End => self.move_by(isize::MAX),
-            KeyCode::Char('l') | KeyCode::Right => self.move_by(page),
-            KeyCode::Char('h') | KeyCode::Left => self.move_by(-page),
+            KeyCode::Char('l') | KeyCode::Right | KeyCode::PageDown => self.move_by(page),
+            KeyCode::Char('h') | KeyCode::Left | KeyCode::PageUp => self.move_by(-page),
             KeyCode::Enter => {
                 if let Some(e) = self.selected_entry() {
                     return Action::Open(e.path.clone());
@@ -307,7 +304,9 @@ fn is_navigation(key: &KeyEvent) -> bool {
 /// paths, newest first.
 pub fn discover(root: &Path, all: bool) -> Vec<Entry> {
     let (tx, rx) = mpsc::channel();
-    scan(root, all, tx);
+    scan(root, all, &tx);
+    // The receiver below ends once every sender is gone.
+    drop(tx);
     let mut entries: Vec<Entry> = rx.into_iter().collect();
     sort(&mut entries);
     entries
@@ -330,7 +329,7 @@ fn sort(entries: &mut [Entry]) {
 /// Walk `root` on several threads, sending each Markdown file as it's found.
 /// Returns when the walk is done. Hidden and gitignored paths are skipped
 /// unless `all` is set; unreadable entries and broken symlinks are skipped.
-pub fn scan(root: &Path, all: bool, tx: Sender<Entry>) {
+pub fn scan(root: &Path, all: bool, tx: &Sender<Entry>) {
     ignore::WalkBuilder::new(root)
         .hidden(!all)
         .git_ignore(!all)
@@ -565,7 +564,7 @@ mod tests {
             dir.path().join("new.md"),
             "new.md".into(),
             None,
-            Some(SystemTime::now() + std::time::Duration::from_secs(60)),
+            Some(SystemTime::now() + std::time::Duration::from_mins(1)),
             None,
         ))
         .unwrap();

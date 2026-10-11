@@ -144,7 +144,7 @@ fn line_number_gutter_fits_in_terminal() {
     let row: String = (0..w).map(|x| buf[(x, 1)].symbol().to_string()).collect();
     let digits = usize::from(gutter - 1);
     let start = usize::from(MARGIN);
-    assert_eq!(&row[start..start + digits + 1], format!("{:>digits$} ", 1));
+    assert_eq!(&row[start..=(start + digits)], format!("{:>digits$} ", 1));
 }
 
 #[test]

@@ -14,6 +14,10 @@ use bastian::{browser, doc, images, output, remote, render, text, themes};
 /// Read Markdown in the terminal, and run its code blocks.
 #[derive(Parser)]
 #[command(version, after_help = config_help(), args_conflicts_with_subcommands = true)]
+#[allow(
+    clippy::doc_markdown,
+    reason = "clap prints these doc comments as --help text, where backticks would show"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
@@ -216,7 +220,7 @@ fn main() -> Result<()> {
     let out = Output {
         width: output::print_width(
             &resolved.width,
-            ratatui::crossterm::terminal::size().ok().map(|(w, _)| w),
+            crossterm::terminal::size().ok().map(|(w, _)| w),
         ),
         // A pager shows colors itself, so `auto` colors when paging too.
         color: output::use_color(
@@ -467,11 +471,10 @@ fn print(doc: &doc::Document, settings: &Settings, out: &Output) -> Result<()> {
     } else {
         render::to_plain(&rendered.lines)
     };
-    match &out.pager {
-        Some(pager) => output::page(&format!("{text}\n"), pager),
-        None => {
-            println!("{text}");
-            Ok(())
-        }
+    if let Some(pager) = &out.pager {
+        output::page(&format!("{text}\n"), pager)
+    } else {
+        println!("{text}");
+        Ok(())
     }
 }

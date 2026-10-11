@@ -69,6 +69,151 @@ pub fn load() -> Result<Config> {
     }
 }
 
+/// Which config file to use: `--config`, else `BASTIAN_CONFIG`, else the
+/// default location. Returns the path and whether it was given explicitly
+/// (an explicit file must exist). `~` and `$VAR` are expanded in both.
+pub fn locate(
+    flag: Option<&str>,
+    env_path: Option<&str>,
+    lookup: &dyn Fn(&str) -> Option<String>,
+) -> Option<(PathBuf, bool)> {
+    match flag.or(env_path.filter(|p| !p.is_empty())) {
+        Some(p) => Some((expand(p, lookup), true)),
+        None => path().map(|p| (p, false)),
+    }
+}
+
+/// Load the located config file. A missing default file is an empty
+/// config; a missing explicit one is an error.
+pub fn load_at(path: &Path, explicit: bool) -> Result<Config> {
+    if path.exists() {
+        load_from(path)
+    } else if explicit {
+        Err(anyhow!("config file {} does not exist", path.display()))
+    } else {
+        Ok(Config::default())
+    }
+}
+
+/// Expand a leading `~` (home directory) and `$VAR` / `${VAR}` references.
+/// Unknown variables expand to nothing, as in a shell.
+pub fn expand(input: &str, lookup: &dyn Fn(&str) -> Option<String>) -> PathBuf {
+    let mut s = input.to_string();
+    if (s == "~" || s.starts_with("~/"))
+        && let Some(home) = lookup("HOME")
+    {
+        s.replace_range(..1, &home);
+    }
+    let mut out = String::new();
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '$' {
+            out.push(c);
+            continue;
+        }
+        let braced = chars.peek() == Some(&'{');
+        if braced {
+            chars.next();
+        }
+        let mut name = String::new();
+        while let Some(&n) = chars.peek() {
+            if n.is_ascii_alphanumeric() || n == '_' {
+                name.push(n);
+                chars.next();
+            } else {
+                break;
+            }
+        }
+        if braced && chars.peek() == Some(&'}') {
+            chars.next();
+        }
+        if name.is_empty() {
+            out.push('$');
+        } else {
+            out.push_str(&lookup(&name).unwrap_or_default());
+        }
+    }
+    PathBuf::from(out)
+}
+
+/// Commented starting point written by `bastian config`.
+pub const TEMPLATE: &str = r#"# bastian configuration. Every key is optional; command-line flags and
+# BASTIAN_* environment variables take precedence over this file.
+
+# theme = "auto"        # "auto" (match the terminal), "dark" or "light"
+# width = 100           # maximum document width
+# confirm = "always"    # "never" runs code blocks without asking, like --yes
+# line_numbers = false  # show line numbers in the reader
+# color = "auto"        # printed output: "auto", "always" or "never"
+# pager = false         # show documents in $PAGER instead of the TUI
+# all = false           # also list hidden and gitignored files
+
+# [interpreters]
+# The block source is appended as the last argument.
+# ruby = ["ruby", "-e"]
+# fish = []             # an empty list stops a language from running
+"#;
+
+/// The resolved settings as TOML, each value annotated with where it came
+/// from, for `--print-config`.
+pub fn describe(r: &Resolved, file: Option<&Path>) -> String {
+    fn src(s: Source) -> &'static str {
+        match s {
+            Source::Default => "default",
+            Source::File => "config file",
+            Source::Env => "environment",
+            Source::Flag => "flag",
+        }
+    }
+    fn name<T: ValueEnum>(v: &T) -> String {
+        v.to_possible_value()
+            .map_or_else(String::new, |p| p.get_name().to_string())
+    }
+    let mut out = String::new();
+    if let Some(f) = file {
+        out.push_str(&format!("# config file: {}\n", f.display()));
+    }
+    let mut row = |key: &str, value: String, source: Source| {
+        out.push_str(&format!(
+            "{:<22}# {}\n",
+            format!("{key} = {value}"),
+            src(source)
+        ));
+    };
+    row(
+        "theme",
+        format!("{:?}", name(&r.theme.value)),
+        r.theme.source,
+    );
+    row("width", r.width.value.to_string(), r.width.source);
+    row(
+        "confirm",
+        format!("{:?}", name(&r.confirm.value)),
+        r.confirm.source,
+    );
+    row(
+        "line_numbers",
+        r.line_numbers.value.to_string(),
+        r.line_numbers.source,
+    );
+    row(
+        "color",
+        format!("{:?}", name(&r.color.value)),
+        r.color.source,
+    );
+    row("pager", r.pager.value.to_string(), r.pager.source);
+    row("all", r.all.value.to_string(), r.all.source);
+    if !r.interpreters.is_empty() {
+        out.push_str("\n[interpreters]\n");
+        let mut langs: Vec<_> = r.interpreters.iter().collect();
+        langs.sort();
+        for (lang, cmd) in langs {
+            out.push_str(&format!("{lang} = {cmd:?}\n"));
+        }
+    }
+    out
+}
+
 pub fn load_from(path: &Path) -> Result<Config> {
     let text =
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
@@ -297,6 +442,92 @@ mod tests {
         );
         assert_eq!(r.confirm.value, Confirm::Never);
         assert!(r.line_numbers.value);
+    }
+
+    #[test]
+    fn expands_home_and_variables() {
+        let lookup = |k: &str| match k {
+            "HOME" => Some("/home/me".to_string()),
+            "XDG" => Some("/xdg".to_string()),
+            _ => None,
+        };
+        assert_eq!(
+            expand("~/b.toml", &lookup),
+            PathBuf::from("/home/me/b.toml")
+        );
+        assert_eq!(
+            expand("$XDG/b/c.toml", &lookup),
+            PathBuf::from("/xdg/b/c.toml")
+        );
+        assert_eq!(expand("${XDG}x", &lookup), PathBuf::from("/xdgx"));
+        assert_eq!(expand("$NOPE/a", &lookup), PathBuf::from("/a"));
+        assert_eq!(expand("a~b$", &lookup), PathBuf::from("a~b$"));
+    }
+
+    #[test]
+    fn locate_prefers_flag_then_env() {
+        let lookup = |k: &str| (k == "HOME").then(|| "/h".to_string());
+        assert_eq!(
+            locate(Some("~/f.toml"), Some("/e.toml"), &lookup),
+            Some((PathBuf::from("/h/f.toml"), true))
+        );
+        assert_eq!(
+            locate(None, Some("/e.toml"), &lookup),
+            Some((PathBuf::from("/e.toml"), true))
+        );
+        assert!(matches!(
+            locate(None, Some(""), &lookup),
+            Some((_, false)) | None
+        ));
+    }
+
+    #[test]
+    fn explicit_missing_config_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("none.toml");
+        assert!(load_at(&missing, true).is_err());
+        assert_eq!(load_at(&missing, false).unwrap(), Config::default());
+    }
+
+    #[test]
+    fn template_parses_and_describe_shows_sources() {
+        assert_eq!(
+            toml::from_str::<Config>(TEMPLATE).unwrap(),
+            Config::default()
+        );
+        let file = Config {
+            width: Some(80),
+            ..Config::default()
+        };
+        let r = resolve(
+            file,
+            &env(&[("BASTIAN_THEME", "light")]),
+            CliOverrides::default(),
+        )
+        .unwrap();
+        let text = describe(&r, None);
+        assert!(text.contains("theme = \"light\""), "{text}");
+        assert!(
+            text.lines()
+                .any(|l| l.starts_with("theme") && l.ends_with("# environment")),
+            "{text}"
+        );
+        assert!(
+            text.lines()
+                .any(|l| l.starts_with("width = 80") && l.ends_with("# config file")),
+            "{text}"
+        );
+        assert!(
+            text.lines()
+                .any(|l| l.starts_with("pager = false") && l.ends_with("# default")),
+            "{text}"
+        );
+        // The output is itself valid config.
+        let stripped: String = text
+            .lines()
+            .map(|l| format!("{}\n", l.split('#').next().unwrap()))
+            .collect();
+        assert!(toml::from_str::<Config>(&stripped).is_ok(), "{stripped}");
     }
 
     #[test]

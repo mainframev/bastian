@@ -13,8 +13,11 @@ use bastian::{browser, doc, output, render, text};
 
 /// Read Markdown in the terminal, and run its code blocks.
 #[derive(Parser)]
-#[command(version, after_help = config_help())]
+#[command(version, after_help = config_help(), args_conflicts_with_subcommands = true)]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
+
     /// Markdown file to read, `-` for stdin, or a directory to browse.
     /// Defaults to browsing the current directory.
     path: Option<PathBuf>,
@@ -51,6 +54,23 @@ struct Cli {
     /// Color printed output [default: auto; honors NO_COLOR and CLICOLOR_FORCE].
     #[arg(long, value_enum)]
     color: Option<ColorMode>,
+
+    /// Config file to use instead of the default (also BASTIAN_CONFIG).
+    /// `~` and `$VAR` are expanded.
+    #[arg(long, value_name = "PATH")]
+    config: Option<String>,
+
+    /// Print the effective settings and where each came from, then exit.
+    #[arg(long)]
+    print_config: bool,
+}
+
+#[derive(clap::Subcommand)]
+enum Command {
+    /// Open the config file in your editor, creating it from a commented
+    /// template if it doesn't exist. (To read a file named `config`, use
+    /// `./config`.)
+    Config,
 }
 
 fn config_help() -> String {
@@ -62,8 +82,22 @@ fn config_help() -> String {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    let lookup = |k: &str| std::env::var(k).ok();
+    let located = config::locate(
+        cli.config.as_deref(),
+        std::env::var("BASTIAN_CONFIG").ok().as_deref(),
+        &lookup,
+    );
+    if let Some(Command::Config) = cli.command {
+        let (path, _) = located.context("no config location: HOME is not set")?;
+        return edit_config(&path);
+    }
+    let file = match &located {
+        Some((path, explicit)) => config::load_at(path, *explicit)?,
+        None => config::Config::default(),
+    };
     let resolved = config::resolve(
-        config::load()?,
+        file,
         &config::env_vars(),
         CliOverrides {
             theme: cli.theme,
@@ -75,6 +109,13 @@ fn main() -> Result<()> {
             all: cli.all.then_some(true),
         },
     )?;
+    if cli.print_config {
+        print!(
+            "{}",
+            config::describe(&resolved, located.as_ref().map(|(p, _)| p.as_path()))
+        );
+        return Ok(());
+    }
     let stdout_tty = std::io::stdout().is_terminal();
     let out = Output {
         width: output::print_width(
@@ -130,6 +171,24 @@ fn main() -> Result<()> {
     let result = app::run(&mut terminal, app);
     ratatui::restore();
     result
+}
+
+/// Open the config file in the editor, writing the template first if it's
+/// missing.
+fn edit_config(path: &std::path::Path) -> Result<()> {
+    if !path.exists() {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+        }
+        std::fs::write(path, config::TEMPLATE)
+            .with_context(|| format!("writing {}", path.display()))?;
+        eprintln!("created {}", path.display());
+    }
+    let cmd = bastian::editor::command();
+    let status =
+        bastian::editor::open_with(&cmd, path, None).with_context(|| format!("running {cmd}"))?;
+    anyhow::ensure!(status.success(), "{cmd} exited with {status}");
+    Ok(())
 }
 
 /// Turn resolved configuration into what the app runs with.

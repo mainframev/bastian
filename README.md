@@ -121,6 +121,12 @@ Printed output is colored when it goes to a terminal; `NO_COLOR` turns that
 off and `CLICOLOR_FORCE=1` turns it on for pipes. Without `-w` it uses the
 terminal width (up to 120 columns), or 80 when there's no terminal.
 
+Use another file with `--config <path>` or `BASTIAN_CONFIG` (`~` and `$VAR` are
+expanded). `bastian config` opens the file in your editor, creating it from a
+commented template first, and `bastian --print-config` shows the effective
+settings and where each one came from. To read a file literally named
+`config`, write `./config`.
+
 Each setting can also come from the environment: `BASTIAN_THEME`,
 `BASTIAN_WIDTH`, `BASTIAN_CONFIRM`, `BASTIAN_LINE_NUMBERS`, `BASTIAN_COLOR`,
 `BASTIAN_PAGER` and `BASTIAN_ALL`. Precedence is

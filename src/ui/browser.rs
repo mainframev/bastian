@@ -40,9 +40,11 @@ const CARD_ROWS: u16 = 4;
 
 /// How the file list looks, from the settings.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct Look {
+pub struct Look<'a> {
     /// The logo at the top.
     pub logo: bool,
+    /// strftime format of each file's date; `None` leaves dates out.
+    pub date_format: Option<&'a str>,
     pub selector: Selector,
     pub layout: BrowserLayout,
 }
@@ -81,7 +83,8 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, look: Look) {
         format!("{} of {} documents", b.visible.len(), b.entries.len())
     };
     let entry_rows = match look.layout {
-        BrowserLayout::Cards => CARD_ROWS,
+        // A row less without the date line.
+        BrowserLayout::Cards => CARD_ROWS - u16::from(look.date_format.is_none()),
         BrowserLayout::Compact => 1,
     };
     b.layout(usize::from(list.height / entry_rows));
@@ -129,7 +132,11 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, look: Look) {
         let e = &b.entries[idx];
         let selected = row == b.selected;
         let start = lines.len();
-        let date = e.created.map(|c| format_time(c, &tz)).unwrap_or_default();
+        let date = look
+            .date_format
+            .zip(e.date(b.scan.sort))
+            .map(|(f, time)| format_time(time, &tz, f))
+            .unwrap_or_default();
         match look.layout {
             BrowserLayout::Cards => {
                 lines.extend(card_lines(e, &date, t, look.selector, selected));
@@ -199,15 +206,6 @@ fn marker(selector: Selector, selected: bool, first: bool, t: &Theme) -> Span<'s
     }
 }
 
-/// The name an entry is listed under: its title, else its file name.
-fn title(e: &Entry) -> String {
-    e.title.clone().unwrap_or_else(|| {
-        e.path
-            .file_name()
-            .map_or_else(|| e.rel.clone(), |n| n.to_string_lossy().into_owned())
-    })
-}
-
 /// Title, then progressively quieter path and date lines. The path is left
 /// out when it would just repeat the title (a top-level file without a
 /// title).
@@ -219,7 +217,7 @@ fn card_lines(
     selected: bool,
 ) -> Vec<Line<'static>> {
     let mark = |first| marker(selector, selected, first, t);
-    let title = title(e);
+    let title = e.name();
     let show_path = e.rel != title;
     let mut lines = vec![Line::from(vec![
         mark(true),
@@ -231,13 +229,15 @@ fn card_lines(
             Span::styled(e.rel.clone(), Style::default().fg(t.subtle)),
         ]));
     }
-    lines.push(Line::from(vec![
-        mark(false),
-        Span::styled(
-            date.to_string(),
-            Style::default().fg(t.muted).add_modifier(Modifier::DIM),
-        ),
-    ]));
+    if !date.is_empty() {
+        lines.push(Line::from(vec![
+            mark(false),
+            Span::styled(
+                date.to_string(),
+                Style::default().fg(t.muted).add_modifier(Modifier::DIM),
+            ),
+        ]));
+    }
     lines
 }
 
@@ -254,7 +254,7 @@ fn compact_line(
 ) -> Line<'static> {
     const GAP: usize = 2;
     let mark = marker(selector, selected, true, t);
-    let title = title(e);
+    let title = e.name();
     let show_path = e.rel != title;
     let date_w = if date.is_empty() {
         0
@@ -338,15 +338,21 @@ fn spinner(b: &Browser) -> char {
     FRAMES[(b.started.elapsed().as_millis() / 80) as usize % FRAMES.len()]
 }
 
-/// Absolute local time, e.g. `06 Aug 2026 02:20 CEST`.
-pub fn format_time(t: SystemTime, tz: &TimeZone) -> String {
-    match Timestamp::try_from(t) {
-        Ok(ts) => ts
-            .to_zoned(tz.clone())
-            .strftime("%d %b %Y %H:%M %Z")
-            .to_string(),
-        Err(_) => String::new(),
-    }
+/// Local time in strftime `format`, e.g. `06 Aug 2026 02:20 CEST`.
+/// Empty when it can't be shown.
+pub fn format_time(t: SystemTime, tz: &TimeZone, format: &str) -> String {
+    Timestamp::try_from(t)
+        .ok()
+        .and_then(|ts| jiff::fmt::strtime::format(format, &ts.to_zoned(tz.clone())).ok())
+        .unwrap_or_default()
+}
+
+/// An error naming `date_format` when `format` can't format a time.
+pub fn check_date_format(format: &str) -> anyhow::Result<()> {
+    let zoned = Timestamp::UNIX_EPOCH.to_zoned(TimeZone::UTC);
+    jiff::fmt::strtime::format(format, &zoned)
+        .map(drop)
+        .map_err(|e| anyhow::anyhow!("bad `date_format` {format:?}: {e}"))
 }
 
 #[cfg(test)]
@@ -381,9 +387,15 @@ mod tests {
     fn formats_absolute_local_time() {
         let t = SystemTime::UNIX_EPOCH + Duration::from_secs(1_786_000_000);
         let utc = TimeZone::UTC;
-        assert_eq!(format_time(t, &utc), "06 Aug 2026 07:06 UTC");
+        assert_eq!(
+            format_time(t, &utc, crate::config::DATE_FORMAT),
+            "06 Aug 2026 07:06 UTC"
+        );
         let berlin = TimeZone::get("Europe/Berlin").unwrap();
-        assert_eq!(format_time(t, &berlin), "06 Aug 2026 09:06 CEST");
+        assert_eq!(
+            format_time(t, &berlin, crate::config::DATE_FORMAT),
+            "06 Aug 2026 09:06 CEST"
+        );
     }
 
     /// Browse a tree with `top.md` (no title) and `docs/guide.md` (titled),
@@ -391,6 +403,7 @@ mod tests {
     fn screen(files: usize, logo: bool, h: u16) -> Vec<String> {
         let look = Look {
             logo,
+            date_format: Some(crate::config::DATE_FORMAT),
             ..Look::default()
         };
         rows(&styled_screen(files, look, h))
@@ -408,7 +421,7 @@ mod tests {
         for i in 0..files {
             std::fs::write(dir.path().join(format!("n{i}.md")), "x\n").unwrap();
         }
-        let mut b = Browser::new(dir.path().to_path_buf(), false);
+        let mut b = Browser::new(dir.path().to_path_buf(), crate::browser::Scan::default());
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         while b.is_scanning() {
             b.tick();
@@ -439,9 +452,10 @@ mod tests {
             .unwrap_or_else(|| panic!("no {s}:\n{}", rows.join("\n")))
     }
 
-    fn look(selector: Selector, layout: BrowserLayout) -> Look {
+    fn look(selector: Selector, layout: BrowserLayout) -> Look<'static> {
         Look {
             logo: false,
+            date_format: Some(crate::config::DATE_FORMAT),
             selector,
             layout,
         }
@@ -575,5 +589,34 @@ mod tests {
         assert!(!one.contains('━'), "{one}");
         let many = screen(20, false, 30).join("\n");
         assert!(many.contains('━'), "{many}");
+    }
+
+    #[test]
+    fn dates_can_be_left_out() {
+        let look = Look {
+            date_format: None,
+            ..look(Selector::Bar, BrowserLayout::Cards)
+        };
+        let rows = rows(&styled_screen(0, look, 30));
+        let text = rows.join("\n");
+        // top.md is just its name now, then the gap.
+        assert_eq!(
+            row_of(&rows, "Guide"),
+            row_of(&rows, "top.md") + 2,
+            "{text}"
+        );
+        assert!(!text.contains(" 20"), "no year anywhere:\n{text}");
+    }
+
+    #[test]
+    fn date_formats_are_checked() {
+        assert!(check_date_format("%Y-%m-%d").is_ok());
+        let err = check_date_format("%Y %").unwrap_err().to_string();
+        assert!(
+            err.contains("`date_format`") && err.contains("%Y %"),
+            "{err}"
+        );
+        let t = SystemTime::UNIX_EPOCH + Duration::from_secs(1_786_000_000);
+        assert_eq!(format_time(t, &TimeZone::UTC, "%Y-%m-%d"), "2026-08-06");
     }
 }

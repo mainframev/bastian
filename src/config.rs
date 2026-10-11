@@ -36,6 +36,16 @@ pub struct Config {
     pub selector: Option<Selector>,
     /// How the file browser lays out each file.
     pub browser_layout: Option<BrowserLayout>,
+    /// Order of the files in the browser.
+    pub sort: Option<SortBy>,
+    /// Show each file's date in the browser.
+    pub dates: Option<bool>,
+    /// strftime format of those dates.
+    pub date_format: Option<String>,
+    /// Extensions of the files the browser lists.
+    pub extensions: Option<Vec<String>>,
+    /// Gitignore-style globs of paths the browser leaves out.
+    pub ignore: Option<Vec<String>>,
     /// Language → command line; the block source is appended as the last
     /// argument. An empty list stops that language from running.
     pub interpreters: HashMap<String, Vec<String>>,
@@ -84,6 +94,22 @@ pub enum BrowserLayout {
     Cards,
     Compact,
 }
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum SortBy {
+    // Last modified first (the default), created first, or by name.
+    #[default]
+    Modified,
+    Created,
+    Name,
+}
+
+/// The browser's dates when nothing else is set: `06 Aug 2026 09:06 CEST`.
+pub const DATE_FORMAT: &str = "%d %b %Y %H:%M %Z";
+
+/// The Markdown extensions the browser lists by default.
+pub const EXTENSIONS: &[&str] = &["md", "markdown", "mdx", "mdown", "mkdn", "mkd"];
 
 pub fn path() -> Option<PathBuf> {
     let base = match std::env::var_os("XDG_CONFIG_HOME") {
@@ -181,6 +207,11 @@ pub const TEMPLATE: &str = r#"# bastian configuration. Every key is optional; co
 # selector = "bar"      # marks the selected file: "bar", "thick", "block",
 #                       # "arrow" or "highlight"
 # browser_layout = "cards"  # "cards" (title, path, date) or "compact" (one row)
+# sort = "modified"     # browser order: "modified", "created" or "name"
+# dates = true          # show file dates in the browser
+# date_format = "%d %b %Y %H:%M %Z"  # strftime format of those dates
+# extensions = ["md", "markdown", "mdx", "mdown", "mkdn", "mkd"]
+# ignore = ["node_modules", "CHANGELOG.md"]  # gitignore-style globs to leave out
 
 # [interpreters]
 # The block source is appended as the last argument.
@@ -191,6 +222,7 @@ pub const TEMPLATE: &str = r#"# bastian configuration. Every key is optional; co
 /// The resolved settings as TOML, each value annotated with where it came
 /// from, for `--print-config`.
 pub fn describe(r: &Resolved, file: Option<&Path>) -> String {
+    const ALIGN_MAX: usize = 40;
     fn src(s: Source) -> &'static str {
         match s {
             Source::Default => "default",
@@ -221,11 +253,24 @@ pub fn describe(r: &Resolved, file: Option<&Path>) -> String {
         row("images", &r.images),
         row("selector", &r.selector),
         row("browser_layout", &r.browser_layout),
+        row("sort", &r.sort),
+        row("dates", &r.dates),
+        row("date_format", &r.date_format),
+        row("extensions", &r.extensions),
+        row("ignore", &r.ignore),
     ];
-    // Line the source comments up, at least two spaces after the value.
-    let w = rows.iter().map(|(text, _)| text.len()).max().unwrap_or(0) + 2;
+    // Line the source comments up, at least two spaces after the value;
+    // a long list doesn't push every other comment out.
+    let w = rows
+        .iter()
+        .map(|(text, _)| text.len())
+        .filter(|&len| len <= ALIGN_MAX)
+        .max()
+        .unwrap_or(0)
+        + 2;
     for (text, source) in rows {
-        out.push_str(&format!("{text:<w$}# {}\n", src(source)));
+        let pad = w.saturating_sub(text.len()).max(2);
+        out.push_str(&format!("{text}{:pad$}# {}\n", "", src(source)));
     }
     if !r.interpreters.is_empty() {
         out.push_str("\n[interpreters]\n");
@@ -287,6 +332,11 @@ pub struct Resolved {
     pub images: Setting<bool>,
     pub selector: Setting<Selector>,
     pub browser_layout: Setting<BrowserLayout>,
+    pub sort: Setting<SortBy>,
+    pub dates: Setting<bool>,
+    pub date_format: Setting<String>,
+    pub extensions: Setting<Vec<String>>,
+    pub ignore: Setting<Vec<String>>,
     pub interpreters: HashMap<String, Vec<String>>,
 }
 
@@ -339,6 +389,23 @@ pub fn resolve(file: Config, env: &EnvMap, cli: Config) -> Result<Resolved> {
             cli.browser_layout,
             env,
         )?,
+        sort: setting("sort", SortBy::default(), file.sort, cli.sort, env)?,
+        dates: setting("dates", true, file.dates, cli.dates, env)?,
+        date_format: setting(
+            "date_format",
+            DATE_FORMAT.into(),
+            file.date_format,
+            cli.date_format,
+            env,
+        )?,
+        extensions: setting(
+            "extensions",
+            EXTENSIONS.iter().map(ToString::to_string).collect(),
+            file.extensions,
+            cli.extensions,
+            env,
+        )?,
+        ignore: setting("ignore", Vec::new(), file.ignore, cli.ignore, env)?,
         interpreters: file.interpreters,
     })
 }
@@ -501,6 +568,24 @@ impl Value for String {
     }
 }
 
+/// Lists: comma-separated in the environment (`BASTIAN_EXTENSIONS=md,txt`).
+impl Value for Vec<String> {
+    fn parse_env(v: &str) -> Option<Self> {
+        Some(
+            v.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
+        )
+    }
+    fn expected() -> String {
+        "a comma-separated list".into()
+    }
+    fn toml(&self) -> String {
+        format!("{self:?}")
+    }
+}
+
 impl Value for u16 {
     fn parse_env(v: &str) -> Option<Self> {
         v.parse().ok()
@@ -536,7 +621,7 @@ macro_rules! enum_value {
         }
     )*};
 }
-enum_value!(Confirm, ColorMode, Selector, BrowserLayout);
+enum_value!(Confirm, ColorMode, Selector, BrowserLayout, SortBy);
 
 fn enum_name<T: ValueEnum>(v: &T) -> String {
     v.to_possible_value()
@@ -714,6 +799,8 @@ mod tests {
             ("BASTIAN_THEME", ""),
             ("BASTIAN_SELECTOR", "Arrow"),
             ("BASTIAN_BROWSER_LAYOUT", "compact"),
+            ("BASTIAN_EXTENSIONS", "md, txt,,"),
+            ("BASTIAN_SORT", "name"),
         ]);
         let r = resolve(Config::default(), &e, Config::default()).unwrap();
         assert_eq!(
@@ -732,6 +819,8 @@ mod tests {
         );
         assert_eq!(r.selector.value, Selector::Arrow);
         assert_eq!(r.browser_layout.value, BrowserLayout::Compact);
+        assert_eq!(r.extensions.value, ["md", "txt"]);
+        assert_eq!(r.sort.value, SortBy::Name);
         // Empty means unset.
         assert_eq!(r.theme.source, Source::Default);
 
@@ -773,6 +862,11 @@ mod tests {
             mouse = true
             selector = "highlight"
             browser_layout = "compact"
+            sort = "created"
+            dates = false
+            date_format = "%Y-%m-%d"
+            extensions = ["md", "txt"]
+            ignore = ["drafts/"]
             [interpreters]
             ruby = ["ruby", "-e"]
             fish = []
@@ -788,6 +882,11 @@ mod tests {
         assert_eq!(c.mouse, Some(true));
         assert_eq!(c.selector, Some(Selector::Highlight));
         assert_eq!(c.browser_layout, Some(BrowserLayout::Compact));
+        assert_eq!(c.sort, Some(SortBy::Created));
+        assert_eq!(c.dates, Some(false));
+        assert_eq!(c.date_format.as_deref(), Some("%Y-%m-%d"));
+        assert_eq!(c.extensions, Some(vec!["md".into(), "txt".into()]));
+        assert_eq!(c.ignore, Some(vec!["drafts/".into()]));
         assert_eq!(c.interpreters["ruby"], ["ruby", "-e"]);
         assert!(c.interpreters["fish"].is_empty());
     }

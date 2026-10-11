@@ -8,7 +8,46 @@ use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str, Utf32String};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
+use crate::config::SortBy;
 use crate::prompt::{self, Prompt, PromptEvent};
+
+/// Which files the browser lists, and in what order.
+#[derive(Debug, Clone, Default)]
+pub struct Scan {
+    /// Hidden and gitignored files too.
+    pub all: bool,
+    pub sort: SortBy,
+    /// Extensions of the files listed, in any case, with or without the
+    /// dot. Empty means the Markdown ones (`doc::is_markdown_ext`).
+    pub extensions: Vec<String>,
+    /// Gitignore-style globs of paths to leave out, even with `all`.
+    pub ignore: Vec<String>,
+}
+
+impl Scan {
+    fn lists(&self, path: &Path) -> bool {
+        let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+            return false;
+        };
+        if self.extensions.is_empty() {
+            crate::doc::is_markdown_ext(ext)
+        } else {
+            self.extensions
+                .iter()
+                .any(|e| e.trim_start_matches('.').eq_ignore_ascii_case(ext))
+        }
+    }
+
+    /// `ignore` as walk overrides rooted at `root`; bad globs are errors.
+    pub fn overrides(&self, root: &Path) -> anyhow::Result<ignore::overrides::Override> {
+        let mut b = ignore::overrides::OverrideBuilder::new(root);
+        for glob in &self.ignore {
+            b.add(&format!("!{glob}"))
+                .map_err(|e| anyhow::anyhow!("bad `ignore` glob {glob:?}: {e}"))?;
+        }
+        Ok(b.build()?)
+    }
+}
 
 /// A Markdown file found under the browsed directory.
 #[derive(Debug, Clone)]
@@ -52,6 +91,24 @@ impl Entry {
             key,
         }
     }
+
+    /// The name it's listed under: its title, else its file name.
+    pub fn name(&self) -> String {
+        self.title.clone().unwrap_or_else(|| {
+            self.path
+                .file_name()
+                .map_or_else(|| self.rel.clone(), |n| n.to_string_lossy().into_owned())
+        })
+    }
+
+    /// The time shown for it: creation time when sorting by it, else the
+    /// modification time the list is ordered by.
+    pub fn date(&self, sort: SortBy) -> Option<SystemTime> {
+        match sort {
+            SortBy::Created => self.created,
+            SortBy::Modified | SortBy::Name => self.modified,
+        }
+    }
 }
 
 pub enum Action {
@@ -67,8 +124,8 @@ pub struct Browser {
     pub root: PathBuf,
     /// `root` for display, with the home directory as `~`.
     pub root_label: String,
-    /// List hidden and gitignored files too.
-    pub all: bool,
+    /// Which files to list, and how to order them.
+    pub scan: Scan,
     pub entries: Vec<Entry>,
     /// Indices into `entries` that match the filter, best first.
     pub visible: Vec<usize>,
@@ -89,12 +146,12 @@ pub struct Browser {
 
 impl Browser {
     /// Start browsing `root`. Files are found in the background; call
-    /// `tick` to pick them up. `all` also lists hidden and gitignored files.
-    pub fn new(root: PathBuf, all: bool) -> Self {
+    /// `tick` to pick them up.
+    pub fn new(root: PathBuf, scan: Scan) -> Self {
         let mut b = Self {
             root_label: display_root(&root),
             root,
-            all,
+            scan,
             visible: Vec::new(),
             entries: Vec::new(),
             selected: 0,
@@ -115,8 +172,8 @@ impl Browser {
     pub fn rescan(&mut self) {
         let (tx, rx) = mpsc::channel();
         let root = self.root.clone();
-        let all = self.all;
-        std::thread::spawn(move || scan(&root, all, &tx));
+        let opts = self.scan.clone();
+        std::thread::spawn(move || scan(&root, &opts, &tx));
         self.entries.clear();
         self.refilter();
         self.incoming = Some(rx);
@@ -151,7 +208,7 @@ impl Browser {
             let selected = (self.selected > 0)
                 .then(|| self.selected_entry().map(|e| e.path.clone()))
                 .flatten();
-            sort(&mut self.entries);
+            sort(&mut self.entries, self.scan.sort);
             self.refilter();
             // Keep the cursor on the same file while the list grows.
             if let Some(path) = selected
@@ -301,14 +358,14 @@ fn is_navigation(key: &KeyEvent) -> bool {
 }
 
 /// Markdown files under `root`, honoring .gitignore and skipping hidden
-/// paths, newest first.
-pub fn discover(root: &Path, all: bool) -> Vec<Entry> {
+/// paths unless `opts.all`, in `opts.sort` order.
+pub fn discover(root: &Path, opts: &Scan) -> Vec<Entry> {
     let (tx, rx) = mpsc::channel();
-    scan(root, all, &tx);
+    scan(root, opts, &tx);
     // The receiver below ends once every sender is gone.
     drop(tx);
     let mut entries: Vec<Entry> = rx.into_iter().collect();
-    sort(&mut entries);
+    sort(&mut entries, opts.sort);
     entries
 }
 
@@ -322,15 +379,32 @@ fn display_root(root: &Path) -> String {
     }
 }
 
-fn sort(entries: &mut [Entry]) {
-    entries.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| a.rel.cmp(&b.rel)));
+/// Newest first by `modified` or `created` time, or by name A to Z; ties
+/// in path order.
+fn sort(entries: &mut [Entry], by: SortBy) {
+    match by {
+        SortBy::Modified => {
+            entries.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| a.rel.cmp(&b.rel)));
+        }
+        SortBy::Created => {
+            entries.sort_by(|a, b| b.created.cmp(&a.created).then_with(|| a.rel.cmp(&b.rel)));
+        }
+        SortBy::Name => entries.sort_by_cached_key(|e| (e.name().to_lowercase(), e.rel.clone())),
+    }
 }
 
-/// Walk `root` on several threads, sending each Markdown file as it's found.
+/// Walk `root` on several threads, sending each listed file as it's found.
 /// Returns when the walk is done. Hidden and gitignored paths are skipped
-/// unless `all` is set; unreadable entries and broken symlinks are skipped.
-pub fn scan(root: &Path, all: bool, tx: &Sender<Entry>) {
+/// unless `opts.all` is set, `opts.ignore` matches always are; unreadable
+/// entries and broken symlinks are skipped.
+pub fn scan(root: &Path, opts: &Scan, tx: &Sender<Entry>) {
+    let all = opts.all;
+    // Globs were checked at startup.
+    let overrides = opts
+        .overrides(root)
+        .unwrap_or_else(|_| ignore::overrides::Override::empty());
     ignore::WalkBuilder::new(root)
+        .overrides(overrides)
         .hidden(!all)
         .git_ignore(!all)
         .git_global(!all)
@@ -350,7 +424,7 @@ pub fn scan(root: &Path, all: bool, tx: &Sender<Entry>) {
                 let Ok(d) = result else {
                     return WalkState::Continue;
                 };
-                if !d.file_type().is_some_and(|t| t.is_file()) || !is_markdown(d.path()) {
+                if !d.file_type().is_some_and(|t| t.is_file()) || !opts.lists(d.path()) {
                     return WalkState::Continue;
                 }
                 let path = d.path().to_path_buf();
@@ -412,12 +486,6 @@ fn title_of(src: &str) -> Option<String> {
     first_heading(body)
 }
 
-fn is_markdown(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(crate::doc::is_markdown_ext)
-}
-
 /// First ATX `# ` heading outside fenced code, without a full parse.
 fn first_heading(src: &str) -> Option<String> {
     let mut fenced = false;
@@ -438,6 +506,13 @@ fn first_heading(src: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn all_files(all: bool) -> Scan {
+        Scan {
+            all,
+            ..Scan::default()
+        }
+    }
     use ratatui::crossterm::event::KeyModifiers;
 
     #[test]
@@ -461,7 +536,10 @@ mod tests {
         std::fs::write(root.join(".hidden.md"), "# hidden\n").unwrap();
 
         let rels = |all| {
-            let mut r: Vec<String> = discover(root, all).into_iter().map(|e| e.rel).collect();
+            let mut r: Vec<String> = discover(root, &all_files(all))
+                .into_iter()
+                .map(|e| e.rel)
+                .collect();
             r.sort();
             r
         };
@@ -472,7 +550,7 @@ mod tests {
         );
 
         // A hidden directory given as the root is still browsed.
-        let inner: Vec<String> = discover(&root.join(".config"), false)
+        let inner: Vec<String> = discover(&root.join(".config"), &all_files(false))
             .into_iter()
             .map(|e| e.rel)
             .collect();
@@ -493,14 +571,20 @@ mod tests {
         // .gitignore is only honored inside a git repository.
         std::fs::create_dir(root.join(".git")).unwrap();
 
-        let mut rels: Vec<String> = discover(root, false).into_iter().map(|e| e.rel).collect();
+        let mut rels: Vec<String> = discover(root, &all_files(false))
+            .into_iter()
+            .map(|e| e.rel)
+            .collect();
         rels.sort();
         assert_eq!(rels, ["README.md", "docs/guide.markdown"]);
 
         // With `all`, hidden and ignored files are listed too.
         std::fs::create_dir_all(root.join(".notes")).unwrap();
         std::fs::write(root.join(".notes/todo.mkd"), "# todo\n").unwrap();
-        let mut rels: Vec<String> = discover(root, true).into_iter().map(|e| e.rel).collect();
+        let mut rels: Vec<String> = discover(root, &all_files(true))
+            .into_iter()
+            .map(|e| e.rel)
+            .collect();
         rels.sort();
         assert_eq!(
             rels,
@@ -550,7 +634,7 @@ mod tests {
         for i in 0..50 {
             std::fs::write(dir.path().join(format!("f{i}.md")), format!("# Doc {i}\n")).unwrap();
         }
-        let mut b = Browser::new(dir.path().to_path_buf(), false);
+        let mut b = Browser::new(dir.path().to_path_buf(), Scan::default());
         wait_for_scan(&mut b);
         assert_eq!(b.entries.len(), 50);
         assert_eq!(b.visible.len(), 50);
@@ -580,7 +664,7 @@ mod tests {
         for i in 0..30 {
             std::fs::write(dir.path().join(format!("f{i}.md")), "x\n").unwrap();
         }
-        let mut b = Browser::new(dir.path().to_path_buf(), false);
+        let mut b = Browser::new(dir.path().to_path_buf(), Scan::default());
         wait_for_scan(&mut b);
         assert_eq!(b.selected, 0);
     }
@@ -591,7 +675,7 @@ mod tests {
         for i in 0..40 {
             std::fs::write(dir.path().join(format!("f{i}.md")), "x\n").unwrap();
         }
-        let mut b = Browser::new(dir.path().to_path_buf(), false);
+        let mut b = Browser::new(dir.path().to_path_buf(), Scan::default());
         wait_for_scan(&mut b);
         b.layout(10);
         let ctrl = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
@@ -618,7 +702,7 @@ mod tests {
         for i in 0..20 {
             std::fs::write(dir.path().join(format!("f{i}.md")), "x\n").unwrap();
         }
-        let mut b = Browser::new(dir.path().to_path_buf(), false);
+        let mut b = Browser::new(dir.path().to_path_buf(), Scan::default());
         wait_for_scan(&mut b);
         b.layout(10);
         b.selected = 8;
@@ -633,7 +717,7 @@ mod tests {
         let key = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("a.md"), "# A\n").unwrap();
-        let mut b = Browser::new(dir.path().to_path_buf(), false);
+        let mut b = Browser::new(dir.path().to_path_buf(), Scan::default());
         wait_for_scan(&mut b);
         assert!(matches!(b.on_key(key('e')), Action::Edit(p) if p == dir.path().join("a.md")));
 
@@ -655,7 +739,7 @@ mod tests {
         for i in 0..25 {
             std::fs::write(dir.path().join(format!("f{i}.md")), "x\n").unwrap();
         }
-        let mut b = Browser::new(dir.path().to_path_buf(), false);
+        let mut b = Browser::new(dir.path().to_path_buf(), Scan::default());
         wait_for_scan(&mut b);
         b.layout(10);
         assert_eq!((b.offset(), b.page()), (0, (1, 3)));
@@ -692,7 +776,7 @@ mod tests {
         for i in 0..30 {
             std::fs::write(dir.path().join(format!("doc{i}.md")), "x\n").unwrap();
         }
-        let mut b = Browser::new(dir.path().to_path_buf(), false);
+        let mut b = Browser::new(dir.path().to_path_buf(), Scan::default());
         wait_for_scan(&mut b);
         b.layout(10);
         let key = |c, m| KeyEvent::new(c, m);
@@ -735,7 +819,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("install.md"), "# Installation\n").unwrap();
         std::fs::write(dir.path().join("usage.md"), "# Usage\n").unwrap();
-        let mut b = Browser::new(dir.path().to_path_buf(), false);
+        let mut b = Browser::new(dir.path().to_path_buf(), Scan::default());
         wait_for_scan(&mut b);
         b.filter = "instal".into();
         b.refilter();
@@ -745,5 +829,100 @@ mod tests {
             .map(|&i| b.entries[i].rel.as_str())
             .collect();
         assert_eq!(names, ["install.md"]);
+    }
+
+    /// Listed paths under `root` with `opts`, in list order.
+    fn listed(root: &Path, opts: &Scan) -> Vec<String> {
+        discover(root, opts).into_iter().map(|e| e.rel).collect()
+    }
+
+    #[test]
+    fn sorts_by_modified_created_or_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        // Created in this order; modified in the opposite one.
+        for (file, title) in [
+            ("a.md", "# Zebra\n"),
+            ("b.md", "# apple\n"),
+            ("c.md", "# Mango\n"),
+        ] {
+            std::fs::write(root.join(file), title).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let base = SystemTime::now();
+        for (i, file) in ["c.md", "b.md", "a.md"].iter().enumerate() {
+            let f = std::fs::File::options()
+                .write(true)
+                .open(root.join(file))
+                .unwrap();
+            f.set_modified(base + std::time::Duration::from_secs(i as u64 * 60))
+                .unwrap();
+        }
+        let by = |sort| Scan {
+            sort,
+            ..Scan::default()
+        };
+        assert_eq!(
+            listed(root, &by(SortBy::Modified)),
+            ["a.md", "b.md", "c.md"]
+        );
+        assert_eq!(listed(root, &by(SortBy::Name)), ["b.md", "c.md", "a.md"]);
+        // Where the filesystem keeps creation times, newest first.
+        let created_kept = std::fs::metadata(root.join("a.md"))
+            .unwrap()
+            .created()
+            .is_ok();
+        if created_kept {
+            assert_eq!(listed(root, &by(SortBy::Created)), ["c.md", "b.md", "a.md"]);
+        }
+    }
+
+    #[test]
+    fn lists_only_configured_extensions() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        for f in ["a.md", "b.txt", "c.MDX", "d.rst"] {
+            std::fs::write(root.join(f), "x\n").unwrap();
+        }
+        let mut names = listed(root, &Scan::default());
+        names.sort();
+        assert_eq!(names, ["a.md", "c.MDX"]);
+        let opts = Scan {
+            extensions: vec!["txt".into(), ".mdx".into()],
+            ..Scan::default()
+        };
+        let mut names = listed(root, &opts);
+        names.sort();
+        assert_eq!(names, ["b.txt", "c.MDX"]);
+    }
+
+    #[test]
+    fn ignore_globs_leave_paths_out_even_with_all() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("drafts/deep")).unwrap();
+        std::fs::create_dir_all(root.join(".notes")).unwrap();
+        for f in ["keep.md", "drafts/deep/x.md", "CHANGELOG.md", ".notes/n.md"] {
+            std::fs::write(root.join(f), "x\n").unwrap();
+        }
+        let opts = |all| Scan {
+            all,
+            ignore: vec!["drafts/".into(), "CHANGELOG.md".into()],
+            ..Scan::default()
+        };
+        assert_eq!(listed(root, &opts(false)), ["keep.md"]);
+        let mut with_all = listed(root, &opts(true));
+        with_all.sort();
+        assert_eq!(with_all, [".notes/n.md", "keep.md"]);
+    }
+
+    #[test]
+    fn bad_ignore_globs_are_errors() {
+        let opts = Scan {
+            ignore: vec!["a[".into()],
+            ..Scan::default()
+        };
+        let err = opts.overrides(Path::new(".")).unwrap_err().to_string();
+        assert!(err.contains("`ignore`") && err.contains("a["), "{err}");
     }
 }

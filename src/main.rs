@@ -93,6 +93,10 @@ struct Cli {
     #[arg(long, value_enum, value_name = "LAYOUT")]
     browser_layout: Option<config::BrowserLayout>,
 
+    /// Order of the files in the browser [default: modified].
+    #[arg(long, value_enum, value_name = "ORDER")]
+    sort: Option<config::SortBy>,
+
     /// Print the effective settings and where each came from, then exit.
     #[arg(long)]
     print_config: bool,
@@ -189,6 +193,7 @@ fn main() -> Result<()> {
             },
             selector: cli.selector,
             browser_layout: cli.browser_layout,
+            sort: cli.sort,
             ..config::Config::default()
         },
     )?;
@@ -288,7 +293,7 @@ fn main() -> Result<()> {
         app::App::read(reader, settings)
     } else if path.is_dir() {
         if !tui {
-            for e in browser::discover(&path, settings.all) {
+            for e in browser::discover(&path, &settings.scan) {
                 println!("{}", e.rel);
             }
             return Ok(());
@@ -361,12 +366,24 @@ fn settings(
 ) -> Result<(Settings, String)> {
     let light = colored && r.theme.value == "auto" && term::background() == Some(Background::Light);
     let name = config::theme_name(&r, light).to_string();
+    let scan = browser::Scan {
+        all: r.all.value,
+        sort: r.sort.value,
+        extensions: r.extensions.value,
+        ignore: r.ignore.value,
+    };
+    scan.overrides(std::path::Path::new("."))?;
+    let date_format = r.dates.value.then_some(r.date_format.value);
+    if let Some(f) = &date_format {
+        bastian::ui::browser::check_date_format(f)?;
+    }
     let settings = Settings {
         theme: themes::load(&name, themes_dir)?,
         max_width: r.width.value,
         assume_yes: r.confirm.value == Confirm::Never,
         line_numbers: r.line_numbers.value,
-        all: r.all.value,
+        scan,
+        date_format,
         mouse: r.mouse.value,
         logo: r.logo.value,
         // Only the TUI draws pictures.

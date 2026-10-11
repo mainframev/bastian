@@ -31,8 +31,10 @@ pub struct Settings {
     pub interpreters: Interpreters,
     /// Show line numbers in readers.
     pub line_numbers: bool,
-    /// Browse hidden and gitignored files too.
-    pub all: bool,
+    /// Which files the browser lists, and in what order.
+    pub scan: browser::Scan,
+    /// strftime format of the browser's dates; `None` hides them.
+    pub date_format: Option<String>,
     /// Scroll with the mouse wheel (captures the mouse, so terminal text
     /// selection needs a modifier key).
     pub mouse: bool,
@@ -127,7 +129,7 @@ pub struct ThemeFiles {
 
 impl App {
     pub fn browse(root: PathBuf, settings: Settings) -> Self {
-        let browser = Browser::new(root, settings.all);
+        let browser = Browser::new(root, settings.scan.clone());
         Self::new(settings, Some(browser), None)
     }
 
@@ -474,6 +476,7 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<Option<String
                     let s = &app.settings;
                     let look = ui::browser::Look {
                         logo: s.logo,
+                        date_format: s.date_format.as_deref(),
                         selector: s.selector,
                         layout: s.browser_layout,
                     };
@@ -524,7 +527,8 @@ mod tests {
             assume_yes: false,
             interpreters: Interpreters::default(),
             line_numbers: false,
-            all: false,
+            scan: browser::Scan::default(),
+            date_format: Some(crate::config::DATE_FORMAT.into()),
             mouse: true,
             logo: true,
             images: None,
@@ -629,7 +633,8 @@ mod tests {
             assume_yes: false,
             interpreters: Interpreters::default(),
             line_numbers: false,
-            all: false,
+            scan: browser::Scan::default(),
+            date_format: Some(crate::config::DATE_FORMAT.into()),
             mouse: true,
             logo: true,
             images: None,

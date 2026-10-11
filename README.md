@@ -157,6 +157,11 @@ images = true         # false: show images as their alt text (--no-images);
 selector = "bar"      # how the browser marks the selected file: "bar",
                       # "thick", "block", "arrow" or "highlight" (--selector)
 browser_layout = "cards"  # "compact" lists one file per row (--browser-layout)
+sort = "modified"     # browser order: "modified", "created" or "name" (--sort)
+dates = true          # false: no file dates in the browser
+date_format = "%d %b %Y %H:%M %Z"  # strftime format of those dates
+extensions = ["md", "markdown", "mdx", "mdown", "mkdn", "mkd"]  # files listed
+ignore = []           # gitignore-style globs to leave out, e.g. ["drafts/"]
 line_numbers = false  # true behaves like --line-numbers
 
 [interpreters]

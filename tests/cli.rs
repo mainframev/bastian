@@ -270,3 +270,31 @@ fn completions_and_man_page() {
     let man = bastian(dir.path(), &["man"], &[]);
     assert!(stdout(&man).contains(".TH bastian"));
 }
+
+#[test]
+fn listing_follows_sort_extensions_and_ignore() {
+    let dir = tempfile::tempdir().unwrap();
+    let docs = dir.path().join("docs");
+    std::fs::create_dir_all(docs.join("drafts")).unwrap();
+    std::fs::write(docs.join("b.md"), "# Beta\n").unwrap();
+    std::fs::write(docs.join("a.txt"), "Alpha\n").unwrap();
+    std::fs::write(docs.join("drafts/c.md"), "# Gamma\n").unwrap();
+    std::fs::create_dir_all(dir.path().join("bastian")).unwrap();
+    std::fs::write(
+        dir.path().join("bastian/config.toml"),
+        "extensions = [\"md\", \"txt\"]\nignore = [\"drafts/\"]\n",
+    )
+    .unwrap();
+    let docs = docs.to_str().unwrap();
+    let out = bastian(dir.path(), &["-p", "--sort", "name", docs], &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(stdout(&out), "a.txt\nb.md\n");
+
+    let bad = bastian(
+        dir.path(),
+        &["-p", docs],
+        &[("BASTIAN_DATE_FORMAT", "%Y %")],
+    );
+    assert!(!bad.status.success());
+    assert!(stderr(&bad).contains("date_format"), "{}", stderr(&bad));
+}

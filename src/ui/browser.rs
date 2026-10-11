@@ -16,7 +16,7 @@ use crate::browser::Browser;
 use crate::render::theme::Theme;
 
 const HELP: &[(&str, &str)] = &[
-    ("j/k  ↓/↑", "move"),
+    ("j/k  ↓/↑", "move (ctrl-j/k also while filtering)"),
     ("h/l  ←/→", "previous/next page"),
     ("ctrl-d/u", "half page"),
     ("ctrl-f/b", "full page"),

@@ -183,6 +183,11 @@ impl Browser {
 
     pub fn on_key(&mut self, key: KeyEvent) -> Action {
         self.message = None;
+        // Navigation keys end filter input and act right away, so moving
+        // through the results doesn't need an Enter first.
+        if self.prompt.is_some() && is_navigation(&key) {
+            self.prompt = None;
+        }
         if let Some(prompt) = &mut self.prompt {
             match prompt.on_key(key) {
                 PromptEvent::Changed => {
@@ -219,6 +224,8 @@ impl Browser {
             }
             KeyCode::Esc => return Action::Quit,
             KeyCode::Char('/') => self.prompt = Some(Prompt::new("/", &self.filter)),
+            KeyCode::Char('j' | 'n') if ctrl => self.move_by(1),
+            KeyCode::Char('k' | 'p') if ctrl => self.move_by(-1),
             KeyCode::Char('j') | KeyCode::Down => self.move_by(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_by(-1),
             KeyCode::PageDown => self.move_by(page),
@@ -242,6 +249,22 @@ impl Browser {
             _ => {}
         }
         Action::None
+    }
+}
+
+/// Keys that move the selection rather than edit filter text. Plain
+/// letters (even `j`/`k`) stay text, and ctrl-u keeps clearing the input.
+fn is_navigation(key: &KeyEvent) -> bool {
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    match key.code {
+        KeyCode::Up
+        | KeyCode::Down
+        | KeyCode::Left
+        | KeyCode::Right
+        | KeyCode::PageUp
+        | KeyCode::PageDown => true,
+        KeyCode::Char('j' | 'k' | 'n' | 'p' | 'd' | 'f' | 'b') => ctrl,
+        _ => false,
     }
 }
 
@@ -556,6 +579,43 @@ mod tests {
         assert_eq!((b.selected, b.page()), (22, (3, 3)));
         press(&mut b, KeyCode::Left);
         assert_eq!(b.page(), (2, 3));
+    }
+
+    #[test]
+    fn navigation_keys_leave_filter_input() {
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..30 {
+            std::fs::write(dir.path().join(format!("doc{i}.md")), "x\n").unwrap();
+        }
+        let mut b = Browser::new(dir.path().to_path_buf());
+        wait_for_scan(&mut b);
+        b.layout(10);
+        let key = |c, m| KeyEvent::new(c, m);
+        b.on_key(key(KeyCode::Char('/'), KeyModifiers::NONE));
+        for c in "doc".chars() {
+            b.on_key(key(KeyCode::Char(c), KeyModifiers::NONE));
+        }
+        // Plain j/k are still filter text.
+        b.on_key(key(KeyCode::Char('j'), KeyModifiers::NONE));
+        assert_eq!(b.prompt.as_ref().unwrap().text, "docj");
+        b.on_key(key(KeyCode::Backspace, KeyModifiers::NONE));
+
+        // ctrl-j closes the input, keeps the filter and moves.
+        b.on_key(key(KeyCode::Char('j'), KeyModifiers::CONTROL));
+        assert!(b.prompt.is_none());
+        assert_eq!(b.filter, "doc");
+        assert_eq!(b.selected, 1);
+
+        // Same for paging straight from the input.
+        b.on_key(key(KeyCode::Char('/'), KeyModifiers::NONE));
+        b.on_key(key(KeyCode::Right, KeyModifiers::NONE));
+        assert!(b.prompt.is_none());
+        assert_eq!(b.selected, 11);
+
+        // ctrl-u still clears the text rather than paging.
+        b.on_key(key(KeyCode::Char('/'), KeyModifiers::NONE));
+        b.on_key(key(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        assert_eq!(b.prompt.as_ref().unwrap().text, "");
     }
 
     #[test]

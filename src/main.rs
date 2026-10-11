@@ -2,7 +2,7 @@ use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 
 use bastian::app::{self, Settings};
 use bastian::config::{self, CliOverrides, ColorMode, Confirm, ThemeName};
@@ -61,6 +61,11 @@ struct Cli {
     #[arg(long, value_name = "PATH")]
     config: Option<String>,
 
+    /// Scroll with the mouse wheel. Captures the mouse, so selecting text in
+    /// the terminal needs a modifier key (often shift or option).
+    #[arg(long)]
+    mouse: bool,
+
     /// Print the effective settings and where each came from, then exit.
     #[arg(long)]
     print_config: bool,
@@ -72,6 +77,13 @@ enum Command {
     /// template if it doesn't exist. (To read a file named `config`, use
     /// `./config`.)
     Config,
+    /// Print a shell completion script, e.g. `bastian completions zsh`.
+    Completions {
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
+    /// Print the man page (roff), e.g. `bastian man | man -l -`.
+    Man,
 }
 
 fn config_help() -> String {
@@ -82,6 +94,14 @@ fn config_help() -> String {
 }
 
 fn main() -> Result<()> {
+    // Exit quietly when a reader such as `head` closes our output, like
+    // other command-line tools, instead of reporting a broken pipe.
+    #[cfg(unix)]
+    // SAFETY: restoring the default disposition of a standard signal at
+    // startup, before any threads are spawned.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
     let cli = Cli::parse();
     let lookup = |k: &str| std::env::var(k).ok();
     let located = config::locate(
@@ -89,9 +109,25 @@ fn main() -> Result<()> {
         std::env::var("BASTIAN_CONFIG").ok().as_deref(),
         &lookup,
     );
-    if let Some(Command::Config) = cli.command {
-        let (path, _) = located.context("no config location: HOME is not set")?;
-        return edit_config(&path);
+    match cli.command {
+        Some(Command::Config) => {
+            let (path, _) = located.context("no config location: HOME is not set")?;
+            return edit_config(&path);
+        }
+        Some(Command::Completions { shell }) => {
+            clap_complete::generate(
+                shell,
+                &mut Cli::command(),
+                "bastian",
+                &mut std::io::stdout(),
+            );
+            return Ok(());
+        }
+        Some(Command::Man) => {
+            clap_mangen::Man::new(Cli::command()).render(&mut std::io::stdout())?;
+            return Ok(());
+        }
+        None => {}
     }
     let file = match &located {
         Some((path, explicit)) => config::load_at(path, *explicit)?,
@@ -108,6 +144,7 @@ fn main() -> Result<()> {
             color: cli.color,
             pager: cli.pager.then_some(true),
             all: cli.all.then_some(true),
+            mouse: cli.mouse.then_some(true),
         },
     )?;
     if cli.print_config {
@@ -181,9 +218,10 @@ fn main() -> Result<()> {
         app::App::read(reader, settings)
     };
 
-    let mut terminal = ratatui::init();
+    let mouse = app.settings.mouse;
+    let mut terminal = app::enter_terminal(mouse)?;
     let result = app::run(&mut terminal, app);
-    ratatui::restore();
+    app::leave_terminal(mouse);
     result
 }
 
@@ -221,6 +259,7 @@ fn settings(r: config::Resolved) -> Settings {
         assume_yes: r.confirm.value == Confirm::Never,
         line_numbers: r.line_numbers.value,
         all: r.all.value,
+        mouse: r.mouse.value,
         interpreters: Interpreters::new(r.interpreters),
     }
 }

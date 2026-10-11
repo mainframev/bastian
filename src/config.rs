@@ -20,6 +20,8 @@ pub struct Config {
     pub pager: Option<bool>,
     /// List hidden and gitignored files in the browser.
     pub all: Option<bool>,
+    /// Scroll with the mouse wheel.
+    pub mouse: Option<bool>,
     /// Language → command line; the block source is appended as the last
     /// argument. An empty list stops that language from running.
     pub interpreters: HashMap<String, Vec<String>>,
@@ -147,6 +149,7 @@ pub const TEMPLATE: &str = r#"# bastian configuration. Every key is optional; co
 # color = "auto"        # printed output: "auto", "always" or "never"
 # pager = false         # show documents in $PAGER instead of the TUI
 # all = false           # also list hidden and gitignored files
+# mouse = false         # scroll with the mouse wheel
 
 # [interpreters]
 # The block source is appended as the last argument.
@@ -203,6 +206,7 @@ pub fn describe(r: &Resolved, file: Option<&Path>) -> String {
     );
     row("pager", r.pager.value.to_string(), r.pager.source);
     row("all", r.all.value.to_string(), r.all.source);
+    row("mouse", r.mouse.value.to_string(), r.mouse.source);
     if !r.interpreters.is_empty() {
         out.push_str("\n[interpreters]\n");
         let mut langs: Vec<_> = r.interpreters.iter().collect();
@@ -255,6 +259,7 @@ pub struct CliOverrides {
     pub color: Option<ColorMode>,
     pub pager: Option<bool>,
     pub all: Option<bool>,
+    pub mouse: Option<bool>,
 }
 
 /// Every effective setting, resolved once at startup. All modes (TUI,
@@ -268,6 +273,7 @@ pub struct Resolved {
     pub color: Setting<ColorMode>,
     pub pager: Setting<bool>,
     pub all: Setting<bool>,
+    pub mouse: Setting<bool>,
     pub interpreters: HashMap<String, Vec<String>>,
 }
 
@@ -321,6 +327,12 @@ pub fn resolve(file: Config, env: &EnvMap, cli: CliOverrides) -> Result<Resolved
             file.all,
             env_value(env, "BASTIAN_ALL", parse_bool, "true or false")?,
             cli.all,
+        ),
+        mouse: pick(
+            false,
+            file.mouse,
+            env_value(env, "BASTIAN_MOUSE", parse_bool, "true or false")?,
+            cli.mouse,
         ),
         interpreters: file.interpreters,
     })
@@ -578,6 +590,7 @@ mod tests {
             line_numbers = true
             color = "never"
             pager = true
+            mouse = true
             [interpreters]
             ruby = ["ruby", "-e"]
             fish = []
@@ -590,6 +603,7 @@ mod tests {
         assert_eq!(c.line_numbers, Some(true));
         assert_eq!(c.color, Some(ColorMode::Never));
         assert_eq!(c.pager, Some(true));
+        assert_eq!(c.mouse, Some(true));
         assert_eq!(c.interpreters["ruby"], ["ruby", "-e"]);
         assert!(c.interpreters["fish"].is_empty());
     }

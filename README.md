@@ -116,6 +116,7 @@ confirm = "always"    # "never" behaves like --yes
 color = "auto"        # printed output: "auto", "always" or "never"
 pager = false         # true: show documents in $PAGER instead of the TUI
 all = false           # true: also list hidden and gitignored files
+mouse = false         # true: scroll with the mouse wheel
 line_numbers = false  # true behaves like --line-numbers
 
 [interpreters]
@@ -137,8 +138,15 @@ settings and where each one came from. To read a file literally named
 
 Each setting can also come from the environment: `BASTIAN_THEME`,
 `BASTIAN_WIDTH`, `BASTIAN_CONFIRM`, `BASTIAN_LINE_NUMBERS`, `BASTIAN_COLOR`,
-`BASTIAN_PAGER` and `BASTIAN_ALL`. Precedence is
+`BASTIAN_PAGER`, `BASTIAN_ALL` and `BASTIAN_MOUSE`. Precedence is
 defaults < config file < environment < command-line flags.
+
+## Shell completions and man page
+
+```sh {norun}
+bastian completions zsh > ~/.zfunc/_bastian   # also bash, fish, elvish, powershell
+bastian man > bastian.1 && man ./bastian.1
+```
 
 ## Development
 

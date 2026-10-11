@@ -4,7 +4,10 @@ use std::time::Duration;
 use anyhow::Result;
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::clipboard::CopyToClipboard;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
+    MouseEventKind,
+};
 use ratatui::crossterm::execute;
 
 use crate::browser::{self, Browser};
@@ -28,6 +31,9 @@ pub struct Settings {
     pub line_numbers: bool,
     /// Browse hidden and gitignored files too.
     pub all: bool,
+    /// Scroll with the mouse wheel (captures the mouse, so terminal text
+    /// selection needs a modifier key).
+    pub mouse: bool,
 }
 
 impl Settings {
@@ -104,6 +110,19 @@ impl App {
 
     /// Returns false when the app should exit.
     fn on_event(&mut self, event: Event) -> bool {
+        if let Event::Mouse(m) = &event {
+            let step = match m.kind {
+                MouseEventKind::ScrollDown => 1,
+                MouseEventKind::ScrollUp => -1,
+                _ => return true,
+            };
+            if let Some(r) = &mut self.reader {
+                r.scroll_lines(step * WHEEL_LINES);
+            } else if let Some(b) = &mut self.browser {
+                b.move_selection(step);
+            }
+            return true;
+        }
         let Event::Key(key) = event else { return true };
         if key.kind != KeyEventKind::Press {
             return true;
@@ -210,9 +229,10 @@ impl App {
         line: Option<usize>,
     ) -> Result<()> {
         let cmd = editor::command();
-        ratatui::restore();
+        let mouse = self.settings.mouse;
+        leave_terminal(mouse);
         let result = editor::open_with(&cmd, path, line);
-        *terminal = ratatui::init();
+        *terminal = enter_terminal(mouse)?;
         terminal.clear()?;
         match result {
             Ok(status) if status.success() => {}
@@ -245,20 +265,40 @@ pub fn base_dir(path: &Path) -> PathBuf {
     }
 }
 
+/// Take over the terminal: ratatui's setup, plus mouse capture when the
+/// mouse option is on. Undo with `leave_terminal`.
+pub fn enter_terminal(mouse: bool) -> Result<DefaultTerminal> {
+    let terminal = ratatui::init();
+    if mouse {
+        execute!(std::io::stdout(), EnableMouseCapture)?;
+    }
+    Ok(terminal)
+}
+
+pub fn leave_terminal(mouse: bool) {
+    if mouse {
+        let _ = execute!(std::io::stdout(), DisableMouseCapture);
+    }
+    ratatui::restore();
+}
+
+/// Lines the reader scrolls per mouse-wheel step.
+const WHEEL_LINES: isize = 3;
+
 /// Stop like a shell job (ctrl-z), restoring the terminal first and taking
 /// it back when resumed with `fg`.
-fn suspend(terminal: &mut DefaultTerminal) -> Result<()> {
+fn suspend(terminal: &mut DefaultTerminal, mouse: bool) -> Result<()> {
     #[cfg(unix)]
     {
-        ratatui::restore();
+        leave_terminal(mouse);
         // SAFETY: raise(3) with a standard signal; SIGTSTP's default action
         // stops the process until SIGCONT.
         unsafe { libc::raise(libc::SIGTSTP) };
-        *terminal = ratatui::init();
+        *terminal = enter_terminal(mouse)?;
         terminal.clear()?;
     }
     #[cfg(not(unix))]
-    let _ = terminal;
+    let _ = (terminal, mouse);
     Ok(())
 }
 
@@ -293,9 +333,46 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<()> {
                 app.run_editor(terminal, &path, line)?;
             }
             if std::mem::take(&mut app.suspend) {
-                suspend(terminal)?;
+                suspend(terminal, app.settings.mouse)?;
             }
             redraw = true;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::crossterm::event::{KeyModifiers, MouseEvent};
+
+    fn wheel(kind: MouseEventKind) -> Event {
+        Event::Mouse(MouseEvent {
+            kind,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        })
+    }
+
+    #[test]
+    fn mouse_wheel_scrolls_the_reader() {
+        let settings = Settings {
+            theme: Theme::dark(),
+            max_width: 80,
+            assume_yes: false,
+            interpreters: Interpreters::default(),
+            line_numbers: false,
+            all: false,
+            mouse: true,
+        };
+        let src: String = (0..50).map(|i| format!("line {i}\n\n")).collect();
+        let mut reader = settings.reader("t".into(), doc::parse(&src), PathBuf::from("."));
+        reader.layout(80, 10);
+        let mut app = App::read(reader, settings);
+        assert!(app.on_event(wheel(MouseEventKind::ScrollDown)));
+        assert!(app.on_event(wheel(MouseEventKind::ScrollDown)));
+        assert_eq!(app.reader.as_ref().unwrap().scroll, 6);
+        app.on_event(wheel(MouseEventKind::ScrollUp));
+        assert_eq!(app.reader.as_ref().unwrap().scroll, 3);
     }
 }

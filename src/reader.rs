@@ -192,6 +192,11 @@ impl Reader {
         }
     }
 
+    /// Scroll by `delta` lines (negative is up), e.g. for the mouse wheel.
+    pub fn scroll_lines(&mut self, delta: isize) {
+        self.scroll_by(delta);
+    }
+
     fn scroll_by(&mut self, delta: isize) {
         self.follow = None;
         self.scroll = self

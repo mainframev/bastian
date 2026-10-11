@@ -170,6 +170,11 @@ impl Browser {
         self.visible = scored.into_iter().map(|(i, _)| i).collect();
     }
 
+    /// Move the selection by `delta` entries, e.g. for the mouse wheel.
+    pub fn move_selection(&mut self, delta: isize) {
+        self.move_by(delta);
+    }
+
     fn move_by(&mut self, delta: isize) {
         let max = self.visible.len().saturating_sub(1);
         self.selected = self.selected.saturating_add_signed(delta).min(max);

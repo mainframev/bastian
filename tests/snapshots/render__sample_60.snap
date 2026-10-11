@@ -46,5 +46,5 @@ wrap it across more than one line at narrow widths.
 
 Tool    │ Language │ Notes
 ────────┼──────────┼────────────────
-glow    │ Go       │ the inspiration
+ratatui │ Rust     │ the TUI library
 bastian │ Rust     │ reads and runs

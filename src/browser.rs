@@ -167,8 +167,8 @@ impl Browser {
     }
 
     /// Keep the selection inside the window of `height` visible rows.
-    /// Show the page holding the selection. Like glow, the list turns a
-    /// whole screen at a time rather than scrolling entry by entry.
+    /// Show the page holding the selection. The list turns a whole
+    /// screen at a time rather than scrolling entry by entry.
     pub fn layout(&mut self, rows: usize) {
         self.height = rows.max(1);
         self.offset = self.selected / self.height * self.height;

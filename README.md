@@ -2,7 +2,7 @@
 
 Read Markdown in the terminal, and run its code blocks.
 
-bastian is a glow-style terminal reader with one addition: fenced code blocks
+bastian is a terminal Markdown reader with one addition: fenced code blocks
 in `sh`, `bash`, `zsh`, `fish`, `python` or `node` can be run where you read
 them, with their output streamed underneath. READMEs, runbooks and setup guides
 become something you can step through instead of copy-paste.

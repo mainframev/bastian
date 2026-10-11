@@ -38,7 +38,7 @@ pub fn draw(frame: &mut Frame, area: Rect, t: &Theme, left: Left, right: &str) {
     );
 }
 
-/// The `Find:` line shown above a list or document while searching, like glow.
+/// The `Find:` line shown above a list or document while searching.
 /// `editing` draws a cursor after the text.
 pub fn find_line(t: &Theme, text: &str, editing: bool) -> Line<'static> {
     let mut spans = vec![

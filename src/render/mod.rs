@@ -147,7 +147,7 @@ impl Renderer<'_> {
     fn heading(&self, level: u8, inlines: &[Inline], width: usize) -> Out {
         let t = self.theme;
         let lines = if level == 1 {
-            // Pad each wrapped line inside the colored band, like glow's H1.
+            // Pad each wrapped line inside the colored band.
             let style = Style::default().fg(t.h1_fg).bg(t.h1_bg).bold();
             wrap(&[(plain_text(inlines), style)], width.saturating_sub(2))
                 .into_iter()

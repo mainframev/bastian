@@ -37,5 +37,5 @@ echo "a very long command line that will certainly need to be wrapped when the w
 
 | Tool | Language | Notes |
 |------|----------|-------|
-| glow | Go | the inspiration |
+| ratatui | Rust | the TUI library |
 | bastian | Rust | reads and runs |

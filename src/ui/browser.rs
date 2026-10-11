@@ -34,7 +34,7 @@ const HELP: &[(&str, &str)] = &[
 const ENTRY_ROWS: u16 = 4;
 
 pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
-    // Laid out like glow: a title badge (or the `Find:` line while
+    // Layout: a title badge (or the `Find:` line while
     // filtering), the document count, then the list.
     // The page indicator goes under the list (each entry already ends with
     // a blank row) with a blank row between it and the status bar.
@@ -212,7 +212,7 @@ fn spinner(b: &Browser) -> char {
     FRAMES[(b.started.elapsed().as_millis() / 80) as usize % FRAMES.len()]
 }
 
-/// Absolute local time like glow shows it: `06 Aug 2026 02:20 CEST`.
+/// Absolute local time, e.g. `06 Aug 2026 02:20 CEST`.
 pub fn format_time(t: SystemTime, tz: &TimeZone) -> String {
     match Timestamp::try_from(t) {
         Ok(ts) => ts
@@ -252,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn formats_like_glow() {
+    fn formats_absolute_local_time() {
         let t = SystemTime::UNIX_EPOCH + Duration::from_secs(1_786_000_000);
         let utc = TimeZone::UTC;
         assert_eq!(format_time(t, &utc), "06 Aug 2026 07:06 UTC");

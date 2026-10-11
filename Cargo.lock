@@ -141,6 +141,7 @@ dependencies = [
  "tui-big-text",
  "tui-input",
  "tui-scrollbar",
+ "tui-tree-widget",
  "unicode-width",
  "ureq",
  "url",
@@ -2553,6 +2554,17 @@ checksum = "3c9ab2280aad13c3c49227037f2eb19c9274c0669327dfbc188280458ede6a72"
 dependencies = [
  "document-features",
  "ratatui-core",
+]
+
+[[package]]
+name = "tui-tree-widget"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "246c1142baa1e7a42b94f0fb2b60d838fc884c16281e330bf8624da65ed8f89a"
+dependencies = [
+ "ratatui-core",
+ "ratatui-widgets",
+ "unicode-width",
 ]
 
 [[package]]

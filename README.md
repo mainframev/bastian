@@ -57,6 +57,7 @@ uname -sm
 | `y` | copy focused block (OSC 52) |
 | `c` | copy the whole document |
 | `L` | list links; follow one with `Enter` |
+| `O` | outline of the headings; `Enter` jumps to one |
 | `e` | edit the file in `$VISUAL`, `$EDITOR` or `vi`, at the line you're reading |
 | `ctrl-z` | suspend; resume with `fg` |
 | `#` | toggle line numbers |

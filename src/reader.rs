@@ -7,6 +7,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use crate::doc::{self, Block, CodeBlock, Document};
 use crate::exec::{BlockRun, Interpreters, RunEvent, RunSpec, Runner, Status};
 use crate::links::{self, Link, Target};
+use crate::outline::{self, Outline};
 use crate::prompt::{self, Prompt, PromptEvent};
 use crate::render::theme::Theme;
 use crate::render::{self, Highlights, Rendered};
@@ -73,6 +74,8 @@ pub struct Reader {
     /// Skip confirmation, except for blocks marked `confirm`.
     pub assume_yes: bool,
     pub link_picker: Option<LinkPicker>,
+    /// The heading outline opened with `O`.
+    pub outline: Option<Outline>,
     pub help: bool,
     /// Draw a gutter of rendered line numbers.
     pub line_numbers: bool,
@@ -118,6 +121,7 @@ impl Reader {
             base_dir: PathBuf::from("."),
             assume_yes: false,
             link_picker: None,
+            outline: None,
             help: false,
             line_numbers: false,
             source: None,
@@ -678,6 +682,17 @@ impl Reader {
         if self.link_picker.is_some() {
             return self.on_link_key(key);
         }
+        if let Some(outline) = &mut self.outline {
+            match outline.on_key(key) {
+                outline::Event::None => {}
+                outline::Event::Close => self.outline = None,
+                outline::Event::Jump(line) => {
+                    self.outline = None;
+                    self.scroll = line.min(self.max_scroll());
+                }
+            }
+            return Action::None;
+        }
         if self.confirm.is_some() {
             self.on_confirm_key(key);
             return Action::None;
@@ -751,6 +766,12 @@ impl Reader {
             }
             KeyCode::Char('?') => self.help = true,
             KeyCode::Char('T') => return Action::PickTheme,
+            KeyCode::Char('O') => {
+                self.outline = Outline::new(&self.doc, &self.rendered, self.scroll);
+                if self.outline.is_none() {
+                    self.message = Some("no headings in this document".into());
+                }
+            }
             KeyCode::Char('#') => self.line_numbers = !self.line_numbers,
             KeyCode::Char('e') => match &self.source {
                 Some(path) => return Action::Edit(path.clone(), self.source_line()),

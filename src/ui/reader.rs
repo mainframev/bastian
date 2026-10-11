@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, Clear, Padding, Paragraph};
 
 pub use super::MARGIN;
 use super::status;
@@ -134,6 +134,8 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
         draw_confirm(frame, r, ids);
     } else if let Some(picker) = &r.link_picker {
         draw_links(frame, r, picker);
+    } else if r.outline.is_some() {
+        draw_outline(frame, r);
     } else if r.help {
         status::help(frame, &r.theme, HELP);
     }
@@ -165,10 +167,48 @@ const HELP: &[(&str, &str)] = &[
     ("e", "edit at this line in $VISUAL/$EDITOR"),
     ("ctrl-z", "suspend (resume with fg)"),
     ("#", "toggle line numbers"),
+    ("O", "outline: jump to a heading"),
     ("T", "pick a theme"),
     ("Esc, h", "back"),
     ("q", "quit"),
 ];
+
+/// The outline tree, docked to the right.
+fn draw_outline(frame: &mut Frame, r: &mut Reader) {
+    let t = r.theme.clone();
+    let Some(outline) = &mut r.outline else {
+        return;
+    };
+    let area = frame.area();
+    // Border and padding around the widest heading, at most half the screen.
+    let title = " outline · enter jump · esc close ";
+    let width = (outline.width.max(title.chars().count()) as u16 + 4)
+        .min(area.width / 2)
+        .max(area.width.min(24));
+    let rect = Rect::new(
+        area.right().saturating_sub(width + 1),
+        area.y + 1,
+        width,
+        area.height.saturating_sub(3),
+    );
+    let tree = tui_tree_widget::Tree::new(&outline.items)
+        .expect("heading ids are unique")
+        .block(
+            Block::bordered()
+                .title(Span::styled(title, Style::default().fg(t.accent)))
+                .border_style(Style::default().fg(t.accent))
+                .padding(Padding::horizontal(1))
+                .style(Style::default().bg(t.surface)),
+        )
+        .style(Style::default().fg(t.text))
+        .highlight_style(status::row_style(&t, true))
+        .highlight_symbol("▶ ")
+        .node_open_symbol("▾ ")
+        .node_closed_symbol("▸ ")
+        .node_no_children_symbol("  ");
+    frame.render_widget(Clear, rect);
+    frame.render_stateful_widget(tree, rect, &mut outline.state);
+}
 
 fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
     let t = &r.theme;

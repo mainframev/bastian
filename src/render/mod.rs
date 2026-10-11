@@ -35,6 +35,8 @@ pub struct Rendered {
     pub code_blocks: Vec<CodeRange>,
     /// Where link text landed on screen, one entry per line a link covers.
     pub links: Vec<LinkSpan>,
+    /// Rendered line where each top-level block starts.
+    pub block_starts: Vec<usize>,
 }
 
 /// A link's text on one rendered line.
@@ -111,6 +113,7 @@ pub fn render_with_runs(
         .collect();
     let links = locate_links(&out.lines, &r.link_runs.into_inner(), theme);
     Rendered {
+        block_starts: out.starts,
         lines: out.lines,
         src_line: Vec::new(),
         anchors,
@@ -420,6 +423,7 @@ impl Renderer<'_> {
         let range = self.add_run_panel(c, &mut lines, width);
         src_line.resize(lines.len(), None);
         Rendered {
+            block_starts: Vec::new(),
             links: Vec::new(),
             code_blocks: vec![range],
             anchors: src_line

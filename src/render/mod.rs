@@ -2,13 +2,16 @@ mod code;
 pub mod theme;
 mod wrap;
 
+use std::collections::HashMap;
 use std::ops::Range;
+use std::time::Duration;
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
 use crate::doc::{Block, CodeBlock, Document, Inline, plain_text};
+use crate::exec::{self, BlockRun, Status};
 use theme::Theme;
 use wrap::{hard_wrap, line_width, wrap};
 
@@ -23,11 +26,24 @@ pub struct Rendered {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CodeRange {
     pub id: usize,
+    /// The code box itself.
     pub lines: Range<usize>,
+    /// End of the run panel under the box, or `lines.end` without one.
+    pub output_end: usize,
 }
 
 pub fn render(doc: &Document, width: u16, theme: &Theme) -> Rendered {
-    let out = Renderer { theme }.blocks(&doc.blocks, usize::from(width).max(10), true);
+    render_with_runs(doc, width, theme, &HashMap::new())
+}
+
+/// Render with each code block's run status and output drawn under it.
+pub fn render_with_runs(
+    doc: &Document,
+    width: u16,
+    theme: &Theme,
+    runs: &HashMap<usize, BlockRun>,
+) -> Rendered {
+    let out = Renderer { theme, runs }.blocks(&doc.blocks, usize::from(width).max(10), true);
     Rendered {
         lines: out.lines,
         code_blocks: out.codes,
@@ -52,18 +68,20 @@ impl Out {
             let prefix = if i == 0 { first } else { rest };
             let mut spans = prefix.to_vec();
             spans.extend(line.spans);
-            self.lines.push(Line::from(spans));
+            self.lines.push(Line::from(spans).style(line.style));
         }
         self.codes
             .extend(other.codes.into_iter().map(|c| CodeRange {
                 id: c.id,
                 lines: c.lines.start + offset..c.lines.end + offset,
+                output_end: c.output_end + offset,
             }));
     }
 }
 
 struct Renderer<'a> {
     theme: &'a Theme,
+    runs: &'a HashMap<usize, BlockRun>,
 }
 
 impl Renderer<'_> {
@@ -165,16 +183,35 @@ impl Renderer<'_> {
         let t = self.theme;
         let bg = Style::default().bg(t.surface);
         let inner_w = width.saturating_sub(2).max(1);
+        // Background goes on every span, not the line, so prefixes added by
+        // enclosing lists and quotes stay unshaded.
         let pad_line = |spans: Vec<Span<'static>>| {
             let mut spans = spans;
             spans.insert(0, Span::raw(" "));
             let used = line_width(&Line::from(spans.clone()));
             spans.push(Span::raw(" ".repeat(width.saturating_sub(used))));
-            Line::from(spans).style(bg)
+            Line::from(
+                spans
+                    .into_iter()
+                    .map(|s| {
+                        let style = bg.patch(s.style);
+                        s.style(style)
+                    })
+                    .collect::<Vec<_>>(),
+            )
         };
 
         let mut lines = Vec::new();
-        let label = c.lang.clone().unwrap_or_default();
+        let label = match (&c.attrs.name, &c.lang) {
+            (Some(name), Some(lang)) => format!("{name} · {lang}"),
+            (Some(name), None) => name.clone(),
+            (None, lang) => lang.clone().unwrap_or_default(),
+        };
+        let label = if c.lang.as_deref().and_then(exec::interpreter).is_some() && !c.attrs.norun {
+            format!("▶ {label}")
+        } else {
+            label
+        };
         lines.push(pad_line(vec![Span::styled(
             format!("{label:>inner_w$}"),
             Style::default().fg(t.muted),
@@ -187,13 +224,79 @@ impl Renderer<'_> {
         lines.push(pad_line(Vec::new()));
 
         let len = lines.len();
+        if let Some(run) = self.runs.get(&c.id) {
+            lines.extend(self.run_panel(run, width));
+        }
+        let output_end = lines.len();
         Out {
             lines,
             codes: vec![CodeRange {
                 id: c.id,
                 lines: 0..len,
+                output_end,
             }],
         }
+    }
+
+    /// Status line and output shown under a code block that has run.
+    fn run_panel(&self, run: &BlockRun, width: usize) -> Vec<Line<'static>> {
+        let t = self.theme;
+        let (icon, text, color) = match &run.status {
+            Status::Running(since) => ("●", format!("running {}", secs(since.elapsed())), t.warn),
+            Status::Ok(took) => ("✓", format!("done in {}", secs(*took)), t.ok),
+            Status::Failed {
+                code: Some(c),
+                took,
+            } => ("✗", format!("exit {c} after {}", secs(*took)), t.err),
+            Status::Failed { code: None, took } => (
+                "✗",
+                format!("killed by signal after {}", secs(*took)),
+                t.err,
+            ),
+            Status::Cancelled(took) => ("■", format!("cancelled after {}", secs(*took)), t.warn),
+            Status::TimedOut(took) => ("✗", format!("timed out after {}", secs(*took)), t.err),
+            Status::Error(e) => ("✗", format!("could not start: {e}"), t.err),
+        };
+        let mut status = vec![Span::styled(
+            format!("{icon} {text}"),
+            Style::default().fg(color).bold(),
+        )];
+        if !run.expanded && !run.output.is_empty() {
+            status.push(Span::styled(
+                {
+                    let n = run.output.len() + run.dropped;
+                    format!("  {n} line{} hidden", if n == 1 { "" } else { "s" })
+                },
+                Style::default().fg(t.muted),
+            ));
+        }
+        let mut lines = vec![Line::from(status)];
+        if !run.expanded {
+            return lines;
+        }
+
+        let bar = Span::styled("│ ", Style::default().fg(t.muted));
+        if run.dropped > 0 {
+            lines.push(Line::from(vec![
+                bar.clone(),
+                Span::styled(
+                    format!("… {} earlier lines", run.dropped),
+                    Style::default().fg(t.muted),
+                ),
+            ]));
+        }
+        for out in &run.output {
+            let style = Style::default().fg(if out.stderr { t.err } else { t.subtle });
+            for row in hard_wrap(
+                vec![Span::styled(out.text.clone(), style)],
+                width.saturating_sub(2),
+            ) {
+                let mut spans = vec![bar.clone()];
+                spans.extend(row);
+                lines.push(Line::from(spans));
+            }
+        }
+        lines
     }
 
     fn table(&self, header: &[Vec<Inline>], rows: &[Vec<Vec<Inline>>], width: usize) -> Out {
@@ -304,4 +407,8 @@ pub fn to_plain(lines: &[Line]) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn secs(d: Duration) -> String {
+    format!("{:.1}s", d.as_secs_f64())
 }

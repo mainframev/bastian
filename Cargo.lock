@@ -124,6 +124,7 @@ dependencies = [
  "crossterm",
  "ignore",
  "insta",
+ "libc",
  "nucleo-matcher",
  "pulldown-cmark",
  "ratatui",

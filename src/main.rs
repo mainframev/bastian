@@ -23,6 +23,10 @@ struct Cli {
     #[arg(short, long, value_enum, default_value_t = ThemeName::Dark)]
     theme: ThemeName,
 
+    /// Run code blocks without asking first. Blocks marked `confirm` still ask.
+    #[arg(short, long)]
+    yes: bool,
+
     /// Print the rendered document instead of opening the TUI.
     #[arg(short, long)]
     print: bool,
@@ -50,7 +54,7 @@ fn main() -> Result<()> {
             }
             return Ok(());
         }
-        app::App::browse(path, theme, cli.width)
+        app::App::browse(path, theme, cli.width, cli.yes)
     } else {
         let (name, src) = read_source(&path)?;
         let doc = doc::parse(&src);
@@ -59,7 +63,12 @@ fn main() -> Result<()> {
             println!("{}", render::to_plain(&rendered.lines));
             return Ok(());
         }
-        app::App::read(reader::Reader::new(name, doc, theme, cli.width))
+        let mut reader = reader::Reader::new(name, doc, theme, cli.width);
+        reader.assume_yes = cli.yes;
+        if path.as_os_str() != "-" {
+            reader.base_dir = app::base_dir(&path);
+        }
+        app::App::read(reader)
     };
 
     let mut terminal = ratatui::init();

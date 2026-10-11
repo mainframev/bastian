@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use std::time::Duration;
+
 use anyhow::{Context, Result};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -16,15 +18,18 @@ pub struct App {
     pub max_width: u16,
     pub browser: Option<Browser>,
     pub reader: Option<Reader>,
+    /// Run blocks without asking, except those marked `confirm`.
+    pub assume_yes: bool,
 }
 
 impl App {
-    pub fn browse(root: PathBuf, theme: Theme, max_width: u16) -> Self {
+    pub fn browse(root: PathBuf, theme: Theme, max_width: u16, assume_yes: bool) -> Self {
         Self {
             browser: Some(Browser::new(root)),
             reader: None,
             theme,
             max_width,
+            assume_yes,
         }
     }
 
@@ -32,6 +37,7 @@ impl App {
         Self {
             theme: reader.theme.clone(),
             max_width: reader.max_width,
+            assume_yes: reader.assume_yes,
             browser: None,
             reader: Some(reader),
         }
@@ -40,12 +46,10 @@ impl App {
     fn open(&mut self, path: &Path, name: String) -> Result<()> {
         let src =
             std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-        self.reader = Some(Reader::new(
-            name,
-            doc::parse(&src),
-            self.theme.clone(),
-            self.max_width,
-        ));
+        let mut reader = Reader::new(name, doc::parse(&src), self.theme.clone(), self.max_width);
+        reader.base_dir = base_dir(path);
+        reader.assume_yes = self.assume_yes;
+        self.reader = Some(reader);
         Ok(())
     }
 
@@ -91,8 +95,27 @@ impl App {
     }
 }
 
+/// Directory a document's blocks run in: the one containing the file.
+pub fn base_dir(path: &Path) -> PathBuf {
+    match path.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+        _ => PathBuf::from("."),
+    }
+}
+
+/// How often to wake up for process output while waiting for keys.
+const TICK: Duration = Duration::from_millis(100);
+
 pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<()> {
+    let mut redraw = true;
     loop {
+        if let Some(r) = &mut app.reader {
+            redraw |= r.tick();
+        }
+        if !redraw && !event::poll(TICK)? {
+            continue;
+        }
+        redraw = false;
         terminal.draw(|f| {
             if let Some(r) = &mut app.reader {
                 ui::reader::draw(f, r);
@@ -100,8 +123,11 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<()> {
                 ui::browser::draw(f, b, &app.theme);
             }
         })?;
-        if !app.on_event(event::read()?) {
-            return Ok(());
+        if event::poll(TICK)? {
+            if !app.on_event(event::read()?) {
+                return Ok(());
+            }
+            redraw = true;
         }
     }
 }

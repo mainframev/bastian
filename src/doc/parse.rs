@@ -1,6 +1,6 @@
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
-use super::{Block, CodeBlock, Document, Inline, InlineStyle};
+use super::{Attrs, Block, CodeBlock, Document, Inline, InlineStyle};
 
 pub fn parse(src: &str) -> Document {
     let opts = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
@@ -152,6 +152,7 @@ impl Builder {
                     self.push_block(Block::Code(CodeBlock {
                         id,
                         lang: lang_of(&info),
+                        attrs: Attrs::parse(&info),
                         info,
                         src,
                     }));

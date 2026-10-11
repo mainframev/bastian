@@ -1,5 +1,7 @@
+mod attrs;
 mod parse;
 
+pub use attrs::Attrs;
 pub use parse::parse;
 
 /// A parsed Markdown document, reduced to the block structure bastian renders.
@@ -46,6 +48,7 @@ pub struct CodeBlock {
     pub lang: Option<String>,
     /// Full fence info string, e.g. `sh {name=deploy confirm}`.
     pub info: String,
+    pub attrs: Attrs,
     pub src: String,
 }
 

@@ -17,6 +17,8 @@ pub struct Theme {
     pub match_bg: Color,
     pub current_bg: Color,
     pub err: Color,
+    pub ok: Color,
+    pub warn: Color,
     /// syntect theme name used for code highlighting.
     pub syntax: &'static str,
 }
@@ -42,6 +44,8 @@ impl Theme {
             match_bg: hex(0x524f67),
             current_bg: hex(0xf6c177),
             err: hex(0xeb6f92),
+            ok: hex(0x9ccfd8),
+            warn: hex(0xf6c177),
             syntax: "base16-ocean.dark",
         }
     }
@@ -62,6 +66,8 @@ impl Theme {
             match_bg: hex(0xcecacd),
             current_bg: hex(0xea9d34),
             err: hex(0xb4637a),
+            ok: hex(0x286983),
+            warn: hex(0xea9d34),
             syntax: "InspiredGitHub",
         }
     }

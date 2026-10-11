@@ -9,6 +9,7 @@ clap = { version = "4.6.7", features = ["derive"] }
 # Same version ratatui uses; use-dev-tty reads keys from /dev/tty so `bastian -` works with piped stdin.
 crossterm = { version = "0.29", default-features = false, features = ["use-dev-tty"] }
 ignore = "0.4.33"
+libc = "0.2.190"
 nucleo-matcher = "0.3.1"
 pulldown-cmark = { version = "0.13.4", default-features = false }
 ratatui = "0.30.2"

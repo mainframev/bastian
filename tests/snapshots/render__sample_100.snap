@@ -31,7 +31,7 @@ renderer has to wrap it across more than one line at narrow widths.
  }
 
 
-                                                                                                 sh
+                                                                                       ▶ greet · sh
  echo "a very long command line that will certainly need to be wrapped when the width is small" | t
  r a-z A-Z
 

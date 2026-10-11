@@ -138,9 +138,10 @@ fn line_number_gutter_fits_in_terminal() {
         assert!(line.width() <= content, "{line:?} wider than {content}");
     }
 
-    // Numbers sit right after the margin, right-aligned, starting at 1.
+    // Numbers sit right after the margin, right-aligned, starting at 1, on
+    // the first row below the top padding.
     let buf = terminal.backend().buffer();
-    let row: String = (0..w).map(|x| buf[(x, 0)].symbol().to_string()).collect();
+    let row: String = (0..w).map(|x| buf[(x, 1)].symbol().to_string()).collect();
     let digits = usize::from(gutter - 1);
     let start = usize::from(MARGIN);
     assert_eq!(&row[start..start + digits + 1], format!("{:>digits$} ", 1));
@@ -253,8 +254,8 @@ fn scrollbar_shows_only_when_the_document_overflows() {
         r.scroll = scroll;
         terminal.draw(|f| draw(f, &mut r)).unwrap();
         let buf = terminal.backend().buffer();
-        // Rows above the status bar, in the last column.
-        (0..11)
+        // Document rows, between the top and bottom padding, in the last column.
+        (1..10)
             .map(|y| buf[(39, y)].symbol().to_string())
             .collect::<String>()
     };
@@ -287,7 +288,7 @@ fn links_are_terminal_hyperlinks() {
     // The frame as drawn; the test backend can't measure OSC 8 cells.
     let frame = terminal.draw(|f| draw(f, &mut r)).unwrap();
     let buf = frame.buffer;
-    let symbols: Vec<String> = (0..80).map(|x| buf[(x, 0)].symbol().to_string()).collect();
+    let symbols: Vec<String> = (0..80).map(|x| buf[(x, 1)].symbol().to_string()).collect();
     let osc = |target: &str| format!("\u{1b}]8;;{target}\u{1b}\\");
     assert!(
         symbols
@@ -305,7 +306,7 @@ fn links_are_terminal_hyperlinks() {
     // text after it.
     let x = symbols.iter().position(|s| s.contains("x.dev")).unwrap();
     assert_eq!(
-        buf[(x as u16, 0)].diff_option,
+        buf[(x as u16, 1)].diff_option,
         ratatui::buffer::CellDiffOption::ForcedWidth(std::num::NonZeroU16::new(4).unwrap())
     );
     // In-document anchors stay plain text.

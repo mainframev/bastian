@@ -9,11 +9,14 @@ use super::status;
 use crate::reader::{LinkPicker, Reader};
 
 pub fn draw(frame: &mut Frame, r: &mut Reader) {
-    // While searching, a `Find:` line sits above the document.
+    // A blank row above the document (the `Find:` line takes it while
+    // searching, with its own blank row below) and one above the status
+    // bar, so the text never touches either edge.
     let finding = r.prompt.is_some() || r.search.is_some();
-    let [find, body, status] = Layout::vertical([
-        Constraint::Length(if finding { 2 } else { 0 }),
+    let [find, body, _, status] = Layout::vertical([
+        Constraint::Length(if finding { 2 } else { 1 }),
         Constraint::Min(1),
+        Constraint::Length(1),
         Constraint::Length(1),
     ])
     .areas(frame.area());

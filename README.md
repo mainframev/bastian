@@ -231,3 +231,12 @@ bastian man > bastian.1 && man ./bastian.1
 ```sh {name=check}
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ```
+
+With [just](https://github.com/casey/just) (`brew install just`), the same is
+`just check`; `just lint` and `just test` run each half. Clippy runs with the
+pedantic group plus a few extras, configured in the `[lints]` table of
+`Cargo.toml`, and warnings fail the check.
+
+`just install-hooks` makes git run the formatting and lint checks before each
+commit in your clone (`git config core.hooksPath .githooks`). CI runs the full
+check on macOS and Linux for every push and pull request.

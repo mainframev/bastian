@@ -285,29 +285,40 @@ fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {
     status::modal(frame, t, " run ", lines);
 }
 
-/// Pictures over the rows reserved for them, when wholly on screen;
-/// a partly scrolled-off picture leaves its rows blank.
+/// Pictures over the rows reserved for them. A picture partly scrolled
+/// off shows its visible rows: the slot-sized picture is cropped from the
+/// top or the bottom.
 fn draw_images(frame: &mut Frame, r: &mut Reader, content: Rect, end: usize) {
     let scroll = r.scroll;
     let slots: Vec<_> = r
         .rendered
         .images
         .iter()
-        .filter(|s| s.line >= scroll && s.line + usize::from(s.rows) <= end)
+        .filter(|s| s.line < end && s.line + usize::from(s.rows) > scroll)
         .cloned()
         .collect();
     for slot in slots {
-        let Some(protocol) = r.images.protocol(&slot.url) else {
+        let Some(protocol) = r.images.protocol(&slot.url, slot.cols, slot.rows) else {
             continue;
         };
+        let top = slot.line.max(scroll);
+        let bottom = (slot.line + usize::from(slot.rows)).min(end);
         let x = content.x + slot.col as u16;
         let area = Rect::new(
             x,
-            content.y + (slot.line - scroll) as u16,
+            content.y + (top - scroll) as u16,
             slot.cols.min(content.right().saturating_sub(x)),
-            slot.rows,
+            (bottom - top) as u16,
         );
-        frame.render_stateful_widget(ratatui_image::StatefulImage::default(), area, protocol);
+        let crop = ratatui_image::CropOptions {
+            clip_top: slot.line < scroll,
+            clip_left: false,
+        };
+        frame.render_stateful_widget(
+            ratatui_image::StatefulImage::default().resize(ratatui_image::Resize::Crop(Some(crop))),
+            area,
+            protocol,
+        );
     }
 }
 

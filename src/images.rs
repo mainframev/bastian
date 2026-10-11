@@ -2,17 +2,17 @@
 //! the best protocol the terminal supports (kitty, iTerm2, sixel, or
 //! half-block characters).
 
+use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use anyhow::{Context, Result};
 use image::DynamicImage;
-use std::cell::OnceCell;
-use std::rc::Rc;
 
-use ratatui_image::picker::Picker;
-use ratatui_image::picker::cap_parser::QueryStdioOptions;
+use ratatui_image::FontSize;
+use ratatui_image::picker::{Picker, ProtocolType};
 use ratatui_image::protocol::StatefulProtocol;
 
 use crate::render::ImageSizes;
@@ -30,8 +30,12 @@ pub enum Source {
 enum Entry {
     Loading,
     Ready {
-        protocol: Box<StatefulProtocol>,
+        image: DynamicImage,
+        /// Natural size in cells.
         cells: (u16, u16),
+        /// The picture scaled to fill a slot exactly, by slot size, so a
+        /// slot partly scrolled off can be cropped to its visible rows.
+        scaled: HashMap<(u16, u16), Box<StatefulProtocol>>,
     },
     /// Unreadable or unsupported (SVG, for one): the alt text stays.
     Failed,
@@ -117,8 +121,9 @@ impl Images {
                         img.height().div_ceil(u32::from(font.height.max(1))) as u16,
                     );
                     Entry::Ready {
-                        protocol: Box::new(picker.new_resize_protocol(img)),
+                        image: img,
                         cells,
+                        scaled: HashMap::new(),
                     }
                 }
                 Err(_) => Entry::Failed,
@@ -140,11 +145,24 @@ impl Images {
             .collect()
     }
 
-    pub fn protocol(&mut self, key: &str) -> Option<&mut StatefulProtocol> {
-        match self.entries.get_mut(key) {
-            Some(Entry::Ready { protocol, .. }) => Some(protocol),
-            _ => None,
-        }
+    /// The picture for `key` sized to a `cols`×`rows` slot. Built on first
+    /// use for that size (e.g. after a resize) and reused while scrolling.
+    pub fn protocol(&mut self, key: &str, cols: u16, rows: u16) -> Option<&mut StatefulProtocol> {
+        let support = self.support.as_ref()?;
+        let Some(Entry::Ready { image, scaled, .. }) = self.entries.get_mut(key) else {
+            return None;
+        };
+        let protocol = scaled.entry((cols, rows)).or_insert_with(|| {
+            let picker = support.picker();
+            let font = picker.font_size();
+            let fitted = image.resize_exact(
+                u32::from(cols) * u32::from(font.width.max(1)),
+                u32::from(rows) * u32::from(font.height.max(1)),
+                image::imageops::FilterType::Triangle,
+            );
+            Box::new(picker.new_resize_protocol(fitted))
+        });
+        Some(protocol)
     }
 }
 
@@ -162,21 +180,42 @@ fn load(source: &Source) -> Result<DynamicImage> {
     Ok(image::load_from_memory(&bytes)?)
 }
 
-/// Ask the terminal which image protocol and font size it has. Falls back
-/// to half-block characters when it doesn't answer in time (or stdin isn't
-/// the terminal, as with `bastian -`).
+/// The image protocol and cell size, judged from the environment without
+/// querying the terminal: a stdin query can outlive its timeout and swallow
+/// keystrokes (under tmux without passthrough it never gets a reply).
+/// kitty and Ghostty get the kitty protocol, iTerm2-compatible terminals
+/// iTerm2's; everything else, and anything inside tmux, half-blocks.
 fn detect() -> Picker {
-    use std::io::IsTerminal;
-    let options = QueryStdioOptions {
-        timeout: std::time::Duration::from_millis(300),
-        ..QueryStdioOptions::default()
-    };
-    if std::io::stdin().is_terminal()
-        && let Ok(picker) = Picker::from_query_stdio_with_options(options)
-    {
-        return picker;
+    let env = |k: &str| std::env::var(k).unwrap_or_default();
+    #[allow(deprecated, reason = "the only constructor that doesn't read stdin")]
+    let mut picker = Picker::from_fontsize(cell_size().unwrap_or(FontSize::new(10, 20)));
+    let kitty = !env("KITTY_WINDOW_ID").is_empty()
+        || matches!(env("TERM").as_str(), "xterm-kitty" | "xterm-ghostty")
+        || env("TERM_PROGRAM") == "ghostty";
+    if picker.tmux_detected() {
+        picker.set_protocol_type(ProtocolType::Halfblocks);
+    } else if kitty {
+        picker.set_protocol_type(ProtocolType::Kitty);
     }
-    Picker::halfblocks()
+    picker
+}
+
+/// Pixel size of one character cell, from the terminal's window size.
+fn cell_size() -> Option<FontSize> {
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsRawFd;
+        let tty = std::fs::File::open("/dev/tty").ok()?;
+        // SAFETY: TIOCGWINSZ fills a winsize struct we own, on an open fd.
+        let mut ws: libc::winsize = unsafe { std::mem::zeroed() };
+        if unsafe { libc::ioctl(tty.as_raw_fd(), libc::TIOCGWINSZ, &raw mut ws) } != 0 {
+            return None;
+        }
+        (ws.ws_xpixel > 0 && ws.ws_ypixel > 0 && ws.ws_col > 0 && ws.ws_row > 0)
+            .then(|| FontSize::new(ws.ws_xpixel / ws.ws_col, ws.ws_ypixel / ws.ws_row))
+    }
+    #[cfg(not(unix))]
+    None
 }
 
 #[cfg(test)]
@@ -206,7 +245,7 @@ mod tests {
         let sizes = images.sizes();
         assert!(sizes.contains_key("dot.png"));
         assert!(!sizes.contains_key("logo.svg"));
-        assert!(images.protocol("dot.png").is_some());
+        assert!(images.protocol("dot.png", 4, 2).is_some());
 
         // Off: nothing is loaded.
         let mut off = Images::default();

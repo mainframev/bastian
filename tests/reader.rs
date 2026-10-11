@@ -341,3 +341,48 @@ fn image_sources_resolve_like_links() {
         ))
     );
 }
+
+#[test]
+fn pictures_partly_scrolled_off_show_their_visible_rows() {
+    use bastian::images::{Images, Support};
+    use bastian::ui::reader::draw;
+    use ratatui::{Terminal, backend::TestBackend};
+    use ratatui_image::picker::Picker;
+
+    let dir = tempfile::tempdir().unwrap();
+    image::RgbImage::from_pixel(200, 200, image::Rgb([220, 40, 40]))
+        .save(dir.path().join("p.png"))
+        .unwrap();
+    let tail: String = (0..40).map(|i| format!("line {i}\n\n")).collect();
+    let src = format!("intro\n\n![pic](p.png)\n\n{tail}");
+    let mut r = Reader::new("t.md".into(), parse(&src), Theme::dark(), 80);
+    r.base_dir = dir.path().to_path_buf();
+    r.images = Images::new(Some(Support::fixed(Picker::halfblocks())));
+
+    let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while r.rendered.images.is_empty() {
+        terminal.draw(|f| draw(f, &mut r)).unwrap();
+        r.tick();
+        assert!(std::time::Instant::now() < deadline, "picture did not load");
+        thread::sleep(Duration::from_millis(10));
+    }
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let slot = r.rendered.images[0].clone();
+    assert!(slot.rows >= 4, "{slot:?}");
+
+    // Scroll the top half of the picture off screen.
+    r.scroll = slot.line + usize::from(slot.rows) / 2;
+    let frame = terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let visible = usize::from(slot.rows) - usize::from(slot.rows) / 2;
+    let x = 2 + slot.col as u16; // after the left margin
+    // Half-blocks draw the (single-color) picture as colored cells.
+    let red = ratatui::style::Color::Rgb(220, 40, 40);
+    for row in 0..visible as u16 {
+        let cell = &frame.buffer[(x, 1 + row)]; // below the top padding
+        assert!(
+            cell.bg == red || cell.fg == red,
+            "row {row} of the picture is blank: {cell:?}"
+        );
+    }
+}

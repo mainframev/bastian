@@ -82,9 +82,9 @@ kitty, WezTerm, Ghostty, Windows Terminal, recent tmux with `hyperlinks` in
 `terminal-features`, …): web links open as they are, relative links as files
 next to the document (or against the URL of a remote document).
 
-An image on a line of its own is shown as a picture in the reader (kitty,
-iTerm2 and sixel graphics where the terminal supports them, colored
-half-blocks elsewhere), from a file next to the document or a URL. Images in
+An image on a line of its own is shown as a picture in the reader (kitty
+graphics in kitty and Ghostty, iTerm2's in iTerm2 and WezTerm, colored
+half-blocks elsewhere and inside tmux), from a file next to the document or a URL. Images in
 running text, SVGs (such as most badges) and printed output keep their alt
 text.
 

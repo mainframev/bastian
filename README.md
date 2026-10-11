@@ -99,7 +99,7 @@ it started.
 Command-line flags take precedence.
 
 ```toml
-theme = "dark"        # or "light"
+theme = "auto"        # match the terminal background, or "dark" / "light"
 width = 100           # maximum document width
 confirm = "always"    # "never" behaves like --yes
 color = "auto"        # printed output: "auto", "always" or "never"

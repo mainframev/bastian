@@ -8,6 +8,7 @@ use bastian::app::{self, Settings};
 use bastian::config::{self, CliOverrides, ColorMode, Confirm, ThemeName};
 use bastian::exec::Interpreters;
 use bastian::render::theme::Theme;
+use bastian::term::{self, Background};
 use bastian::{browser, doc, output, render};
 
 /// Read Markdown in the terminal, and run its code blocks.
@@ -22,7 +23,7 @@ struct Cli {
     #[arg(short, long)]
     width: Option<u16>,
 
-    /// Color theme [default: dark].
+    /// Color theme [default: auto, matching the terminal background].
     #[arg(short, long, value_enum)]
     theme: Option<ThemeName>,
 
@@ -131,6 +132,11 @@ fn settings(r: config::Resolved) -> Settings {
         theme: match r.theme.value {
             ThemeName::Dark => Theme::dark(),
             ThemeName::Light => Theme::light(),
+            // One detection decides both Markdown and code-block colors.
+            ThemeName::Auto => match term::background() {
+                Some(Background::Light) => Theme::light(),
+                _ => Theme::dark(),
+            },
         },
         max_width: r.width.value,
         assume_yes: r.confirm.value == Confirm::Never,

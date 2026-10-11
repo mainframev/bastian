@@ -26,6 +26,8 @@ pub struct Config {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeName {
+    /// Light or dark to match the terminal's background.
+    Auto,
     Dark,
     Light,
 }
@@ -125,9 +127,9 @@ pub struct Resolved {
 pub fn resolve(file: Config, env: &EnvMap, cli: CliOverrides) -> Result<Resolved> {
     Ok(Resolved {
         theme: pick(
-            ThemeName::Dark,
+            ThemeName::Auto,
             file.theme,
-            env_value(env, "BASTIAN_THEME", parse_enum, "dark or light")?,
+            env_value(env, "BASTIAN_THEME", parse_enum, "auto, dark or light")?,
             cli.theme,
         ),
         width: pick(
@@ -229,7 +231,7 @@ mod tests {
         assert_eq!(
             r.theme,
             Setting {
-                value: ThemeName::Dark,
+                value: ThemeName::Auto,
                 source: Source::Default
             }
         );

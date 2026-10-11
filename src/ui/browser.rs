@@ -29,7 +29,9 @@ const HELP: &[(&str, &str)] = &[
     ("q", "quit"),
 ];
 
-/// Rows per entry: title, path, date, gap.
+/// Rows per entry at most: title, path, date, gap. Pages hold as many
+/// entries as fit at this height; entries without a path line are a row
+/// shorter, so the gap after every entry stays one row.
 const ENTRY_ROWS: u16 = 4;
 
 pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
@@ -115,15 +117,13 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
         let title_style = status::row_style(t, selected);
         // Title, then progressively quieter path and date lines. The path
         // is left out when it would just repeat the title (a top-level file
-        // without a title); padding keeps every entry `ENTRY_ROWS` tall so
-        // pages stay even.
+        // without a title).
         let title = e.title.clone().unwrap_or_else(|| {
             e.path
                 .file_name()
                 .map_or_else(|| e.rel.clone(), |n| n.to_string_lossy().into_owned())
         });
         let show_path = e.rel != title;
-        let start = lines.len();
         lines.push(Line::from(vec![
             bar.clone(),
             Span::styled(title, title_style),
@@ -142,7 +142,7 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
                 Style::default().fg(t.muted).add_modifier(Modifier::DIM),
             ),
         ]));
-        lines.resize(start + usize::from(ENTRY_ROWS), Line::default());
+        lines.push(Line::default());
     }
     frame.render_widget(Paragraph::new(lines), inset(list));
 

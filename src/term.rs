@@ -97,16 +97,30 @@ fn query_background(timeout: Duration) -> Option<Background> {
     parse_osc11(&String::from_utf8_lossy(&reply))
 }
 
+/// Wait up to `timeout` for input on `fd`. Uses select(2): on macOS,
+/// poll(2) doesn't support terminal devices and reports them ready at once,
+/// which would turn the following read into an unbounded block.
 #[cfg(unix)]
 fn readable(fd: std::os::fd::RawFd, timeout: Duration) -> bool {
-    let mut pfd = libc::pollfd {
-        fd,
-        events: libc::POLLIN,
-        revents: 0,
-    };
-    let ms = timeout.as_millis().min(i32::MAX as u128) as i32;
-    // SAFETY: one valid pollfd for a descriptor we own.
-    unsafe { libc::poll(&mut pfd, 1, ms) > 0 }
+    // SAFETY: an fd_set zeroed and filled with FD_ZERO/FD_SET for one
+    // descriptor we own, and a timeval on the stack, as select(2) expects.
+    unsafe {
+        let mut set: libc::fd_set = std::mem::zeroed();
+        libc::FD_ZERO(&mut set);
+        libc::FD_SET(fd, &mut set);
+        let mut tv = libc::timeval {
+            tv_sec: timeout.as_secs() as libc::time_t,
+            tv_usec: timeout.subsec_micros() as libc::suseconds_t,
+        };
+        libc::select(
+            fd + 1,
+            &mut set,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut tv,
+        ) > 0
+            && libc::FD_ISSET(fd, &set)
+    }
 }
 
 #[cfg(not(unix))]

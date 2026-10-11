@@ -124,21 +124,25 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
         } else {
             Style::default().fg(t.text)
         };
-        // Title, then progressively quieter path and date lines. A file
-        // without a title shows its name, so the path isn't repeated.
+        // Title, then progressively quieter path and date lines. The path
+        // is left out when it would just repeat the title (a top-level file
+        // without a title); the entry keeps its height so pages stay even.
         let title = e.title.clone().unwrap_or_else(|| {
             e.path
                 .file_name()
                 .map_or_else(|| e.rel.clone(), |n| n.to_string_lossy().into_owned())
         });
+        let show_path = e.rel != title;
         lines.push(Line::from(vec![
             bar.clone(),
             Span::styled(title, title_style),
         ]));
-        lines.push(Line::from(vec![
-            bar.clone(),
-            Span::styled(e.rel.clone(), Style::default().fg(t.subtle)),
-        ]));
+        if show_path {
+            lines.push(Line::from(vec![
+                bar.clone(),
+                Span::styled(e.rel.clone(), Style::default().fg(t.subtle)),
+            ]));
+        }
         let date = e.created.map(|c| format_time(c, &tz)).unwrap_or_default();
         lines.push(Line::from(vec![
             bar,
@@ -148,6 +152,9 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
             ),
         ]));
         lines.push(Line::default());
+        if !show_path {
+            lines.push(Line::default());
+        }
     }
     frame.render_widget(Paragraph::new(lines), inset(list));
 

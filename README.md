@@ -1,11 +1,20 @@
 # bastian
 
-Read Markdown in the terminal, and run its code blocks.
+A terminal Markdown reader, made to bring documentation into the command line
+and make it a pleasure to read there.
 
-bastian is a terminal Markdown reader with one addition: fenced code blocks
-in `sh`, `bash`, `zsh`, `fish`, `python` or `node` can be run where you read
-them, with their output streamed underneath. READMEs, runbooks and setup guides
-become something you can step through instead of copy-paste.
+Use it to discover Markdown files and read them without leaving the terminal.
+bastian finds the Markdown in a directory and its subdirectories, or across a
+Git repository, and lists it newest first, ready to filter. Open a document to
+read it laid out for the terminal: headings, lists and tables fitted to the
+width, highlighted code, links you can follow or click, images where the
+terminal can draw them, an outline to jump through, search, and a live reload
+whenever the file changes.
+
+It reads local files, standard input, URLs and GitHub or GitLab READMEs, MDX
+as well as plain Markdown, and comes with popular color themes or your own.
+For runbooks and setup guides it can also run a document's shell, Python or
+Node code blocks right where you read them.
 
 Named after Bastian Balthazar Bux, who reads *The NeverEnding Story* until he
 ends up inside it.
@@ -33,14 +42,6 @@ bastian --color always README.md | less -R
 bastian -y runbook.md   # run blocks without confirming each one
 bastian -n README.md    # show line numbers
 bastian -t kanagawa README.md  # use another theme
-```
-
-Try it on this file: open it with `bastian README.md`, press `Tab` to focus the
-block below and `Enter` to run it.
-
-```sh {name=hello}
-echo "hello from $(basename "$PWD")"
-uname -sm
 ```
 
 ## Keys
@@ -100,7 +101,17 @@ anonymous rate limit.
 rendered content, and code blocks inside components can still be run. Front
 matter is hidden in plain `.md` files too.
 
-## Code block attributes
+## Running code blocks
+
+Fenced code blocks in `sh`, `bash`, `zsh`, `fish`, `python` or `node` can be
+run from the reader, with their output streamed underneath. Try it on this
+file: open it with `bastian README.md`, press `Tab` to focus the block below
+and `Enter` to run it.
+
+```sh {name=hello}
+echo "hello from $(basename "$PWD")"
+uname -sm
+```
 
 Put attributes in braces after the language:
 

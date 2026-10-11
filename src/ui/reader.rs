@@ -66,6 +66,14 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
         })
         .collect();
     frame.render_widget(Paragraph::new(visible), content);
+    status::scrollbar(
+        frame,
+        t,
+        body,
+        r.rendered.lines.len(),
+        usize::from(body.height),
+        r.scroll,
+    );
 
     if gutter > 0 {
         let digits = usize::from(gutter - 1);

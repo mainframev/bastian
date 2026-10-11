@@ -144,6 +144,8 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, show_logo: bool) {
         lines.push(Line::default());
     }
     frame.render_widget(Paragraph::new(lines), inset(list));
+    // In entries, so the thumb moves a page at a time like the list.
+    status::scrollbar(frame, t, list, b.visible.len(), b.height, b.offset());
 
     let idle = if b.filter.is_empty() {
         "enter open · / filter · e edit · ? more"

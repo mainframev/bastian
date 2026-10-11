@@ -239,3 +239,33 @@ fn replaced_document_is_highlighted_afresh() {
     r.layout(80, 10);
     assert!(text(&r).contains("echo new"), "{}", text(&r));
 }
+
+#[test]
+fn scrollbar_shows_only_when_the_document_overflows() {
+    use bastian::ui::reader::draw;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let column = |src: &str, scroll: usize| {
+        let mut r = Reader::new("t.md".into(), parse(src), Theme::dark(), 80);
+        let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
+        terminal.draw(|f| draw(f, &mut r)).unwrap();
+        r.scroll = scroll;
+        terminal.draw(|f| draw(f, &mut r)).unwrap();
+        let buf = terminal.backend().buffer();
+        // Rows above the status bar, in the last column.
+        (0..11)
+            .map(|y| buf[(39, y)].symbol().to_string())
+            .collect::<String>()
+    };
+    let short = column("# Short\n\ntext\n", 0);
+    assert!(short.trim().is_empty(), "{short:?}");
+
+    let long: String = (0..60).map(|i| format!("line {i}\n\n")).collect();
+    let top = column(&long, 0);
+    assert!(top.starts_with('█'), "{top:?}");
+    let bottom = column(&long, 1000);
+    assert!(
+        bottom.ends_with('█') && !bottom.starts_with('█'),
+        "{bottom:?}"
+    );
+}

@@ -60,6 +60,35 @@ pub fn draw(frame: &mut Frame, area: Rect, t: &Theme, left: Left, right: &str) {
 
 /// The `Find:` line shown above a list or document while searching.
 /// `editing` draws a cursor after the text.
+/// A thin vertical scrollbar in the last column of `area`, drawn only when
+/// `content` doesn't fit in `viewport` (both in the same units).
+pub fn scrollbar(
+    frame: &mut Frame,
+    t: &Theme,
+    area: Rect,
+    content: usize,
+    viewport: usize,
+    offset: usize,
+) {
+    if content <= viewport || area.width == 0 {
+        return;
+    }
+    let bar = tui_scrollbar::ScrollBar::vertical(tui_scrollbar::ScrollLengths {
+        content_len: content,
+        viewport_len: viewport,
+    })
+    .offset(offset)
+    .glyph_set(tui_scrollbar::GlyphSet::unicode())
+    .track_style(Style::default().fg(t.surface))
+    .thumb_style(Style::default().fg(t.muted));
+    let column = Rect {
+        x: area.right() - 1,
+        width: 1,
+        ..area
+    };
+    frame.render_widget(&bar, column);
+}
+
 /// `Find: text`, with a block cursor at character `cursor` while editing.
 pub fn find_line(t: &Theme, text: &str, cursor: Option<usize>) -> Line<'static> {
     let label = Span::styled("Find: ", Style::default().fg(t.warn).bold());

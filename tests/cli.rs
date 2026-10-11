@@ -1,0 +1,249 @@
+//! The command line, run as a user would: the built binary in a clean
+//! environment with its own config directory.
+
+use std::io::Write;
+use std::path::Path;
+use std::process::{Command, Output, Stdio};
+
+/// `bastian` with `args`, an empty config dir and none of the variables
+/// that change its behavior.
+fn bastian(config: &Path, args: &[&str], env: &[(&str, &str)]) -> Output {
+    bastian_with_stdin(config, args, env, None)
+}
+
+fn bastian_with_stdin(
+    config: &Path,
+    args: &[&str],
+    env: &[(&str, &str)],
+    stdin: Option<&str>,
+) -> Output {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_bastian"));
+    cmd.args(args)
+        .env("XDG_CONFIG_HOME", config)
+        .env_remove("NO_COLOR")
+        .env_remove("CLICOLOR_FORCE")
+        .env_remove("BASTIAN_CONFIG")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    for (k, _) in std::env::vars().filter(|(k, _)| k.starts_with("BASTIAN_")) {
+        cmd.env_remove(k);
+    }
+    cmd.envs(env.iter().copied());
+    let mut child = cmd.spawn().unwrap();
+    if let Some(input) = stdin {
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+    }
+    drop(child.stdin.take());
+    child.wait_with_output().unwrap()
+}
+
+fn stdout(o: &Output) -> String {
+    String::from_utf8_lossy(&o.stdout).into_owned()
+}
+
+fn stderr(o: &Output) -> String {
+    String::from_utf8_lossy(&o.stderr).into_owned()
+}
+
+#[test]
+fn short_and_long_help_match() {
+    let dir = tempfile::tempdir().unwrap();
+    let short = bastian(dir.path(), &["-h"], &[]);
+    let long = bastian(dir.path(), &["--help"], &[]);
+    assert!(short.status.success());
+    assert_eq!(stdout(&short), stdout(&long));
+    assert!(stdout(&short).contains("--no-images"));
+}
+
+#[test]
+fn print_config_names_every_source() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("bastian")).unwrap();
+    std::fs::write(dir.path().join("bastian/config.toml"), "width = 70\n").unwrap();
+    let out = bastian(
+        dir.path(),
+        &["--print-config", "-t", "nord"],
+        &[("BASTIAN_LOGO", "false")],
+    );
+    let text = stdout(&out);
+    let line = |key: &str| {
+        text.lines()
+            .find(|l| l.starts_with(&format!("{key} =")))
+            .unwrap_or_else(|| panic!("no {key} in {text}"))
+            .to_string()
+    };
+    assert!(line("theme").ends_with("# flag"), "{text}");
+    assert!(line("width").ends_with("# config file"), "{text}");
+    assert!(line("logo").ends_with("# environment"), "{text}");
+    assert!(line("mouse").ends_with("# default"), "{text}");
+}
+
+#[test]
+fn bad_settings_say_where_they_came_from() {
+    let dir = tempfile::tempdir().unwrap();
+    let doc = dir.path().join("a.md");
+    std::fs::write(&doc, "# A\n").unwrap();
+    let doc = doc.to_str().unwrap();
+
+    let out = bastian(dir.path(), &["-p", doc], &[("BASTIAN_WIDTH", "wide")]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("BASTIAN_WIDTH=\"wide\" is not valid"),
+        "{}",
+        stderr(&out)
+    );
+
+    let out = bastian(dir.path(), &["-p", doc], &[("BASTIAN_THEME", "nope")]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("unknown theme \"nope\" (from BASTIAN_THEME)"),
+        "{}",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn printing_is_plain_unless_color_is_asked_for() {
+    let dir = tempfile::tempdir().unwrap();
+    let doc = dir.path().join("a.md");
+    std::fs::write(&doc, "# Title\n\nSome `code`.\n\n![A picture](pic.png)\n").unwrap();
+    let doc = doc.to_str().unwrap();
+
+    let plain = bastian(dir.path(), &["-p", "-w", "40", doc], &[]);
+    assert!(plain.status.success());
+    assert!(!stdout(&plain).contains('\u{1b}'));
+    // Pictures are a TUI thing; printing keeps the alt text.
+    assert!(stdout(&plain).contains("[image: A picture]"));
+
+    let colored = bastian(dir.path(), &["-p", "--color", "always", doc], &[]);
+    assert!(stdout(&colored).contains("\u{1b}["));
+    let forced = bastian(dir.path(), &["-p", doc], &[("CLICOLOR_FORCE", "1")]);
+    assert!(stdout(&forced).contains("\u{1b}["));
+    let none = bastian(
+        dir.path(),
+        &["-p", doc],
+        &[("CLICOLOR_FORCE", "1"), ("NO_COLOR", "1")],
+    );
+    assert!(!stdout(&none).contains('\u{1b}'));
+
+    // Display-only flags are accepted when printing.
+    let flags = bastian(dir.path(), &["-p", "--no-logo", "--no-images", doc], &[]);
+    assert!(flags.status.success(), "{}", stderr(&flags));
+}
+
+#[test]
+fn reads_stdin() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = bastian_with_stdin(
+        dir.path(),
+        &["-p", "-"],
+        &[],
+        Some("# From stdin\n\ntext\n"),
+    );
+    assert!(out.status.success());
+    assert!(stdout(&out).contains("From stdin"));
+}
+
+#[test]
+fn themes_are_listed_when_piped() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("bastian/themes")).unwrap();
+    std::fs::write(
+        dir.path().join("bastian/themes/mine.toml"),
+        "extends = \"nord\"\n[ui]\naccent = \"#ff0000\"\n",
+    )
+    .unwrap();
+    let out = bastian(dir.path(), &["themes"], &[]);
+    assert!(out.status.success());
+    let text = stdout(&out);
+    assert!(!text.contains('\u{1b}'), "no colors when piped");
+    for name in [
+        "tokyonight-night",
+        "rose-pine",
+        "kanagawa-wave",
+        "catppuccin-latte",
+        "nord",
+    ] {
+        assert!(
+            text.lines().any(|l| l.starts_with(name)),
+            "{name} missing:\n{text}"
+        );
+    }
+    assert!(
+        text.lines()
+            .any(|l| l.starts_with("mine ") && l.contains("mine.toml")),
+        "{text}"
+    );
+    assert!(
+        text.lines()
+            .any(|l| l.starts_with("rose-pine ") && l.contains("← dark_theme")),
+        "{text}"
+    );
+}
+
+#[test]
+fn listing_a_directory_skips_hidden_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("repo");
+    std::fs::create_dir_all(root.join(".config/app")).unwrap();
+    std::fs::create_dir_all(root.join("docs")).unwrap();
+    std::fs::create_dir(root.join(".git")).unwrap();
+    // Like a dotfiles repo: ignore everything, then re-include .config.
+    std::fs::write(root.join(".gitignore"), "/*\n!/.config/\n!/docs/\n").unwrap();
+    std::fs::write(root.join(".config/app/notes.md"), "# notes\n").unwrap();
+    std::fs::write(root.join("docs/guide.md"), "# guide\n").unwrap();
+    let root = root.to_str().unwrap();
+
+    let out = bastian(dir.path(), &["-p", root], &[]);
+    assert_eq!(stdout(&out).trim(), "docs/guide.md");
+    let all = bastian(dir.path(), &["-p", "-a", root], &[]);
+    assert!(
+        stdout(&all).contains(".config/app/notes.md"),
+        "{}",
+        stdout(&all)
+    );
+}
+
+#[test]
+fn fetches_a_remote_document() {
+    use std::io::{BufRead, BufReader};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut line = String::new();
+        while reader.read_line(&mut line).unwrap() > 2 {
+            line.clear();
+        }
+        let body = "# Remote\n\nFetched over HTTP.\n";
+        write!(
+            stream,
+            "HTTP/1.1 200 OK\r\nContent-Type: text/markdown\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )
+        .unwrap();
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let url = format!("http://{addr}/README.md");
+    let out = bastian(dir.path(), &["-p", &url], &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("Fetched over HTTP."));
+}
+
+#[test]
+fn completions_and_man_page() {
+    let dir = tempfile::tempdir().unwrap();
+    let zsh = bastian(dir.path(), &["completions", "zsh"], &[]);
+    assert!(stdout(&zsh).contains("#compdef bastian"));
+    // Theme names are offered for --theme.
+    assert!(stdout(&zsh).contains("kanagawa-wave"));
+    let man = bastian(dir.path(), &["man"], &[]);
+    assert!(stdout(&man).contains(".TH bastian"));
+}

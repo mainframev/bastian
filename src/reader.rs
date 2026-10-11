@@ -138,6 +138,28 @@ impl Reader {
         }
     }
 
+    /// Absolute target for a link written as `url`, for terminal hyperlinks:
+    /// URLs as they are, relative links against the remote document's URL
+    /// or as `file://` paths. In-document `#anchors` have none.
+    pub fn hyperlink_target(&self, url: &str) -> Option<String> {
+        if url.starts_with('#') {
+            return None;
+        }
+        if let Ok(abs) = url::Url::parse(url) {
+            return Some(abs.to_string());
+        }
+        if let Some(base) = &self.remote_base {
+            return base.join(url).ok().map(|u| u.to_string());
+        }
+        let (path, fragment) = url
+            .split_once('#')
+            .map_or((url, None), |(p, f)| (p, Some(f)));
+        let abs = std::path::absolute(self.base_dir.join(path)).ok()?;
+        let mut file = url::Url::from_file_path(abs).ok()?;
+        file.set_fragment(fragment);
+        Some(file.to_string())
+    }
+
     /// Switch to `theme`, re-highlighting code on the next layout.
     pub fn set_theme(&mut self, theme: Theme) {
         self.theme = theme;

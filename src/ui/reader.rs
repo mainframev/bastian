@@ -66,6 +66,7 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
         })
         .collect();
     frame.render_widget(Paragraph::new(visible), content);
+    draw_hyperlinks(frame, r, content, end);
     status::scrollbar(
         frame,
         t,
@@ -235,6 +236,52 @@ fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {
         ]),
     ];
     status::modal(frame, t, " run ", lines);
+}
+
+/// Make visible links clickable: an OSC 8 hyperlink over each link's text.
+/// Lines with search matches keep their highlighting instead.
+fn draw_hyperlinks(frame: &mut Frame, r: &Reader, content: Rect, end: usize) {
+    let first = r.rendered.links.partition_point(|l| l.line < r.scroll);
+    for link in r.rendered.links[first..]
+        .iter()
+        .take_while(|l| l.line < end)
+    {
+        if r.search
+            .as_ref()
+            .is_some_and(|s| s.matches.iter().any(|m| m.line == link.line))
+        {
+            continue;
+        }
+        let Some(target) = r.hyperlink_target(&link.url) else {
+            continue;
+        };
+        let line = &r.rendered.lines[link.line];
+        let (mut label, mut style, mut col) = (String::new(), None, 0);
+        for span in &line.spans {
+            let w = span.width();
+            if col + w > link.col && col < link.col + link.width {
+                label.push_str(&span.content);
+                style.get_or_insert(span.style);
+            }
+            col += w;
+        }
+        let x = content.x + link.col as u16;
+        let width = (link.width as u16).min(content.right().saturating_sub(x));
+        let y = content.y + (link.line - r.scroll) as u16;
+        let area = Rect::new(x, y, width, 1);
+        frame.render_widget(
+            hyperrat::Link::new(label, target).style(style.unwrap_or_default()),
+            area,
+        );
+        // The first cell holds the whole escape sequence plus the label.
+        // Tell the diff how many columns it really covers, or it measures the
+        // escape sequence and skips the rest of the line.
+        if let Some(width) = std::num::NonZeroU16::new(width)
+            && let Some(cell) = frame.buffer_mut().cell_mut((x, y))
+        {
+            cell.set_diff_option(ratatui::buffer::CellDiffOption::ForcedWidth(width));
+        }
+    }
 }
 
 /// `Find:` line above the document, with the match count on the right.

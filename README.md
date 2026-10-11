@@ -75,6 +75,11 @@ The search and filter input edits like a shell prompt: `←/→`, `Home/End`
 filtering, `↑/↓`, `PageUp/PageDown` and `ctrl-j/k` leave the input and move
 through the results.
 
+Links are also clickable in terminals that support hyperlinks (OSC 8: iTerm2,
+kitty, WezTerm, Ghostty, Windows Terminal, recent tmux with `hyperlinks` in
+`terminal-features`, …): web links open as they are, relative links as files
+next to the document (or against the URL of a remote document).
+
 The open document reloads when the file changes on disk.
 
 Remote documents (URLs, `github.com/owner/repo`, `gitlab.com/group/project`)

@@ -269,3 +269,48 @@ fn scrollbar_shows_only_when_the_document_overflows() {
         "{bottom:?}"
     );
 }
+
+#[test]
+fn links_are_terminal_hyperlinks() {
+    use bastian::ui::reader::draw;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let mut r = Reader::new(
+        "t.md".into(),
+        parse("See [docs](https://x.dev/docs) and [guide](guide.md#setup), [top](#top).\n"),
+        Theme::dark(),
+        80,
+    );
+    r.base_dir = std::path::PathBuf::from("/tmp/proj");
+    let mut terminal = Terminal::new(TestBackend::new(80, 6)).unwrap();
+    // The frame as drawn; the test backend can't measure OSC 8 cells.
+    let frame = terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let buf = frame.buffer;
+    let symbols: Vec<String> = (0..80).map(|x| buf[(x, 0)].symbol().to_string()).collect();
+    let osc = |target: &str| format!("\u{1b}]8;;{target}\u{1b}\\");
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.starts_with(&osc("https://x.dev/docs"))),
+        "{symbols:?}"
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.starts_with(&osc("file:///tmp/proj/guide.md#setup"))),
+        "{symbols:?}"
+    );
+    // The link cell declares its real width, so the diff doesn't skip the
+    // text after it.
+    let x = symbols.iter().position(|s| s.contains("x.dev")).unwrap();
+    assert_eq!(
+        buf[(x as u16, 0)].diff_option,
+        ratatui::buffer::CellDiffOption::ForcedWidth(std::num::NonZeroU16::new(4).unwrap())
+    );
+    // In-document anchors stay plain text.
+    assert_eq!(
+        symbols.iter().filter(|s| s.contains("\u{1b}]8;;")).count(),
+        2
+    );
+    assert_eq!(r.hyperlink_target("#top"), None);
+}

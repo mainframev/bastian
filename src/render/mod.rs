@@ -33,6 +33,19 @@ pub struct Rendered {
     pub anchors: Vec<(usize, usize)>,
     /// Line range occupied by each code block, in document order.
     pub code_blocks: Vec<CodeRange>,
+    /// Where link text landed on screen, one entry per line a link covers.
+    pub links: Vec<LinkSpan>,
+}
+
+/// A link's text on one rendered line.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LinkSpan {
+    pub line: usize,
+    /// First column and width of the link text on that line.
+    pub col: usize,
+    pub width: usize,
+    /// The link target as written in the document.
+    pub url: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -81,6 +94,7 @@ pub fn render_with_runs(
         runs,
         interpreters,
         highlights,
+        link_runs: RefCell::default(),
     };
     let width = usize::from(width).max(10);
     if doc.code_file
@@ -95,12 +109,61 @@ pub fn render_with_runs(
         .copied()
         .zip(doc.lines.iter().copied())
         .collect();
+    let links = locate_links(&out.lines, &r.link_runs.into_inner(), theme);
     Rendered {
         lines: out.lines,
         src_line: Vec::new(),
         anchors,
         code_blocks: out.codes,
+        links,
     }
+}
+
+/// Spans drawn in the link style.
+fn is_link_style(style: Style, t: &Theme) -> bool {
+    style.fg == Some(t.link) && style.add_modifier.contains(Modifier::UNDERLINED)
+}
+
+/// Match link-styled spans, in order, to the link runs the renderer styled
+/// (`(url, non-space characters)`), and merge each run's spans on a line.
+/// Wrapping only drops whitespace, so counting the other characters ties
+/// every span back to its run, even across line breaks.
+fn locate_links(lines: &[Line], runs: &[(String, usize)], t: &Theme) -> Vec<LinkSpan> {
+    let mut out: Vec<LinkSpan> = Vec::new();
+    let mut run = 0;
+    let mut left = runs.first().map_or(0, |r| r.1);
+    for (i, line) in lines.iter().enumerate() {
+        let mut col = 0;
+        for span in &line.spans {
+            let w = span.width();
+            if is_link_style(span.style, t) {
+                let used = span.content.chars().filter(|c| !c.is_whitespace()).count();
+                // Move on once the current run's text is used up; spaces
+                // still belong to the run they follow.
+                while used > 0 && left == 0 && run + 1 < runs.len() {
+                    run += 1;
+                    left = runs[run].1;
+                }
+                let Some((url, _)) = runs.get(run) else {
+                    return out;
+                };
+                match out.last_mut() {
+                    Some(l) if l.line == i && l.col + l.width == col && l.url == *url => {
+                        l.width += w;
+                    }
+                    _ => out.push(LinkSpan {
+                        line: i,
+                        col,
+                        width: w,
+                        url: url.clone(),
+                    }),
+                }
+                left = left.saturating_sub(used);
+            }
+            col += w;
+        }
+    }
+    out
 }
 
 #[derive(Default)]
@@ -152,6 +215,8 @@ struct Renderer<'a> {
     runs: &'a HashMap<usize, BlockRun>,
     interpreters: &'a Interpreters,
     highlights: &'a Highlights,
+    /// Link runs in the order they were styled, for `locate_links`.
+    link_runs: RefCell<Vec<(String, usize)>>,
 }
 
 impl Renderer<'_> {
@@ -355,6 +420,7 @@ impl Renderer<'_> {
         let range = self.add_run_panel(c, &mut lines, width);
         src_line.resize(lines.len(), None);
         Rendered {
+            links: Vec::new(),
             code_blocks: vec![range],
             anchors: src_line
                 .iter()
@@ -494,6 +560,12 @@ impl Renderer<'_> {
                 }
                 if i.style.muted {
                     s = s.fg(t.muted);
+                }
+                if let Some(url) = &i.style.link
+                    && is_link_style(s, t)
+                {
+                    let chars = i.text.chars().filter(|c| !c.is_whitespace()).count();
+                    self.link_runs.borrow_mut().push((url.clone(), chars));
                 }
                 (i.text.clone(), s)
             })
@@ -692,5 +764,29 @@ mod tests {
         assert!(bold.style.add_modifier.contains(Modifier::BOLD));
         let code = spans.iter().find(|s| s.content == "code").unwrap();
         assert_eq!(code.style.bg, Some(Theme::dark().surface));
+    }
+
+    #[test]
+    fn links_are_located_across_wraps_and_prefixes() {
+        let src = "# Top [x](https://h1.dev)\n\nsee [the long guide](docs/guide.md) and [b](https://b.dev)\n\n- item [c](#c)\n";
+        let r = render(&parse(src), 16, &Theme::dark());
+        let text = |l: &LinkSpan| -> String {
+            let line = plain(&r.lines[l.line]);
+            line.chars().skip(l.col).take(l.width).collect()
+        };
+        let found: Vec<(String, String)> =
+            r.links.iter().map(|l| (l.url.clone(), text(l))).collect();
+        assert_eq!(
+            found,
+            [
+                // The H1 band shows its text plainly, so only these count.
+                ("docs/guide.md".to_string(), "the long".to_string()),
+                ("docs/guide.md".to_string(), "guide".to_string()),
+                ("https://b.dev".to_string(), "b".to_string()),
+                ("#c".to_string(), "c".to_string()),
+            ],
+            "{:?}",
+            to_plain(&r.lines)
+        );
     }
 }

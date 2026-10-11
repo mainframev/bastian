@@ -6,12 +6,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 /// `\n` forces a break; words longer than a line are split.
 pub fn wrap(runs: &[(String, Style)], width: usize) -> Vec<Line<'static>> {
     let width = width.max(1);
-    let mut w = Wrapper {
-        width,
-        lines: Vec::new(),
-        cur: Vec::new(),
-        cur_w: 0,
-    };
+    let mut w = Wrapper::new(width);
     let mut space: Option<Style> = None;
 
     for (text, style) in runs {
@@ -41,28 +36,16 @@ pub fn wrap(runs: &[(String, Style)], width: usize) -> Vec<Line<'static>> {
             }
         }
     }
-    if !w.cur.is_empty() || w.lines.is_empty() {
-        w.newline();
-    }
-    w.lines
+    w.finish()
 }
 
 /// Split spans at `width` columns without regard for words. Used for code.
 pub fn hard_wrap(spans: Vec<Span<'static>>, width: usize) -> Vec<Vec<Span<'static>>> {
-    let width = width.max(1);
-    let mut w = Wrapper {
-        width,
-        lines: Vec::new(),
-        cur: Vec::new(),
-        cur_w: 0,
-    };
+    let mut w = Wrapper::new(width);
     for span in spans {
         w.push_split(&span.content, span.style);
     }
-    if !w.cur.is_empty() || w.lines.is_empty() {
-        w.newline();
-    }
-    w.lines.into_iter().map(|l| l.spans).collect()
+    w.finish().into_iter().map(|l| l.spans).collect()
 }
 
 struct Wrapper {
@@ -73,6 +56,23 @@ struct Wrapper {
 }
 
 impl Wrapper {
+    fn new(width: usize) -> Self {
+        Self {
+            width: width.max(1),
+            lines: Vec::new(),
+            cur: Vec::new(),
+            cur_w: 0,
+        }
+    }
+
+    /// Close the last line; always yields at least one.
+    fn finish(mut self) -> Vec<Line<'static>> {
+        if !self.cur.is_empty() || self.lines.is_empty() {
+            self.newline();
+        }
+        self.lines
+    }
+
     fn newline(&mut self) {
         self.lines.push(Line::from(std::mem::take(&mut self.cur)));
         self.cur_w = 0;
@@ -118,10 +118,6 @@ fn tokens(s: &str) -> impl Iterator<Item = &str> {
         rest = tail;
         Some(tok)
     })
-}
-
-pub fn line_width(line: &Line) -> usize {
-    line.spans.iter().map(|s| s.content.width()).sum()
 }
 
 #[cfg(test)]

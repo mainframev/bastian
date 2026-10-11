@@ -17,7 +17,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::doc::{Align, Block, CodeBlock, Document, Inline, plain_text};
 use crate::exec::{BlockRun, Interpreters, Status};
 use theme::Theme;
-use wrap::{hard_wrap, line_width, wrap};
+use wrap::{hard_wrap, wrap};
 
 /// A document laid out for a given width.
 #[derive(Debug, Default)]
@@ -89,6 +89,15 @@ struct Out {
     starts: Vec<usize>,
 }
 
+impl From<Vec<Line<'static>>> for Out {
+    fn from(lines: Vec<Line<'static>>) -> Self {
+        Out {
+            lines,
+            ..Out::default()
+        }
+    }
+}
+
 impl Out {
     fn blank(&mut self) {
         self.lines.push(Line::default());
@@ -97,11 +106,15 @@ impl Out {
     /// Append `other`, prefixing its first line with `first` and the rest with `rest`.
     fn append(&mut self, other: Out, first: &[Span<'static>], rest: &[Span<'static>]) {
         let offset = self.lines.len();
-        for (i, line) in other.lines.into_iter().enumerate() {
-            let prefix = if i == 0 { first } else { rest };
-            let mut spans = prefix.to_vec();
-            spans.extend(line.spans);
-            self.lines.push(Line::from(spans).style(line.style));
+        if first.is_empty() && rest.is_empty() {
+            self.lines.extend(other.lines);
+        } else {
+            for (i, line) in other.lines.into_iter().enumerate() {
+                let prefix = if i == 0 { first } else { rest };
+                let mut spans = prefix.to_vec();
+                spans.extend(line.spans);
+                self.lines.push(Line::from(spans).style(line.style));
+            }
         }
         self.codes
             .extend(other.codes.into_iter().map(|c| CodeRange {
@@ -141,11 +154,10 @@ impl Renderer<'_> {
         let t = self.theme;
         match block {
             Block::Heading { level, inlines } => self.heading(*level, inlines, width),
-            Block::Paragraph(inlines) => Out {
-                lines: wrap(&self.runs(inlines, Style::default().fg(t.text)), width),
-                codes: Vec::new(),
-                starts: Vec::new(),
-            },
+            Block::Paragraph(inlines) => Out::from(wrap(
+                &self.runs(inlines, Style::default().fg(t.text)),
+                width,
+            )),
             Block::List { start, items } => self.list(*start, items, width),
             Block::Quote(inner) => {
                 let mut out = Out::default();
@@ -158,24 +170,18 @@ impl Renderer<'_> {
                 out
             }
             Block::Code(c) => self.code(c, width),
-            Block::Label(text) => Out {
-                lines: wrap(&[(text.clone(), Style::default().fg(t.muted))], width),
-                codes: Vec::new(),
-                starts: Vec::new(),
-            },
+            Block::Label(text) => {
+                Out::from(wrap(&[(text.clone(), Style::default().fg(t.muted))], width))
+            }
             Block::Table {
                 align,
                 header,
                 rows,
             } => self.table(align, header, rows, width),
-            Block::Rule => Out {
-                lines: vec![Line::styled(
-                    "─".repeat(width),
-                    Style::default().fg(t.muted),
-                )],
-                codes: Vec::new(),
-                starts: Vec::new(),
-            },
+            Block::Rule => Out::from(vec![Line::styled(
+                "─".repeat(width),
+                Style::default().fg(t.muted),
+            )]),
         }
     }
 
@@ -200,11 +206,7 @@ impl Renderer<'_> {
             runs.extend(self.runs(inlines, style));
             wrap(&runs, width)
         };
-        Out {
-            lines,
-            codes: Vec::new(),
-            starts: Vec::new(),
-        }
+        Out::from(lines)
     }
 
     fn list(&self, start: Option<u64>, items: &[Vec<Block>], width: usize) -> Out {
@@ -239,7 +241,7 @@ impl Renderer<'_> {
         let pad_line = |spans: Vec<Span<'static>>| {
             let mut spans = spans;
             spans.insert(0, Span::raw(" "));
-            let used = line_width(&Line::from(spans.clone()));
+            let used: usize = spans.iter().map(Span::width).sum();
             spans.push(Span::raw(" ".repeat(width.saturating_sub(used))));
             Line::from(
                 spans
@@ -280,19 +282,30 @@ impl Renderer<'_> {
         }
         lines.push(pad_line(Vec::new()));
 
+        let range = self.add_run_panel(c, &mut lines, width);
+        Out {
+            lines,
+            codes: vec![range],
+            starts: Vec::new(),
+        }
+    }
+
+    /// Append `c`'s run panel, if it has run, under its `lines` and return
+    /// the range they cover.
+    fn add_run_panel(
+        &self,
+        c: &CodeBlock,
+        lines: &mut Vec<Line<'static>>,
+        width: usize,
+    ) -> CodeRange {
         let len = lines.len();
         if let Some(run) = self.runs.get(&c.id) {
             lines.extend(self.run_panel(run, width));
         }
-        let output_end = lines.len();
-        Out {
-            lines,
-            codes: vec![CodeRange {
-                id: c.id,
-                lines: 0..len,
-                output_end,
-            }],
-            starts: Vec::new(),
+        CodeRange {
+            id: c.id,
+            lines: 0..len,
+            output_end: lines.len(),
         }
     }
 
@@ -310,18 +323,10 @@ impl Renderer<'_> {
                 src_line.push((i == 0).then_some(n));
             }
         }
-        let len = lines.len();
-        if let Some(run) = self.runs.get(&c.id) {
-            let panel = self.run_panel(run, width);
-            src_line.extend(std::iter::repeat_n(None, panel.len()));
-            lines.extend(panel);
-        }
+        let range = self.add_run_panel(c, &mut lines, width);
+        src_line.resize(lines.len(), None);
         Rendered {
-            code_blocks: vec![CodeRange {
-                id: c.id,
-                lines: 0..len,
-                output_end: lines.len(),
-            }],
+            code_blocks: vec![range],
             anchors: src_line
                 .iter()
                 .enumerate()
@@ -463,11 +468,7 @@ impl Renderer<'_> {
         for row in rows {
             lines.extend(row_lines(row, Style::default().fg(t.text)));
         }
-        Out {
-            lines,
-            codes: Vec::new(),
-            starts: Vec::new(),
-        }
+        Out::from(lines)
     }
 
     fn runs(&self, inlines: &[Inline], base: Style) -> Vec<(String, Style)> {
@@ -559,7 +560,7 @@ fn column_widths(natural: &[usize], min: &[usize], budget: usize) -> Vec<usize> 
 
 /// Pad a wrapped cell line to `w` columns according to `align`.
 fn aligned(line: Line<'static>, w: usize, align: Align) -> Vec<Span<'static>> {
-    let pad = w.saturating_sub(line_width(&line));
+    let pad = w.saturating_sub(line.width());
     let (before, after) = match align {
         Align::Right => (pad, 0),
         Align::Center => (pad / 2, pad - pad / 2),
@@ -576,14 +577,16 @@ fn aligned(line: Line<'static>, w: usize, align: Align) -> Vec<Span<'static>> {
     spans
 }
 
+/// Text of one rendered line, without styling.
+pub fn plain(line: &Line) -> String {
+    line.spans.iter().map(|s| s.content.as_ref()).collect()
+}
+
 /// Plain text of rendered lines, for printing and snapshot tests.
 pub fn to_plain(lines: &[Line]) -> String {
     lines
         .iter()
-        .map(|l| {
-            let s: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
-            s.trim_end().to_string()
-        })
+        .map(|l| plain(l).trim_end().to_string())
         .collect::<Vec<_>>()
         .join("\n")
 }

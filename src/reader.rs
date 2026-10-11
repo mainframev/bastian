@@ -598,7 +598,7 @@ impl Reader {
             .into_iter()
             .find(|h| links::slug(h) == anchor)?;
         self.rendered.lines.iter().position(|line| {
-            let plain: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+            let plain = render::plain(line);
             let plain = plain.trim().trim_start_matches('#').trim();
             !plain.is_empty() && text.starts_with(plain)
         })

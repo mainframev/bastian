@@ -351,7 +351,7 @@ fn settings(
         mouse: r.mouse.value,
         logo: r.logo.value,
         // Only the TUI draws pictures.
-        images: (tui && r.images.value).then(images::Support::lazy),
+        images: (tui && r.images.value).then(images::Support::detect),
         interpreters: Interpreters::new(r.interpreters),
     };
     Ok((settings, name))

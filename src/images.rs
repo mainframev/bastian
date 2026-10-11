@@ -2,7 +2,6 @@
 //! the best protocol the terminal supports (kitty, iTerm2, sixel, or
 //! half-block characters).
 
-use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -41,24 +40,24 @@ enum Entry {
     Failed,
 }
 
-/// The terminal's image support, shared by every reader and worked out
-/// the first time a picture is ready to show, so documents without images
-/// never wait on the terminal query.
+/// The terminal's image support, shared by every reader.
 #[derive(Clone)]
-pub struct Support(Rc<OnceCell<Picker>>);
+pub struct Support(Rc<Picker>);
 
 impl Support {
-    pub fn lazy() -> Self {
-        Self(Rc::new(OnceCell::new()))
+    /// Ask the terminal (see `term::graphics`). Call before the TUI starts:
+    /// the reply has to be read before anything else reads the keyboard.
+    pub fn detect() -> Self {
+        Self::fixed(picker_for(crate::term::graphics()))
     }
 
     /// Support that's already known, e.g. half-blocks in tests.
     pub fn fixed(picker: Picker) -> Self {
-        Self(Rc::new(OnceCell::from(picker)))
+        Self(Rc::new(picker))
     }
 
     fn picker(&self) -> &Picker {
-        self.0.get_or_init(detect)
+        &self.0
     }
 }
 
@@ -180,22 +179,27 @@ fn load(source: &Source) -> Result<DynamicImage> {
     Ok(image::load_from_memory(&bytes)?)
 }
 
-/// The image protocol and cell size, judged from the environment without
-/// querying the terminal: a stdin query can outlive its timeout and swallow
-/// keystrokes (under tmux without passthrough it never gets a reply).
-/// kitty and Ghostty get the kitty protocol, iTerm2-compatible terminals
-/// iTerm2's; everything else, and anything inside tmux, half-blocks.
-fn detect() -> Picker {
-    let env = |k: &str| std::env::var(k).unwrap_or_default();
+/// The best protocol the terminal answered for: kitty graphics, then
+/// iTerm2's (named by the environment, as it has no query), then sixel,
+/// else half-blocks, which are also used inside tmux. The cell size comes from the reply, the window size,
+/// or a guess.
+fn picker_for(g: crate::term::Graphics) -> Picker {
+    let cell = g
+        .cell
+        .map(|(w, h)| FontSize::new(w, h))
+        .or_else(cell_size)
+        .unwrap_or(FontSize::new(10, 20));
+    // Also detects tmux and iTerm2-compatible terminals from the environment.
     #[allow(deprecated, reason = "the only constructor that doesn't read stdin")]
-    let mut picker = Picker::from_fontsize(cell_size().unwrap_or(FontSize::new(10, 20)));
-    let kitty = !env("KITTY_WINDOW_ID").is_empty()
-        || matches!(env("TERM").as_str(), "xterm-kitty" | "xterm-ghostty")
-        || env("TERM_PROGRAM") == "ghostty";
+    let mut picker = Picker::from_fontsize(cell);
     if picker.tmux_detected() {
+        // tmux answers for itself (it may claim sixel the outer terminal
+        // can't show) and drops kitty graphics without passthrough.
         picker.set_protocol_type(ProtocolType::Halfblocks);
-    } else if kitty {
+    } else if g.kitty {
         picker.set_protocol_type(ProtocolType::Kitty);
+    } else if picker.protocol_type() == ProtocolType::Halfblocks && g.sixel {
+        picker.set_protocol_type(ProtocolType::Sixel);
     }
     picker
 }
@@ -221,6 +225,28 @@ fn cell_size() -> Option<FontSize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn protocol_follows_the_terminal_reply() {
+        use crate::term::Graphics;
+        // Outside tmux (the test may run inside it).
+        if Picker::halfblocks().tmux_detected() {
+            return;
+        }
+        let kitty = picker_for(Graphics {
+            kitty: true,
+            sixel: true,
+            cell: Some((9, 18)),
+        });
+        assert_eq!(kitty.protocol_type(), ProtocolType::Kitty);
+        let font = kitty.font_size();
+        assert_eq!((font.width, font.height), (9, 18));
+        let none = picker_for(Graphics::default());
+        assert!(matches!(
+            none.protocol_type(),
+            ProtocolType::Halfblocks | ProtocolType::Iterm2
+        ));
+    }
 
     #[test]
     fn loads_pictures_in_the_background() {

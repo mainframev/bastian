@@ -51,8 +51,70 @@ pub fn from_colorfgbg(value: &str) -> Option<Background> {
     })
 }
 
-#[cfg(unix)]
 fn query_background(timeout: Duration) -> Option<Background> {
+    let reply = ask(b"\x1b]11;?\x1b\\", timeout, |r| {
+        r.ends_with(b"\x07") || r.ends_with(b"\x1b\\")
+    })?;
+    parse_osc11(&String::from_utf8_lossy(&reply))
+}
+
+/// What the terminal can draw pictures with.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Graphics {
+    /// The kitty graphics protocol (kitty, Ghostty and others).
+    pub kitty: bool,
+    /// Sixel, from the device attributes.
+    pub sixel: bool,
+    /// Pixel size of a character cell, when the terminal reports it.
+    pub cell: Option<(u16, u16)>,
+}
+
+/// Ask the terminal about graphics: a kitty graphics query, the cell size
+/// and the device attributes, which every terminal answers, so the wait
+/// normally ends as soon as the replies are in. Run before the TUI takes
+/// over the keyboard.
+pub fn graphics() -> Graphics {
+    // A 1×1 query image; supporting terminals reply `_Gi=31;OK`.
+    const QUERY: &[u8] = b"\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[16t\x1b[c";
+    ask(QUERY, Duration::from_millis(200), |r| da1_end(r).is_some())
+        .map(|reply| parse_graphics(&reply))
+        .unwrap_or_default()
+}
+
+/// Read the replies to graphics queries.
+pub fn parse_graphics(reply: &[u8]) -> Graphics {
+    let text = String::from_utf8_lossy(reply);
+    let kitty = text.contains("_Gi=31;OK");
+    // `ESC [ ? 62 ; 4 ; … c`: attribute 4 is sixel.
+    let sixel = text
+        .split("\x1b[?")
+        .nth(1)
+        .and_then(|rest| rest.split('c').next())
+        .is_some_and(|attrs| attrs.split(';').any(|a| a == "4"));
+    // `ESC [ 6 ; height ; width t`.
+    let cell = text.split("\x1b[6;").nth(1).and_then(|rest| {
+        let (h, rest) = rest.split_once(';')?;
+        let w = rest.split('t').next()?;
+        let (h, w) = (h.parse().ok()?, w.parse().ok()?);
+        (h > 0 && w > 0).then_some((w, h))
+    });
+    Graphics { kitty, sixel, cell }
+}
+
+/// End of a device-attributes reply (`ESC [ ? … c`) in `reply`, if it's in.
+fn da1_end(reply: &[u8]) -> Option<usize> {
+    let start = reply.windows(3).position(|w| w == b"\x1b[?")?;
+    reply[start..]
+        .iter()
+        .position(|&b| b == b'c')
+        .map(|i| start + i)
+}
+
+/// Write `query` to the terminal and read its reply until `done` says it's
+/// complete or `timeout` passes. Talks to `/dev/tty` in raw mode, always
+/// restored, and never leaves a reader behind.
+#[cfg(unix)]
+fn ask(query: &[u8], timeout: Duration, done: impl Fn(&[u8]) -> bool) -> Option<Vec<u8>> {
     use std::fs::OpenOptions;
     use std::io::{Read, Write};
     use std::os::fd::AsRawFd;
@@ -78,11 +140,10 @@ fn query_background(timeout: Duration) -> Option<Background> {
     }
 
     let mut reply = Vec::new();
-    if tty.write_all(b"\x1b]11;?\x1b\\").is_ok() && tty.flush().is_ok() {
+    if tty.write_all(query).is_ok() && tty.flush().is_ok() {
         let deadline = std::time::Instant::now() + timeout;
-        let mut buf = [0u8; 64];
-        // Read until BEL or ST ends the reply, or time runs out.
-        while !reply.ends_with(b"\x07") && !reply.ends_with(b"\x1b\\") {
+        let mut buf = [0u8; 256];
+        while !done(&reply) {
             let left = deadline.saturating_duration_since(std::time::Instant::now());
             if left.is_zero() || !readable(fd, left) {
                 break;
@@ -94,7 +155,7 @@ fn query_background(timeout: Duration) -> Option<Background> {
         }
     }
     unsafe { libc::tcsetattr(fd, libc::TCSANOW, &raw const saved) };
-    parse_osc11(&String::from_utf8_lossy(&reply))
+    Some(reply)
 }
 
 /// Wait up to `timeout` for input on `fd`. Uses select(2): on macOS,
@@ -124,7 +185,7 @@ fn readable(fd: std::os::fd::RawFd, timeout: Duration) -> bool {
 }
 
 #[cfg(not(unix))]
-fn query_background(_timeout: Duration) -> Option<Background> {
+fn ask(_query: &[u8], _timeout: Duration, _done: impl Fn(&[u8]) -> bool) -> Option<Vec<u8>> {
     None
 }
 
@@ -158,5 +219,26 @@ mod tests {
         assert_eq!(from_colorfgbg("0;15"), Some(Background::Light));
         assert_eq!(from_colorfgbg("0;default;7"), Some(Background::Light));
         assert_eq!(from_colorfgbg("nonsense"), None);
+    }
+
+    #[test]
+    fn parses_graphics_replies() {
+        // Ghostty-like: kitty graphics, cell size, no sixel.
+        let g = parse_graphics(b"\x1b_Gi=31;OK\x1b\\\x1b[6;20;10t\x1b[?62;22c");
+        assert_eq!(
+            g,
+            Graphics {
+                kitty: true,
+                sixel: false,
+                cell: Some((10, 20))
+            }
+        );
+        // A sixel terminal without the kitty protocol or a cell size.
+        let g = parse_graphics(b"\x1b[?62;4;9;22c");
+        assert!(!g.kitty && g.sixel && g.cell.is_none());
+        // Kitty's error reply is not support.
+        assert!(!parse_graphics(b"\x1b_Gi=31;ENOTSUPPORTED\x1b\\\x1b[?62c").kitty);
+        assert_eq!(da1_end(b"junk\x1b[?62;4c"), Some(11));
+        assert_eq!(da1_end(b"\x1b[?62;4"), None);
     }
 }

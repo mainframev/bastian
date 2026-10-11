@@ -28,7 +28,10 @@ pub fn parse(src: &str) -> Option<Document> {
     let root = markdown::to_mdast(src, &options).ok()?;
     let mut m = Mapper::default();
     let blocks = m.blocks(root.children()?);
-    Some(Document { blocks })
+    Some(Document {
+        blocks,
+        code_file: false,
+    })
 }
 
 #[derive(Default)]

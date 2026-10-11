@@ -3,6 +3,7 @@ mod code;
 pub mod theme;
 
 pub use ansi::to_ansi;
+pub use code::known_extension;
 mod wrap;
 
 use std::collections::HashMap;
@@ -22,6 +23,9 @@ use wrap::{hard_wrap, line_width, wrap};
 #[derive(Debug, Default)]
 pub struct Rendered {
     pub lines: Vec<Line<'static>>,
+    /// Source line (0-based) each rendered line starts, when known; wrapped
+    /// continuations are `None`. Empty when the document has no mapping.
+    pub src_line: Vec<Option<usize>>,
     /// Line range occupied by each code block, in document order.
     pub code_blocks: Vec<CodeRange>,
 }
@@ -47,14 +51,21 @@ pub fn render_with_runs(
     runs: &HashMap<usize, BlockRun>,
     interpreters: &Interpreters,
 ) -> Rendered {
-    let out = Renderer {
+    let r = Renderer {
         theme,
         runs,
         interpreters,
+    };
+    let width = usize::from(width).max(10);
+    if doc.code_file
+        && let [Block::Code(c)] = &doc.blocks[..]
+    {
+        return r.code_file(c, width);
     }
-    .blocks(&doc.blocks, usize::from(width).max(10), true);
+    let out = r.blocks(&doc.blocks, width, true);
     Rendered {
         lines: out.lines,
+        src_line: Vec::new(),
         code_blocks: out.codes,
     }
 }
@@ -259,6 +270,37 @@ impl Renderer<'_> {
                 lines: 0..len,
                 output_end,
             }],
+        }
+    }
+
+    /// A whole source file: highlighted lines with no box, each wrapped
+    /// segment mapped back to its source line.
+    fn code_file(&self, c: &CodeBlock, width: usize) -> Rendered {
+        let mut lines = Vec::new();
+        let mut src_line = Vec::new();
+        for (n, spans) in code::highlight(&c.src, c.lang.as_deref(), self.theme)
+            .into_iter()
+            .enumerate()
+        {
+            for (i, row) in hard_wrap(spans, width).into_iter().enumerate() {
+                lines.push(Line::from(row));
+                src_line.push((i == 0).then_some(n));
+            }
+        }
+        let len = lines.len();
+        if let Some(run) = self.runs.get(&c.id) {
+            let panel = self.run_panel(run, width);
+            src_line.extend(std::iter::repeat_n(None, panel.len()));
+            lines.extend(panel);
+        }
+        Rendered {
+            code_blocks: vec![CodeRange {
+                id: c.id,
+                lines: 0..len,
+                output_end: lines.len(),
+            }],
+            lines,
+            src_line,
         }
     }
 

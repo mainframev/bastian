@@ -69,8 +69,15 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
 
     if gutter > 0 {
         let digits = usize::from(gutter - 1);
+        // Source line numbers when the document maps them (code files),
+        // otherwise rendered line numbers.
+        let label = |i: usize| match r.rendered.src_line.get(i) {
+            Some(Some(n)) => format!("{:>digits$} ", n + 1),
+            Some(None) => " ".repeat(digits + 1),
+            None => format!("{:>digits$} ", i + 1),
+        };
         let numbers: Vec<Line> = (r.scroll..end)
-            .map(|i| Line::styled(format!("{:>digits$} ", i + 1), Style::default().fg(t.muted)))
+            .map(|i| Line::styled(label(i), Style::default().fg(t.muted)))
             .collect();
         let area = Rect {
             x: body.x + MARGIN,

@@ -10,19 +10,51 @@ use std::path::Path;
 /// Parse a document, choosing the MDX front end for `.mdx` files. Invalid
 /// MDX falls back to the plain Markdown parser so the file still shows.
 pub fn parse_for(src: &str, path: Option<&Path>) -> Document {
-    let is_mdx = path
+    let ext = path
         .and_then(|p| p.extension())
-        .is_some_and(|e| e.eq_ignore_ascii_case("mdx"));
-    if is_mdx && let Some(doc) = mdx::parse(src) {
-        return doc;
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase);
+    match ext.as_deref() {
+        Some("mdx") => mdx::parse(src).unwrap_or_else(|| parse(src)),
+        Some(e) if !is_markdown_ext(e) && crate::render::known_extension(e) => code_file(src, e),
+        _ => parse(src),
     }
-    parse(src)
+}
+
+/// Extensions treated as Markdown.
+pub fn is_markdown_ext(ext: &str) -> bool {
+    matches!(
+        ext.to_ascii_lowercase().as_str(),
+        "md" | "markdown" | "mdx" | "mdown" | "mkdn" | "mkd"
+    )
+}
+
+/// A source file shown as one highlighted code block with source line
+/// numbers, rather than as Markdown.
+fn code_file(src: &str, lang: &str) -> Document {
+    let mut src = src.to_string();
+    if !src.ends_with('\n') {
+        src.push('\n');
+    }
+    Document {
+        blocks: vec![Block::Code(CodeBlock {
+            id: 0,
+            lang: Some(lang.to_string()),
+            attrs: Attrs::default(),
+            info: lang.to_string(),
+            src,
+        })],
+        code_file: true,
+    }
 }
 
 /// A parsed Markdown document, reduced to the block structure bastian renders.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Document {
     pub blocks: Vec<Block>,
+    /// A source file rather than Markdown: rendered bare, with source
+    /// line numbers.
+    pub code_file: bool,
 }
 
 impl Document {

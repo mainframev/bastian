@@ -373,12 +373,9 @@ fn title_of(src: &str) -> Option<String> {
 }
 
 fn is_markdown(path: &Path) -> bool {
-    path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
-        matches!(
-            e.to_ascii_lowercase().as_str(),
-            "md" | "markdown" | "mdx" | "mdown" | "mkdn" | "mkd"
-        )
-    })
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(crate::doc::is_markdown_ext)
 }
 
 /// First ATX `# ` heading outside fenced code, without a full parse.

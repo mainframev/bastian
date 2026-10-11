@@ -40,3 +40,45 @@ fn lines_never_exceed_width() {
         }
     }
 }
+
+#[test]
+fn source_files_render_as_bare_code_with_source_lines() {
+    use bastian::doc::{Block, parse_for};
+    use std::path::Path;
+
+    let src =
+        "fn main() {\n    println!(\"a very long line that has to wrap at a narrow width\");\n}\n";
+    let doc = parse_for(src, Some(Path::new("main.rs")));
+    assert!(doc.code_file);
+    assert!(matches!(&doc.blocks[..], [Block::Code(c)] if c.lang.as_deref() == Some("rs")));
+
+    let r = render(&doc, 30, &Theme::dark());
+    // No code box: the first rendered line is the first source line.
+    assert_eq!(to_plain(&r.lines[..1]), "fn main() {");
+    // The long line wraps; only its first segment carries a line number.
+    assert_eq!(r.src_line[0], Some(0));
+    assert_eq!(r.src_line[1], Some(1));
+    assert_eq!(r.src_line[2], None);
+    assert_eq!(*r.src_line.last().unwrap(), Some(2));
+    assert_eq!(r.src_line.len(), r.lines.len());
+    for line in &r.lines {
+        assert!(line.width() <= 30);
+    }
+}
+
+#[test]
+fn markdown_and_unknown_extensions_stay_markdown() {
+    use bastian::doc::parse_for;
+    use std::path::Path;
+
+    for name in ["a.md", "a.mkd", "README", "notes.unknownext"] {
+        let doc = parse_for("# Title\n", Some(Path::new(name)));
+        assert!(!doc.code_file, "{name}");
+        assert_eq!(doc.title().as_deref(), Some("Title"), "{name}");
+    }
+    assert!(
+        render(&parse_for("# T\n", None), 40, &Theme::dark())
+            .src_line
+            .is_empty()
+    );
+}

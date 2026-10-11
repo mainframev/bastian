@@ -12,6 +12,12 @@ use super::theme::Theme;
 static SYNTAXES: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
 static THEMES: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 
+/// The syntax token for a file extension, if it names a language the
+/// highlighter knows (e.g. `rs` → `rs`).
+pub fn known_extension(ext: &str) -> bool {
+    SYNTAXES.find_syntax_by_extension(ext).is_some()
+}
+
 /// Syntax-highlight `src` into one span list per source line.
 pub fn highlight(src: &str, lang: Option<&str>, theme: &Theme) -> Vec<Vec<Span<'static>>> {
     let src = src.replace('\t', "    ");

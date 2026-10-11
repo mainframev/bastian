@@ -43,7 +43,11 @@ impl Settings {
     /// Open a file in a reader that reloads when the file changes.
     pub fn open(&self, path: &Path, name: String) -> Result<Reader> {
         let src = crate::text::read_text(path)?;
-        let mut r = self.reader(name, doc::parse_for(&src, Some(path)), base_dir(path));
+        let doc = doc::parse_for(&src, Some(path));
+        let code_file = doc.code_file;
+        let mut r = self.reader(name, doc, base_dir(path));
+        // Source files always show their line numbers.
+        r.line_numbers |= code_file;
         r.watch(path.to_path_buf());
         Ok(r)
     }

@@ -243,7 +243,10 @@ impl Builder {
 
     fn finish(mut self) -> Document {
         self.flush();
-        Document { blocks: self.root }
+        Document {
+            blocks: self.root,
+            code_file: false,
+        }
     }
 }
 

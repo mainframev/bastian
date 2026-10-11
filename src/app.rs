@@ -24,6 +24,8 @@ pub struct Settings {
     /// Run blocks without asking, except those marked `confirm`.
     pub assume_yes: bool,
     pub interpreters: Interpreters,
+    /// Show line numbers in readers.
+    pub line_numbers: bool,
 }
 
 impl Settings {
@@ -32,6 +34,7 @@ impl Settings {
         r.base_dir = base_dir;
         r.assume_yes = self.assume_yes;
         r.interpreters = self.interpreters.clone();
+        r.line_numbers = self.line_numbers;
         r
     }
 

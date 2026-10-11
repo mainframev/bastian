@@ -23,12 +23,21 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
         draw_find(frame, r, find);
     }
 
-    let width = body.width.saturating_sub(MARGIN * 2).min(r.max_width);
-    r.layout(width, body.height);
+    // The gutter width depends on the line count, which depends on the
+    // width, so lay out again if the digit count changed.
+    let mut gutter = gutter_width(r, r.rendered.lines.len());
+    let max_width = r.max_width;
+    let width = |g: u16| body.width.saturating_sub(MARGIN * 2 + g).min(max_width);
+    r.layout(width(gutter), body.height);
+    let fitted = gutter_width(r, r.rendered.lines.len());
+    if fitted != gutter {
+        gutter = fitted;
+        r.layout(width(gutter), body.height);
+    }
 
     let content = Rect {
-        x: body.x + MARGIN,
-        width,
+        x: body.x + MARGIN + gutter,
+        width: width(gutter),
         ..body
     };
     let end = (r.scroll + content.height as usize).min(r.rendered.lines.len());
@@ -57,6 +66,19 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
         })
         .collect();
     frame.render_widget(Paragraph::new(visible), content);
+
+    if gutter > 0 {
+        let digits = usize::from(gutter - 1);
+        let numbers: Vec<Line> = (r.scroll..end)
+            .map(|i| Line::styled(format!("{:>digits$} ", i + 1), Style::default().fg(t.muted)))
+            .collect();
+        let area = Rect {
+            x: body.x + MARGIN,
+            width: gutter,
+            ..body
+        };
+        frame.render_widget(Paragraph::new(numbers), area);
+    }
 
     // Focus marker in the left margin, next to the focused block.
     if let Some(range) = r
@@ -109,6 +131,15 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
     }
 }
 
+/// Columns for the line-number gutter: the digits of `lines` plus a space,
+/// or nothing when line numbers are off.
+pub fn gutter_width(r: &Reader, lines: usize) -> u16 {
+    if !r.line_numbers {
+        return 0;
+    }
+    lines.max(1).to_string().len() as u16 + 1
+}
+
 const HELP: &[(&str, &str)] = &[
     ("j/k  ↓/↑", "scroll"),
     ("ctrl-d/u", "half page"),
@@ -123,6 +154,7 @@ const HELP: &[(&str, &str)] = &[
     ("y", "copy focused block"),
     ("L", "list links"),
     ("e", "edit in $VISUAL/$EDITOR"),
+    ("#", "toggle line numbers"),
     ("Esc, h", "back"),
     ("q", "quit"),
 ];

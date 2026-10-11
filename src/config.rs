@@ -11,6 +11,8 @@ pub struct Config {
     pub theme: Option<ThemeName>,
     pub width: Option<u16>,
     pub confirm: Option<Confirm>,
+    /// Show rendered line numbers in the reader.
+    pub line_numbers: Option<bool>,
     /// Language → command line; the block source is appended as the last
     /// argument. An empty list stops that language from running.
     pub interpreters: HashMap<String, Vec<String>>,
@@ -65,6 +67,7 @@ mod tests {
             theme = "light"
             width = 80
             confirm = "never"
+            line_numbers = true
             [interpreters]
             ruby = ["ruby", "-e"]
             fish = []
@@ -74,6 +77,7 @@ mod tests {
         assert_eq!(c.theme, Some(ThemeName::Light));
         assert_eq!(c.width, Some(80));
         assert_eq!(c.confirm, Some(Confirm::Never));
+        assert_eq!(c.line_numbers, Some(true));
         assert_eq!(c.interpreters["ruby"], ["ruby", "-e"]);
         assert!(c.interpreters["fish"].is_empty());
     }

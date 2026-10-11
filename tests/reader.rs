@@ -105,3 +105,40 @@ fn edit_needs_a_file() {
     r.watch(path.clone());
     assert!(matches!(key(&mut r, KeyCode::Char('e')), Action::Edit(p) if p == path));
 }
+
+#[test]
+fn hash_toggles_line_numbers() {
+    let mut r = reader("text\n");
+    assert!(!r.line_numbers);
+    key(&mut r, KeyCode::Char('#'));
+    assert!(r.line_numbers);
+    key(&mut r, KeyCode::Char('#'));
+    assert!(!r.line_numbers);
+}
+
+#[test]
+fn line_number_gutter_fits_in_terminal() {
+    use bastian::ui::reader::{MARGIN, draw, gutter_width};
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let src = std::fs::read_to_string("tests/fixtures/sample.md").unwrap();
+    let mut r = Reader::new("t.md".into(), parse(&src), Theme::dark(), 200);
+    r.line_numbers = true;
+    let (w, h) = (60u16, 20u16);
+    let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+
+    let gutter = gutter_width(&r, r.rendered.lines.len());
+    assert!(gutter >= 2);
+    let content = (w - MARGIN * 2 - gutter) as usize;
+    for line in &r.rendered.lines {
+        assert!(line.width() <= content, "{line:?} wider than {content}");
+    }
+
+    // Numbers sit right after the margin, right-aligned, starting at 1.
+    let buf = terminal.backend().buffer();
+    let row: String = (0..w).map(|x| buf[(x, 0)].symbol().to_string()).collect();
+    let digits = usize::from(gutter - 1);
+    let start = usize::from(MARGIN);
+    assert_eq!(&row[start..start + digits + 1], format!("{:>digits$} ", 1));
+}

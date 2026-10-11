@@ -30,6 +30,10 @@ struct Cli {
     #[arg(short, long)]
     yes: bool,
 
+    /// Show line numbers in the reader.
+    #[arg(short = 'n', long)]
+    line_numbers: bool,
+
     /// Print the rendered document instead of opening the TUI.
     #[arg(short, long)]
     print: bool,
@@ -55,6 +59,7 @@ fn main() -> Result<()> {
         theme,
         max_width: cli.width.or(cfg.width).unwrap_or(100),
         assume_yes: cli.yes || cfg.confirm == Some(Confirm::Never),
+        line_numbers: cli.line_numbers || cfg.line_numbers == Some(true),
         interpreters: Interpreters::new(cfg.interpreters),
     };
 

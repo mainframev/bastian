@@ -25,6 +25,7 @@ bastian README.md       # read a file
 cat notes.md | bastian -
 bastian -p README.md    # print instead of opening the TUI
 bastian -y runbook.md   # run blocks without confirming each one
+bastian -n README.md    # show line numbers
 ```
 
 Try it on this file: open it with `bastian README.md`, press `Tab` to focus the
@@ -49,6 +50,7 @@ uname -sm
 | `y` | copy focused block (OSC 52) |
 | `L` | list links; follow one with `Enter` |
 | `e` | edit the file in `$VISUAL`, `$EDITOR` or `vi` |
+| `#` | toggle line numbers |
 | `?` | key help |
 | `Esc`, `h` | back to the previous document or the browser |
 | `q` | quit |
@@ -93,6 +95,7 @@ Command-line flags take precedence.
 theme = "dark"        # or "light"
 width = 100           # maximum document width
 confirm = "always"    # "never" behaves like --yes
+line_numbers = false  # true behaves like --line-numbers
 
 [interpreters]
 # The block source is appended as the last argument.

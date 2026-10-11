@@ -70,6 +70,8 @@ pub struct Reader {
     pub assume_yes: bool,
     pub link_picker: Option<LinkPicker>,
     pub help: bool,
+    /// Draw a gutter of rendered line numbers.
+    pub line_numbers: bool,
     /// File the document came from, watched for changes.
     pub source: Option<PathBuf>,
     modified: Option<SystemTime>,
@@ -108,6 +110,7 @@ impl Reader {
             assume_yes: false,
             link_picker: None,
             help: false,
+            line_numbers: false,
             source: None,
             modified: None,
             last_check: Instant::now(),
@@ -646,6 +649,7 @@ impl Reader {
                 }
             }
             KeyCode::Char('?') => self.help = true,
+            KeyCode::Char('#') => self.line_numbers = !self.line_numbers,
             KeyCode::Char('e') => match &self.source {
                 Some(path) => return Action::Edit(path.clone()),
                 None => self.message = Some("stdin has no file to edit".into()),

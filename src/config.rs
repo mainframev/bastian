@@ -6,7 +6,7 @@ use clap::ValueEnum;
 use serde::Deserialize;
 
 /// `~/.config/bastian/config.toml`, or under `$XDG_CONFIG_HOME` when set.
-#[derive(Debug, Default, Deserialize, PartialEq)]
+#[derive(Debug, Default, Clone, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub theme: Option<ThemeName>,
@@ -160,45 +160,25 @@ pub fn describe(r: &Resolved, file: Option<&Path>) -> String {
             Source::Flag => "flag",
         }
     }
-    fn name<T: ValueEnum>(v: &T) -> String {
-        v.to_possible_value()
-            .map_or_else(String::new, |p| p.get_name().to_string())
-    }
     let mut out = String::new();
     if let Some(f) = file {
         out.push_str(&format!("# config file: {}\n", f.display()));
     }
-    let mut row = |key: &str, value: String, source: Source| {
+    fn row<T: Value>(out: &mut String, key: &str, s: &Setting<T>) {
         out.push_str(&format!(
             "{:<22}# {}\n",
-            format!("{key} = {value}"),
-            src(source)
+            format!("{key} = {}", s.value.toml()),
+            src(s.source)
         ));
-    };
-    row(
-        "theme",
-        format!("{:?}", name(&r.theme.value)),
-        r.theme.source,
-    );
-    row("width", r.width.value.to_string(), r.width.source);
-    row(
-        "confirm",
-        format!("{:?}", name(&r.confirm.value)),
-        r.confirm.source,
-    );
-    row(
-        "line_numbers",
-        r.line_numbers.value.to_string(),
-        r.line_numbers.source,
-    );
-    row(
-        "color",
-        format!("{:?}", name(&r.color.value)),
-        r.color.source,
-    );
-    row("pager", r.pager.value.to_string(), r.pager.source);
-    row("all", r.all.value.to_string(), r.all.source);
-    row("mouse", r.mouse.value.to_string(), r.mouse.source);
+    }
+    row(&mut out, "theme", &r.theme);
+    row(&mut out, "width", &r.width);
+    row(&mut out, "confirm", &r.confirm);
+    row(&mut out, "line_numbers", &r.line_numbers);
+    row(&mut out, "color", &r.color);
+    row(&mut out, "pager", &r.pager);
+    row(&mut out, "all", &r.all);
+    row(&mut out, "mouse", &r.mouse);
     if !r.interpreters.is_empty() {
         out.push_str("\n[interpreters]\n");
         let mut langs: Vec<_> = r.interpreters.iter().collect();
@@ -241,19 +221,6 @@ pub fn env_vars() -> EnvMap {
         .collect()
 }
 
-/// Settings given on the command line; `None` means "not given".
-#[derive(Debug, Default, Clone)]
-pub struct CliOverrides {
-    pub theme: Option<ThemeName>,
-    pub width: Option<u16>,
-    pub confirm: Option<Confirm>,
-    pub line_numbers: Option<bool>,
-    pub color: Option<ColorMode>,
-    pub pager: Option<bool>,
-    pub all: Option<bool>,
-    pub mouse: Option<bool>,
-}
-
 /// Every effective setting, resolved once at startup. All modes (TUI,
 /// print) read from this, so they can't disagree about precedence.
 #[derive(Debug, Clone, PartialEq)]
@@ -270,64 +237,46 @@ pub struct Resolved {
 }
 
 /// Merge defaults < config file < `BASTIAN_*` environment < flags.
+/// `cli` holds the settings given as flags (its `interpreters` are unused).
 /// Invalid environment values are errors naming the variable.
-pub fn resolve(file: Config, env: &EnvMap, cli: CliOverrides) -> Result<Resolved> {
+pub fn resolve(file: Config, env: &EnvMap, cli: Config) -> Result<Resolved> {
     Ok(Resolved {
-        theme: pick(
-            ThemeName::Auto,
-            file.theme,
-            env_value(env, "BASTIAN_THEME", parse_enum, "auto, dark or light")?,
-            cli.theme,
-        ),
-        width: pick(
-            100,
-            file.width,
-            env_value(
-                env,
-                "BASTIAN_WIDTH",
-                |v| v.parse().ok(),
-                "a number of columns",
-            )?,
-            cli.width,
-        ),
-        confirm: pick(
-            Confirm::Always,
-            file.confirm,
-            env_value(env, "BASTIAN_CONFIRM", parse_enum, "always or never")?,
-            cli.confirm,
-        ),
-        line_numbers: pick(
+        theme: setting("theme", ThemeName::Auto, file.theme, cli.theme, env)?,
+        width: setting("width", 100, file.width, cli.width, env)?,
+        confirm: setting("confirm", Confirm::Always, file.confirm, cli.confirm, env)?,
+        line_numbers: setting(
+            "line_numbers",
             false,
             file.line_numbers,
-            env_value(env, "BASTIAN_LINE_NUMBERS", parse_bool, "true or false")?,
             cli.line_numbers,
-        ),
-        color: pick(
-            ColorMode::Auto,
-            file.color,
-            env_value(env, "BASTIAN_COLOR", parse_enum, "auto, always or never")?,
-            cli.color,
-        ),
-        pager: pick(
-            false,
-            file.pager,
-            env_value(env, "BASTIAN_PAGER", parse_bool, "true or false")?,
-            cli.pager,
-        ),
-        all: pick(
-            false,
-            file.all,
-            env_value(env, "BASTIAN_ALL", parse_bool, "true or false")?,
-            cli.all,
-        ),
-        mouse: pick(
-            false,
-            file.mouse,
-            env_value(env, "BASTIAN_MOUSE", parse_bool, "true or false")?,
-            cli.mouse,
-        ),
+            env,
+        )?,
+        color: setting("color", ColorMode::Auto, file.color, cli.color, env)?,
+        pager: setting("pager", false, file.pager, cli.pager, env)?,
+        all: setting("all", false, file.all, cli.all, env)?,
+        mouse: setting("mouse", false, file.mouse, cli.mouse, env)?,
         interpreters: file.interpreters,
     })
+}
+
+/// One setting from its sources; the environment variable is
+/// `BASTIAN_<KEY>`.
+fn setting<T: Value>(
+    key: &str,
+    default: T,
+    file: Option<T>,
+    cli: Option<T>,
+    env: &EnvMap,
+) -> Result<Setting<T>> {
+    let var = format!("BASTIAN_{}", key.to_ascii_uppercase());
+    let env = match env.get(&var).map(|v| v.trim()) {
+        None | Some("") => None,
+        Some(v) => Some(
+            T::parse_env(v)
+                .ok_or_else(|| anyhow!("{var}={v:?} is not valid; expected {}", T::expected()))?,
+        ),
+    };
+    Ok(pick(default, file, env, cli))
 }
 
 fn pick<T>(default: T, file: Option<T>, env: Option<T>, cli: Option<T>) -> Setting<T> {
@@ -340,30 +289,71 @@ fn pick<T>(default: T, file: Option<T>, env: Option<T>, cli: Option<T>) -> Setti
     Setting { value, source }
 }
 
-fn env_value<T>(
-    env: &EnvMap,
-    key: &str,
-    parse: impl Fn(&str) -> Option<T>,
-    expected: &str,
-) -> Result<Option<T>> {
-    match env.get(key).map(|v| v.trim()) {
-        None | Some("") => Ok(None),
-        Some(v) => parse(v)
-            .map(Some)
-            .ok_or_else(|| anyhow!("{key}={v:?} is not valid; expected {expected}")),
+/// A setting's value type: how it reads from the environment and prints
+/// in `--print-config`.
+trait Value: Sized {
+    fn parse_env(v: &str) -> Option<Self>;
+    /// What a valid value looks like, for error messages.
+    fn expected() -> String;
+    fn toml(&self) -> String;
+}
+
+impl Value for bool {
+    fn parse_env(v: &str) -> Option<Self> {
+        match v.to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => Some(true),
+            "0" | "false" | "no" | "off" => Some(false),
+            _ => None,
+        }
+    }
+    fn expected() -> String {
+        "true or false".into()
+    }
+    fn toml(&self) -> String {
+        self.to_string()
     }
 }
 
-fn parse_enum<T: ValueEnum>(v: &str) -> Option<T> {
-    T::from_str(v, true).ok()
+impl Value for u16 {
+    fn parse_env(v: &str) -> Option<Self> {
+        v.parse().ok()
+    }
+    fn expected() -> String {
+        "a number of columns".into()
+    }
+    fn toml(&self) -> String {
+        self.to_string()
+    }
 }
 
-fn parse_bool(v: &str) -> Option<bool> {
-    match v.to_ascii_lowercase().as_str() {
-        "1" | "true" | "yes" | "on" => Some(true),
-        "0" | "false" | "no" | "off" => Some(false),
-        _ => None,
-    }
+macro_rules! enum_value {
+    ($($t:ty),*) => {$(
+        impl Value for $t {
+            fn parse_env(v: &str) -> Option<Self> {
+                <$t as ValueEnum>::from_str(v, true).ok()
+            }
+            fn expected() -> String {
+                let names: Vec<String> = <$t as ValueEnum>::value_variants()
+                    .iter()
+                    .map(enum_name)
+                    .collect();
+                match names.split_last() {
+                    Some((last, [])) => last.clone(),
+                    Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
+                    None => String::new(),
+                }
+            }
+            fn toml(&self) -> String {
+                format!("{:?}", enum_name(self))
+            }
+        }
+    )*};
+}
+enum_value!(ThemeName, Confirm, ColorMode);
+
+fn enum_name<T: ValueEnum>(v: &T) -> String {
+    v.to_possible_value()
+        .map_or_else(String::new, |p| p.get_name().to_string())
 }
 
 #[cfg(test)]
@@ -384,7 +374,7 @@ mod tests {
             width: Some(80),
             ..Config::default()
         };
-        let none = CliOverrides::default();
+        let none = Config::default();
 
         let r = resolve(Config::default(), &env(&[]), none.clone()).unwrap();
         assert_eq!(
@@ -422,12 +412,12 @@ mod tests {
             }
         );
 
-        let cli = CliOverrides {
+        let cli = Config {
             theme: Some(ThemeName::Light),
             width: Some(60),
             confirm: Some(Confirm::Never),
             line_numbers: Some(true),
-            ..CliOverrides::default()
+            ..Config::default()
         };
         let r = resolve(file(), &e, cli).unwrap();
         assert_eq!(
@@ -503,12 +493,7 @@ mod tests {
             width: Some(80),
             ..Config::default()
         };
-        let r = resolve(
-            file,
-            &env(&[("BASTIAN_THEME", "light")]),
-            CliOverrides::default(),
-        )
-        .unwrap();
+        let r = resolve(file, &env(&[("BASTIAN_THEME", "light")]), Config::default()).unwrap();
         let text = describe(&r, None);
         assert!(text.contains("theme = \"light\""), "{text}");
         assert!(
@@ -541,7 +526,7 @@ mod tests {
             ("BASTIAN_LINE_NUMBERS", "yes"),
             ("BASTIAN_THEME", ""),
         ]);
-        let r = resolve(Config::default(), &e, CliOverrides::default()).unwrap();
+        let r = resolve(Config::default(), &e, Config::default()).unwrap();
         assert_eq!(
             r.confirm,
             Setting {
@@ -562,7 +547,7 @@ mod tests {
         let err = resolve(
             Config::default(),
             &env(&[("BASTIAN_WIDTH", "wide")]),
-            CliOverrides::default(),
+            Config::default(),
         )
         .unwrap_err()
         .to_string();

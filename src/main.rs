@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser};
 
 use bastian::app::{self, Settings};
-use bastian::config::{self, CliOverrides, ColorMode, Confirm, ThemeName};
+use bastian::config::{self, ColorMode, Confirm, ThemeName};
 use bastian::exec::Interpreters;
 use bastian::render::theme::Theme;
 use bastian::term::{self, Background};
@@ -136,7 +136,7 @@ fn main() -> Result<()> {
     let resolved = config::resolve(
         file,
         &config::env_vars(),
-        CliOverrides {
+        config::Config {
             theme: cli.theme,
             width: cli.width,
             confirm: cli.yes.then_some(Confirm::Never),
@@ -145,6 +145,7 @@ fn main() -> Result<()> {
             pager: cli.pager.then_some(true),
             all: cli.all.then_some(true),
             mouse: cli.mouse.then_some(true),
+            ..config::Config::default()
         },
     )?;
     if cli.print_config {

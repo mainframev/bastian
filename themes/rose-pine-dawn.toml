@@ -1,0 +1,35 @@
+# Rosé Pine Dawn
+# Source: https://github.com/rose-pine/palette/blob/main/palette.json, https://github.com/rose-pine/neovim/blob/main/lua/rose-pine.lua
+appearance = "light"
+
+[ui]
+text = "#575279"
+muted = "#9893a5"
+subtle = "#797593"
+surface = "#f2e9e1"
+accent = "#907aa9"
+h1_fg = "#faf4ed"
+h1_bg = "#907aa9"
+heading = "#d7827e"
+link = "#56949f"
+code = "#d7827e"
+match_bg = "#cecacd"
+current_bg = "#ea9d34"
+err = "#b4637a"
+ok = "#286983"
+warn = "#ea9d34"
+
+[syntax]
+comment = "#797593"
+keyword = "#286983"
+string = "#ea9d34"
+number = "#ea9d34"
+constant = "#ea9d34"
+function = "#d7827e"
+type = "#56949f"
+operator = "#797593"
+punctuation = "#797593"
+tag = "#56949f"
+attribute = "#907aa9"
+inserted = "#56949f"
+deleted = "#b4637a"

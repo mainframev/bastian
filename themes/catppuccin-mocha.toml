@@ -1,0 +1,35 @@
+# Catppuccin Mocha
+# Source: https://github.com/catppuccin/palette/blob/main/palette.json, https://github.com/catppuccin/catppuccin/blob/main/docs/style-guide.md, https://github.com/catppuccin/nvim/blob/main/lua/catppuccin/groups/treesitter.lua
+appearance = "dark"
+
+[ui]
+text = "#cdd6f4"
+muted = "#7f849c"
+subtle = "#a6adc8"
+surface = "#313244"
+accent = "#cba6f7"
+h1_fg = "#1e1e2e"
+h1_bg = "#cba6f7"
+heading = "#89b4fa"
+link = "#b4befe"
+code = "#a6e3a1"
+match_bg = "#45475a"
+current_bg = "#fab387"
+err = "#f38ba8"
+ok = "#a6e3a1"
+warn = "#f9e2af"
+
+[syntax]
+comment = "#9399b2"
+keyword = "#cba6f7"
+string = "#a6e3a1"
+number = "#fab387"
+constant = "#fab387"
+function = "#89b4fa"
+type = "#f9e2af"
+operator = "#89dceb"
+punctuation = "#9399b2"
+tag = "#89b4fa"
+attribute = "#f9e2af"
+inserted = "#a6e3a1"
+deleted = "#f38ba8"

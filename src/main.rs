@@ -5,11 +5,11 @@ use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser};
 
 use bastian::app::{self, Settings};
-use bastian::config::{self, ColorMode, Confirm, ThemeName};
+use bastian::config::{self, ColorMode, Confirm};
 use bastian::exec::Interpreters;
-use bastian::render::theme::Theme;
+
 use bastian::term::{self, Background};
-use bastian::{browser, doc, output, remote, render, text};
+use bastian::{browser, doc, output, remote, render, text, themes};
 
 /// Read Markdown in the terminal, and run its code blocks.
 #[derive(Parser)]
@@ -27,9 +27,10 @@ struct Cli {
     #[arg(short, long)]
     width: Option<u16>,
 
-    /// Color theme [default: auto, matching the terminal background].
-    #[arg(short, long, value_enum)]
-    theme: Option<ThemeName>,
+    /// Color theme: auto (match the terminal background), dark, light, or a
+    /// theme name; `bastian themes` lists them [default: auto].
+    #[arg(short, long, value_name = "NAME", value_parser = ThemeArg, hide_possible_values = true)]
+    theme: Option<String>,
 
     /// Run code blocks without asking first. Blocks marked `confirm` still ask.
     #[arg(short, long)]
@@ -155,6 +156,7 @@ fn main() -> Result<()> {
         );
         return Ok(());
     }
+    config::check_themes(&resolved, themes::exists)?;
     let stdout_tty = std::io::stdout().is_terminal();
     let out = Output {
         width: output::print_width(
@@ -173,7 +175,7 @@ fn main() -> Result<()> {
     };
     let tui = !cli.print && out.pager.is_none() && stdout_tty;
     // Plain output has no colors, so it skips the background query.
-    let settings = settings(resolved, tui || out.color);
+    let settings = settings(resolved, tui || out.color)?;
 
     let path = cli.path.unwrap_or_else(|| PathBuf::from("."));
 
@@ -247,24 +249,46 @@ fn edit_config(path: &std::path::Path) -> Result<()> {
 /// Turn resolved configuration into what the app runs with. `colored` says
 /// whether the theme's colors will show; if not, `auto` doesn't ask the
 /// terminal for its background.
-fn settings(r: config::Resolved, colored: bool) -> Settings {
-    Settings {
-        theme: match r.theme.value {
-            ThemeName::Dark => Theme::dark(),
-            ThemeName::Light => Theme::light(),
-            // One detection decides both Markdown and code-block colors.
-            ThemeName::Auto if !colored => Theme::dark(),
-            ThemeName::Auto => match term::background() {
-                Some(Background::Light) => Theme::light(),
-                _ => Theme::dark(),
-            },
-        },
+fn settings(r: config::Resolved, colored: bool) -> Result<Settings> {
+    let light = colored && r.theme.value == "auto" && term::background() == Some(Background::Light);
+    Ok(Settings {
+        theme: themes::load(config::theme_name(&r, light))?,
         max_width: r.width.value,
         assume_yes: r.confirm.value == Confirm::Never,
         line_numbers: r.line_numbers.value,
         all: r.all.value,
         mouse: r.mouse.value,
         interpreters: Interpreters::new(r.interpreters),
+    })
+}
+
+/// `--theme` accepts any name (checked later against the registry) but
+/// offers the built-ins to shell completion.
+#[derive(Clone)]
+struct ThemeArg;
+
+impl clap::builder::TypedValueParser for ThemeArg {
+    type Value = String;
+
+    fn parse_ref(
+        &self,
+        _cmd: &clap::Command,
+        _arg: Option<&clap::Arg>,
+        value: &std::ffi::OsStr,
+    ) -> Result<String, clap::Error> {
+        value
+            .to_str()
+            .map(str::to_string)
+            .ok_or_else(|| clap::Error::new(clap::error::ErrorKind::InvalidUtf8))
+    }
+
+    fn possible_values(
+        &self,
+    ) -> Option<Box<dyn Iterator<Item = clap::builder::PossibleValue> + '_>> {
+        let names = ["auto", "dark", "light"]
+            .into_iter()
+            .chain(themes::builtin_names());
+        Some(Box::new(names.map(clap::builder::PossibleValue::new)))
     }
 }
 

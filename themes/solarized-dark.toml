@@ -1,0 +1,35 @@
+# Solarized Dark
+# Source: https://ethanschoonover.com/solarized/, https://github.com/altercation/solarized/blob/master/README.md, https://github.com/altercation/vim-colors-solarized/blob/master/colors/solarized.vim
+appearance = "dark"
+
+[ui]
+text = "#839496"
+muted = "#586e75"
+subtle = "#657b83"
+surface = "#073642"
+accent = "#268bd2"
+h1_fg = "#002b36"
+h1_bg = "#268bd2"
+heading = "#cb4b16"
+link = "#6c71c4"
+code = "#2aa198"
+match_bg = "#073642"
+current_bg = "#b58900"
+err = "#dc322f"
+ok = "#859900"
+warn = "#b58900"
+
+[syntax]
+comment = "#586e75"
+keyword = "#859900"
+string = "#2aa198"
+number = "#2aa198"
+constant = "#2aa198"
+function = "#268bd2"
+type = "#b58900"
+operator = "#859900"
+punctuation = "#dc322f"
+tag = "#268bd2"
+attribute = "#657b83"
+inserted = "#859900"
+deleted = "#dc322f"

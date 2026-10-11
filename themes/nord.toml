@@ -1,0 +1,35 @@
+# Nord
+# Source: https://www.nordtheme.com/docs/colors-and-palettes, https://github.com/nordtheme/vim/blob/main/colors/nord.vim
+appearance = "dark"
+
+[ui]
+text = "#eceff4"
+muted = "#616e88"
+subtle = "#d8dee9"
+surface = "#3b4252"
+accent = "#88c0d0"
+h1_fg = "#2e3440"
+h1_bg = "#88c0d0"
+heading = "#88c0d0"
+link = "#88c0d0"
+code = "#8fbcbb"
+match_bg = "#434c5e"
+current_bg = "#ebcb8b"
+err = "#bf616a"
+ok = "#a3be8c"
+warn = "#ebcb8b"
+
+[syntax]
+comment = "#616e88"
+keyword = "#81a1c1"
+string = "#a3be8c"
+number = "#b48ead"
+constant = "#d8dee9"
+function = "#88c0d0"
+type = "#81a1c1"
+operator = "#81a1c1"
+punctuation = "#eceff4"
+tag = "#81a1c1"
+attribute = "#8fbcbb"
+inserted = "#a3be8c"
+deleted = "#bf616a"

@@ -31,6 +31,7 @@ bastian --pager README.md  # page it through $PAGER (default less -R)
 bastian --color always README.md | less -R
 bastian -y runbook.md   # run blocks without confirming each one
 bastian -n README.md    # show line numbers
+bastian -t kanagawa README.md  # use another theme
 ```
 
 Try it on this file: open it with `bastian README.md`, press `Tab` to focus the
@@ -110,7 +111,9 @@ it started.
 Command-line flags take precedence.
 
 ```toml
-theme = "auto"        # match the terminal background, or "dark" / "light"
+theme = "auto"        # match the terminal background, "dark", "light" or a theme name
+dark_theme = "rose-pine"        # used by "auto" on dark backgrounds, and "dark"
+light_theme = "rose-pine-dawn"  # used by "auto" on light backgrounds, and "light"
 width = 100           # maximum document width
 confirm = "always"    # "never" behaves like --yes
 color = "auto"        # printed output: "auto", "always" or "never"
@@ -137,9 +140,29 @@ settings and where each one came from. To read a file literally named
 `config`, write `./config`.
 
 Each setting can also come from the environment: `BASTIAN_THEME`,
-`BASTIAN_WIDTH`, `BASTIAN_CONFIRM`, `BASTIAN_LINE_NUMBERS`, `BASTIAN_COLOR`,
+`BASTIAN_DARK_THEME`, `BASTIAN_LIGHT_THEME`, `BASTIAN_WIDTH`, `BASTIAN_CONFIRM`, `BASTIAN_LINE_NUMBERS`, `BASTIAN_COLOR`,
 `BASTIAN_PAGER`, `BASTIAN_ALL` and `BASTIAN_MOUSE`. Precedence is
 defaults < config file < environment < command-line flags.
+
+## Themes
+
+Built-in themes, which also color code blocks:
+
+| Family | Themes |
+|---|---|
+| Tokyo Night | `tokyonight-night` (`tokyonight`), `tokyonight-storm`, `tokyonight-moon`, `tokyonight-day` |
+| Rosé Pine | `rose-pine`, `rose-pine-moon`, `rose-pine-dawn` |
+| Kanagawa | `kanagawa-wave` (`kanagawa`), `kanagawa-dragon`, `kanagawa-lotus` |
+| Catppuccin | `catppuccin-mocha` (`catppuccin`), `catppuccin-macchiato`, `catppuccin-frappe`, `catppuccin-latte` |
+| Gruvbox | `gruvbox-dark` (`gruvbox`), `gruvbox-light` |
+| Nord | `nord` |
+| Dracula | `dracula` |
+| Everforest | `everforest-dark` (`everforest`), `everforest-light` |
+| Solarized | `solarized-dark` (`solarized`), `solarized-light` |
+
+Pick one with `-t`, `theme = "..."` or `BASTIAN_THEME`. With `theme = "auto"`
+(the default), bastian asks the terminal for its background color and uses
+`dark_theme` or `light_theme`; `"dark"` and `"light"` force one of the two.
 
 ## Shell completions and man page
 

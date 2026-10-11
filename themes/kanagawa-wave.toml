@@ -1,0 +1,35 @@
+# Kanagawa Wave
+# Source: https://github.com/rebelot/kanagawa.nvim/blob/master/lua/kanagawa/colors.lua, https://github.com/rebelot/kanagawa.nvim/blob/master/lua/kanagawa/themes.lua
+appearance = "dark"
+
+[ui]
+text = "#dcd7ba"
+muted = "#727169"
+subtle = "#c8c093"
+surface = "#2a2a37"
+accent = "#957fb8"
+h1_fg = "#1f1f28"
+h1_bg = "#957fb8"
+heading = "#7e9cd8"
+link = "#7fb4ca"
+code = "#98bb6c"
+match_bg = "#2d4f67"
+current_bg = "#ff9e3b"
+err = "#e82424"
+ok = "#98bb6c"
+warn = "#ff9e3b"
+
+[syntax]
+comment = "#727169"
+keyword = "#957fb8"
+string = "#98bb6c"
+number = "#d27e99"
+constant = "#ffa066"
+function = "#7e9cd8"
+type = "#7aa89f"
+operator = "#c0a36e"
+punctuation = "#9cabca"
+tag = "#7fb4ca"
+attribute = "#e6c384"
+inserted = "#76946a"
+deleted = "#c34043"

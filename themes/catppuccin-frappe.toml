@@ -1,0 +1,35 @@
+# Catppuccin Frappé
+# Source: https://github.com/catppuccin/palette/blob/main/palette.json, https://github.com/catppuccin/catppuccin/blob/main/docs/style-guide.md, https://github.com/catppuccin/nvim/blob/main/lua/catppuccin/groups/treesitter.lua
+appearance = "dark"
+
+[ui]
+text = "#c6d0f5"
+muted = "#838ba7"
+subtle = "#a5adce"
+surface = "#414559"
+accent = "#ca9ee6"
+h1_fg = "#303446"
+h1_bg = "#ca9ee6"
+heading = "#8caaee"
+link = "#babbf1"
+code = "#a6d189"
+match_bg = "#51576d"
+current_bg = "#ef9f76"
+err = "#e78284"
+ok = "#a6d189"
+warn = "#e5c890"
+
+[syntax]
+comment = "#949cbb"
+keyword = "#ca9ee6"
+string = "#a6d189"
+number = "#ef9f76"
+constant = "#ef9f76"
+function = "#8caaee"
+type = "#e5c890"
+operator = "#99d1db"
+punctuation = "#949cbb"
+tag = "#8caaee"
+attribute = "#e5c890"
+inserted = "#a6d189"
+deleted = "#e78284"

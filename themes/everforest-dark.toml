@@ -1,0 +1,35 @@
+# Everforest Dark (medium)
+# Source: https://github.com/sainnhe/everforest/blob/master/autoload/everforest.vim, https://github.com/sainnhe/everforest/blob/master/colors/everforest.vim
+appearance = "dark"
+
+[ui]
+text = "#d3c6aa"
+muted = "#859289"
+subtle = "#9da9a0"
+surface = "#343f44"
+accent = "#a7c080"
+h1_fg = "#2d353b"
+h1_bg = "#a7c080"
+heading = "#e69875"
+link = "#83c092"
+code = "#a7c080"
+match_bg = "#543a48"
+current_bg = "#dbbc7f"
+err = "#e67e80"
+ok = "#a7c080"
+warn = "#dbbc7f"
+
+[syntax]
+comment = "#859289"
+keyword = "#e67e80"
+string = "#a7c080"
+number = "#d699b6"
+constant = "#83c092"
+function = "#a7c080"
+type = "#dbbc7f"
+operator = "#e69875"
+punctuation = "#859289"
+tag = "#e69875"
+attribute = "#a7c080"
+inserted = "#a7c080"
+deleted = "#e67e80"

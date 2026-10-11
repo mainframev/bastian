@@ -1,0 +1,35 @@
+# Rosé Pine
+# Source: https://github.com/rose-pine/palette/blob/main/palette.json, https://github.com/rose-pine/neovim/blob/main/lua/rose-pine.lua
+appearance = "dark"
+
+[ui]
+text = "#e0def4"
+muted = "#6e6a86"
+subtle = "#908caa"
+surface = "#1f1d2e"
+accent = "#c4a7e7"
+h1_fg = "#191724"
+h1_bg = "#c4a7e7"
+heading = "#ebbcba"
+link = "#9ccfd8"
+code = "#ebbcba"
+match_bg = "#524f67"
+current_bg = "#f6c177"
+err = "#eb6f92"
+ok = "#9ccfd8"
+warn = "#f6c177"
+
+[syntax]
+comment = "#908caa"
+keyword = "#31748f"
+string = "#f6c177"
+number = "#f6c177"
+constant = "#f6c177"
+function = "#ebbcba"
+type = "#9ccfd8"
+operator = "#908caa"
+punctuation = "#908caa"
+tag = "#9ccfd8"
+attribute = "#c4a7e7"
+inserted = "#9ccfd8"
+deleted = "#eb6f92"

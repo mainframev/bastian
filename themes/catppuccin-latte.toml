@@ -1,0 +1,35 @@
+# Catppuccin Latte
+# Source: https://github.com/catppuccin/palette/blob/main/palette.json, https://github.com/catppuccin/catppuccin/blob/main/docs/style-guide.md, https://github.com/catppuccin/nvim/blob/main/lua/catppuccin/groups/treesitter.lua
+appearance = "light"
+
+[ui]
+text = "#4c4f69"
+muted = "#8c8fa1"
+subtle = "#6c6f85"
+surface = "#ccd0da"
+accent = "#8839ef"
+h1_fg = "#eff1f5"
+h1_bg = "#8839ef"
+heading = "#1e66f5"
+link = "#7287fd"
+code = "#40a02b"
+match_bg = "#bcc0cc"
+current_bg = "#fe640b"
+err = "#d20f39"
+ok = "#40a02b"
+warn = "#df8e1d"
+
+[syntax]
+comment = "#7c7f93"
+keyword = "#8839ef"
+string = "#40a02b"
+number = "#fe640b"
+constant = "#fe640b"
+function = "#1e66f5"
+type = "#df8e1d"
+operator = "#04a5e5"
+punctuation = "#7c7f93"
+tag = "#1e66f5"
+attribute = "#df8e1d"
+inserted = "#40a02b"
+deleted = "#d20f39"

@@ -1,0 +1,35 @@
+# Tokyo Night Night
+# Source: https://github.com/folke/tokyonight.nvim/blob/main/extras/lua/tokyonight_night.lua
+appearance = "dark"
+
+[ui]
+text = "#c0caf5"
+muted = "#565f89"
+subtle = "#a9b1d6"
+surface = "#292e42"
+accent = "#7aa2f7"
+h1_fg = "#1a1b26"
+h1_bg = "#7aa2f7"
+heading = "#e0af68"
+link = "#1abc9c"
+code = "#7aa2f7"
+match_bg = "#283457"
+current_bg = "#ff9e64"
+err = "#f7768e"
+ok = "#9ece6a"
+warn = "#e0af68"
+
+[syntax]
+comment = "#565f89"
+keyword = "#9d7cd8"
+string = "#9ece6a"
+number = "#ff9e64"
+constant = "#ff9e64"
+function = "#7aa2f7"
+type = "#2ac3de"
+operator = "#89ddff"
+punctuation = "#a9b1d6"
+tag = "#f7768e"
+attribute = "#73daca"
+inserted = "#9ece6a"
+deleted = "#f7768e"

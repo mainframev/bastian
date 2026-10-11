@@ -3,14 +3,12 @@ use std::sync::LazyLock;
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 use syntect::easy::HighlightLines;
-use syntect::highlighting::ThemeSet;
 use syntect::parsing::SyntaxSet;
 use syntect::util::LinesWithEndings;
 
 use super::theme::Theme;
 
 static SYNTAXES: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
-static THEMES: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 
 /// The syntax token for a file extension, if it names a language the
 /// highlighter knows (e.g. `rs` → `rs`).
@@ -31,11 +29,7 @@ pub fn highlight(src: &str, lang: Option<&str>, theme: &Theme) -> Vec<Vec<Span<'
     let Some(syntax) = lang.and_then(|l| ss.find_syntax_by_token(l)) else {
         return plain();
     };
-    let Some(st) = THEMES.themes.get(theme.syntax) else {
-        return plain();
-    };
-
-    let mut h = HighlightLines::new(syntax, st);
+    let mut h = HighlightLines::new(syntax, &theme.syntax);
     let mut out = Vec::new();
     for line in LinesWithEndings::from(&src) {
         let Ok(regions) = h.highlight_line(line, ss) else {

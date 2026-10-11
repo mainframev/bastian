@@ -1,0 +1,35 @@
+# Everforest Light (medium)
+# Source: https://github.com/sainnhe/everforest/blob/master/autoload/everforest.vim, https://github.com/sainnhe/everforest/blob/master/colors/everforest.vim
+appearance = "light"
+
+[ui]
+text = "#5c6a72"
+muted = "#939f91"
+subtle = "#829181"
+surface = "#f4f0d9"
+accent = "#8da101"
+h1_fg = "#fdf6e3"
+h1_bg = "#8da101"
+heading = "#f57d26"
+link = "#35a77c"
+code = "#8da101"
+match_bg = "#eaedc8"
+current_bg = "#dfa000"
+err = "#f85552"
+ok = "#8da101"
+warn = "#dfa000"
+
+[syntax]
+comment = "#939f91"
+keyword = "#f85552"
+string = "#8da101"
+number = "#df69ba"
+constant = "#35a77c"
+function = "#8da101"
+type = "#dfa000"
+operator = "#f57d26"
+punctuation = "#939f91"
+tag = "#f57d26"
+attribute = "#8da101"
+inserted = "#8da101"
+deleted = "#f85552"

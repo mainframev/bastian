@@ -1,0 +1,35 @@
+# Gruvbox Light
+# Source: https://github.com/morhetz/gruvbox/blob/master/colors/gruvbox.vim, https://github.com/ellisonleao/gruvbox.nvim/blob/main/lua/gruvbox.lua
+appearance = "light"
+
+[ui]
+text = "#3c3836"
+muted = "#928374"
+subtle = "#7c6f64"
+surface = "#ebdbb2"
+accent = "#b57614"
+h1_fg = "#fbf1c7"
+h1_bg = "#b57614"
+heading = "#79740e"
+link = "#076678"
+code = "#427b58"
+match_bg = "#bdae93"
+current_bg = "#af3a03"
+err = "#9d0006"
+ok = "#79740e"
+warn = "#b57614"
+
+[syntax]
+comment = "#928374"
+keyword = "#9d0006"
+string = "#79740e"
+number = "#8f3f71"
+constant = "#8f3f71"
+function = "#79740e"
+type = "#b57614"
+operator = "#af3a03"
+punctuation = "#7c6f64"
+tag = "#427b58"
+attribute = "#076678"
+inserted = "#79740e"
+deleted = "#9d0006"

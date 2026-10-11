@@ -1,0 +1,35 @@
+# Gruvbox Dark
+# Source: https://github.com/morhetz/gruvbox/blob/master/colors/gruvbox.vim, https://github.com/ellisonleao/gruvbox.nvim/blob/main/lua/gruvbox.lua
+appearance = "dark"
+
+[ui]
+text = "#ebdbb2"
+muted = "#928374"
+subtle = "#a89984"
+surface = "#3c3836"
+accent = "#fabd2f"
+h1_fg = "#282828"
+h1_bg = "#fabd2f"
+heading = "#b8bb26"
+link = "#83a598"
+code = "#8ec07c"
+match_bg = "#665c54"
+current_bg = "#fe8019"
+err = "#fb4934"
+ok = "#b8bb26"
+warn = "#fabd2f"
+
+[syntax]
+comment = "#928374"
+keyword = "#fb4934"
+string = "#b8bb26"
+number = "#d3869b"
+constant = "#d3869b"
+function = "#b8bb26"
+type = "#fabd2f"
+operator = "#fe8019"
+punctuation = "#a89984"
+tag = "#8ec07c"
+attribute = "#83a598"
+inserted = "#b8bb26"
+deleted = "#fb4934"

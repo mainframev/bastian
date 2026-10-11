@@ -1,0 +1,35 @@
+# Tokyo Night Day
+# Source: https://github.com/folke/tokyonight.nvim/blob/main/extras/lua/tokyonight_day.lua
+appearance = "light"
+
+[ui]
+text = "#3760bf"
+muted = "#848cb5"
+subtle = "#6172b0"
+surface = "#c4c8da"
+accent = "#2e7de9"
+h1_fg = "#e1e2e7"
+h1_bg = "#2e7de9"
+heading = "#8c6c3e"
+link = "#118c74"
+code = "#2e7de9"
+match_bg = "#b7c1e3"
+current_bg = "#b15c00"
+err = "#f52a65"
+ok = "#587539"
+warn = "#8c6c3e"
+
+[syntax]
+comment = "#848cb5"
+keyword = "#7847bd"
+string = "#587539"
+number = "#b15c00"
+constant = "#b15c00"
+function = "#2e7de9"
+type = "#188092"
+operator = "#006a83"
+punctuation = "#6172b0"
+tag = "#f52a65"
+attribute = "#387068"
+inserted = "#587539"
+deleted = "#f52a65"

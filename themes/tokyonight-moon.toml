@@ -1,0 +1,35 @@
+# Tokyo Night Moon
+# Source: https://github.com/folke/tokyonight.nvim/blob/main/extras/lua/tokyonight_moon.lua
+appearance = "dark"
+
+[ui]
+text = "#c8d3f5"
+muted = "#636da6"
+subtle = "#828bb8"
+surface = "#2f334d"
+accent = "#82aaff"
+h1_fg = "#222436"
+h1_bg = "#82aaff"
+heading = "#ffc777"
+link = "#4fd6be"
+code = "#82aaff"
+match_bg = "#2d3f76"
+current_bg = "#ff966c"
+err = "#ff757f"
+ok = "#c3e88d"
+warn = "#ffc777"
+
+[syntax]
+comment = "#636da6"
+keyword = "#fca7ea"
+string = "#c3e88d"
+number = "#ff966c"
+constant = "#ff966c"
+function = "#82aaff"
+type = "#65bcff"
+operator = "#89ddff"
+punctuation = "#828bb8"
+tag = "#ff757f"
+attribute = "#4fd6be"
+inserted = "#c3e88d"
+deleted = "#ff757f"

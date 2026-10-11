@@ -1,5 +1,5 @@
 mod ansi;
-mod code;
+pub(crate) mod code;
 pub mod theme;
 
 pub use ansi::to_ansi;

@@ -9,7 +9,13 @@ use serde::Deserialize;
 #[derive(Debug, Default, Clone, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
-    pub theme: Option<ThemeName>,
+    /// `auto` (follow the terminal background), `dark`, `light`, or a
+    /// theme name.
+    pub theme: Option<String>,
+    /// Theme used by `auto` on dark backgrounds, and by `dark`.
+    pub dark_theme: Option<String>,
+    /// Theme used by `auto` on light backgrounds, and by `light`.
+    pub light_theme: Option<String>,
     pub width: Option<u16>,
     pub confirm: Option<Confirm>,
     /// Show rendered line numbers in the reader.
@@ -25,15 +31,6 @@ pub struct Config {
     /// Language → command line; the block source is appended as the last
     /// argument. An empty list stops that language from running.
     pub interpreters: HashMap<String, Vec<String>>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, clap::ValueEnum)]
-#[serde(rename_all = "lowercase")]
-pub enum ThemeName {
-    /// Light or dark to match the terminal's background.
-    Auto,
-    Dark,
-    Light,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, clap::ValueEnum)]
@@ -134,7 +131,10 @@ pub fn expand(input: &str, lookup: &dyn Fn(&str) -> Option<String>) -> PathBuf {
 pub const TEMPLATE: &str = r#"# bastian configuration. Every key is optional; command-line flags and
 # BASTIAN_* environment variables take precedence over this file.
 
-# theme = "auto"        # "auto" (match the terminal), "dark" or "light"
+# theme = "auto"        # "auto" (match the terminal), "dark", "light" or a
+#                       # theme name; `bastian themes` lists them
+# dark_theme = "rose-pine"        # used by "auto" and "dark"
+# light_theme = "rose-pine-dawn"  # used by "auto" and "light"
 # width = 100           # maximum document width
 # confirm = "always"    # "never" runs code blocks without asking, like --yes
 # line_numbers = false  # show line numbers in the reader
@@ -164,21 +164,26 @@ pub fn describe(r: &Resolved, file: Option<&Path>) -> String {
     if let Some(f) = file {
         out.push_str(&format!("# config file: {}\n", f.display()));
     }
-    fn row<T: Value>(out: &mut String, key: &str, s: &Setting<T>) {
-        out.push_str(&format!(
-            "{:<22}# {}\n",
-            format!("{key} = {}", s.value.toml()),
-            src(s.source)
-        ));
+    fn row<T: Value>(key: &str, s: &Setting<T>) -> (String, Source) {
+        (format!("{key} = {}", s.value.toml()), s.source)
     }
-    row(&mut out, "theme", &r.theme);
-    row(&mut out, "width", &r.width);
-    row(&mut out, "confirm", &r.confirm);
-    row(&mut out, "line_numbers", &r.line_numbers);
-    row(&mut out, "color", &r.color);
-    row(&mut out, "pager", &r.pager);
-    row(&mut out, "all", &r.all);
-    row(&mut out, "mouse", &r.mouse);
+    let rows = [
+        row("theme", &r.theme),
+        row("dark_theme", &r.dark_theme),
+        row("light_theme", &r.light_theme),
+        row("width", &r.width),
+        row("confirm", &r.confirm),
+        row("line_numbers", &r.line_numbers),
+        row("color", &r.color),
+        row("pager", &r.pager),
+        row("all", &r.all),
+        row("mouse", &r.mouse),
+    ];
+    // Line the source comments up, at least two spaces after the value.
+    let w = rows.iter().map(|(text, _)| text.len()).max().unwrap_or(0) + 2;
+    for (text, source) in rows {
+        out.push_str(&format!("{text:<w$}# {}\n", src(source)));
+    }
     if !r.interpreters.is_empty() {
         out.push_str("\n[interpreters]\n");
         let mut langs: Vec<_> = r.interpreters.iter().collect();
@@ -225,7 +230,9 @@ pub fn env_vars() -> EnvMap {
 /// print) read from this, so they can't disagree about precedence.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Resolved {
-    pub theme: Setting<ThemeName>,
+    pub theme: Setting<String>,
+    pub dark_theme: Setting<String>,
+    pub light_theme: Setting<String>,
     pub width: Setting<u16>,
     pub confirm: Setting<Confirm>,
     pub line_numbers: Setting<bool>,
@@ -241,7 +248,21 @@ pub struct Resolved {
 /// Invalid environment values are errors naming the variable.
 pub fn resolve(file: Config, env: &EnvMap, cli: Config) -> Result<Resolved> {
     Ok(Resolved {
-        theme: setting("theme", ThemeName::Auto, file.theme, cli.theme, env)?,
+        theme: setting("theme", "auto".into(), file.theme, cli.theme, env)?,
+        dark_theme: setting(
+            "dark_theme",
+            "rose-pine".into(),
+            file.dark_theme,
+            cli.dark_theme,
+            env,
+        )?,
+        light_theme: setting(
+            "light_theme",
+            "rose-pine-dawn".into(),
+            file.light_theme,
+            cli.light_theme,
+            env,
+        )?,
         width: setting("width", 100, file.width, cli.width, env)?,
         confirm: setting("confirm", Confirm::Always, file.confirm, cli.confirm, env)?,
         line_numbers: setting(
@@ -289,6 +310,45 @@ fn pick<T>(default: T, file: Option<T>, env: Option<T>, cli: Option<T>) -> Setti
     Setting { value, source }
 }
 
+/// Name of the theme to use. `auto` follows the terminal background
+/// (`light_background`, unknown counts as dark); `dark` and `light` pick
+/// `dark_theme` and `light_theme`.
+pub fn theme_name(r: &Resolved, light_background: bool) -> &str {
+    match r.theme.value.as_str() {
+        "auto" if light_background => &r.light_theme.value,
+        "auto" | "dark" => &r.dark_theme.value,
+        "light" => &r.light_theme.value,
+        name => name,
+    }
+}
+
+/// Every theme the settings name exists; the error says where a bad name
+/// came from.
+pub fn check_themes(r: &Resolved, exists: impl Fn(&str) -> bool) -> Result<()> {
+    let named = ["auto", "dark", "light"];
+    let settings = [
+        ("theme", &r.theme),
+        ("dark_theme", &r.dark_theme),
+        ("light_theme", &r.light_theme),
+    ];
+    for (key, s) in settings {
+        if (key == "theme" && named.contains(&s.value.as_str())) || exists(&s.value) {
+            continue;
+        }
+        let from = match s.source {
+            Source::Flag => "--theme".to_string(),
+            Source::Env => format!("BASTIAN_{}", key.to_ascii_uppercase()),
+            Source::File => format!("`{key}` in the config file"),
+            Source::Default => "the default".to_string(),
+        };
+        return Err(anyhow!(
+            "unknown theme {:?} (from {from}); run `bastian themes` to list them",
+            s.value
+        ));
+    }
+    Ok(())
+}
+
 /// A setting's value type: how it reads from the environment and prints
 /// in `--print-config`.
 trait Value: Sized {
@@ -311,6 +371,18 @@ impl Value for bool {
     }
     fn toml(&self) -> String {
         self.to_string()
+    }
+}
+
+impl Value for String {
+    fn parse_env(v: &str) -> Option<Self> {
+        Some(v.to_string())
+    }
+    fn expected() -> String {
+        "a theme name".into()
+    }
+    fn toml(&self) -> String {
+        format!("{self:?}")
     }
 }
 
@@ -349,7 +421,7 @@ macro_rules! enum_value {
         }
     )*};
 }
-enum_value!(ThemeName, Confirm, ColorMode);
+enum_value!(Confirm, ColorMode);
 
 fn enum_name<T: ValueEnum>(v: &T) -> String {
     v.to_possible_value()
@@ -370,7 +442,7 @@ mod tests {
     #[test]
     fn precedence_is_default_file_env_flag() {
         let file = || Config {
-            theme: Some(ThemeName::Light),
+            theme: Some("light".into()),
             width: Some(80),
             ..Config::default()
         };
@@ -380,7 +452,7 @@ mod tests {
         assert_eq!(
             r.theme,
             Setting {
-                value: ThemeName::Auto,
+                value: "auto".to_string(),
                 source: Source::Default
             }
         );
@@ -390,7 +462,7 @@ mod tests {
         assert_eq!(
             r.theme,
             Setting {
-                value: ThemeName::Light,
+                value: "light".to_string(),
                 source: Source::File
             }
         );
@@ -400,7 +472,7 @@ mod tests {
         assert_eq!(
             r.theme,
             Setting {
-                value: ThemeName::Dark,
+                value: "dark".to_string(),
                 source: Source::Env
             }
         );
@@ -413,7 +485,7 @@ mod tests {
         );
 
         let cli = Config {
-            theme: Some(ThemeName::Light),
+            theme: Some("light".into()),
             width: Some(60),
             confirm: Some(Confirm::Never),
             line_numbers: Some(true),
@@ -423,7 +495,7 @@ mod tests {
         assert_eq!(
             r.theme,
             Setting {
-                value: ThemeName::Light,
+                value: "light".to_string(),
                 source: Source::Flag
             }
         );
@@ -574,7 +646,7 @@ mod tests {
             "#,
         )
         .unwrap();
-        assert_eq!(c.theme, Some(ThemeName::Light));
+        assert_eq!(c.theme, Some("light".into()));
         assert_eq!(c.width, Some(80));
         assert_eq!(c.confirm, Some(Confirm::Never));
         assert_eq!(c.line_numbers, Some(true));
@@ -603,5 +675,61 @@ mod tests {
         std::fs::write(&p, "width = \"wide\"").unwrap();
         let err = format!("{:#}", load_from(&p).unwrap_err());
         assert!(err.contains("config.toml"), "{err}");
+    }
+
+    #[test]
+    fn theme_name_follows_auto_dark_and_light() {
+        let r = |theme: &str| {
+            resolve(
+                Config {
+                    theme: Some(theme.into()),
+                    dark_theme: Some("nord".into()),
+                    ..Config::default()
+                },
+                &env(&[]),
+                Config::default(),
+            )
+            .unwrap()
+        };
+        assert_eq!(theme_name(&r("auto"), false), "nord");
+        assert_eq!(theme_name(&r("auto"), true), "rose-pine-dawn");
+        assert_eq!(theme_name(&r("dark"), true), "nord");
+        assert_eq!(theme_name(&r("light"), false), "rose-pine-dawn");
+        assert_eq!(theme_name(&r("dracula"), true), "dracula");
+    }
+
+    #[test]
+    fn unknown_themes_name_their_source() {
+        let exists = |n: &str| ["rose-pine", "rose-pine-dawn", "nord"].contains(&n);
+        let check = |file: Config, e: &[(&str, &str)], cli: Config| {
+            check_themes(&resolve(file, &env(e), cli).unwrap(), exists)
+        };
+        assert!(check(Config::default(), &[], Config::default()).is_ok());
+        let flag = Config {
+            theme: Some("nope".into()),
+            ..Config::default()
+        };
+        let err = check(Config::default(), &[], flag).unwrap_err().to_string();
+        assert!(
+            err.contains("unknown theme \"nope\" (from --theme)"),
+            "{err}"
+        );
+        let err = check(
+            Config::default(),
+            &[("BASTIAN_LIGHT_THEME", "x")],
+            Config::default(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("(from BASTIAN_LIGHT_THEME)"), "{err}");
+        let file = Config {
+            dark_theme: Some("y".into()),
+            ..Config::default()
+        };
+        let err = check(file, &[], Config::default()).unwrap_err().to_string();
+        assert!(
+            err.contains("(from `dark_theme` in the config file)"),
+            "{err}"
+        );
     }
 }

@@ -1,0 +1,35 @@
+# Dracula
+# Source: https://draculatheme.com/spec, https://github.com/dracula/vim/blob/master/colors/dracula_base.vim
+appearance = "dark"
+
+[ui]
+text = "#f8f8f2"
+muted = "#6272a4"
+subtle = "#f8f8f2"
+surface = "#343746"
+accent = "#bd93f9"
+h1_fg = "#282a36"
+h1_bg = "#bd93f9"
+heading = "#bd93f9"
+link = "#8be9fd"
+code = "#50fa7b"
+match_bg = "#44475a"
+current_bg = "#ffb86c"
+err = "#ff5555"
+ok = "#50fa7b"
+warn = "#ffb86c"
+
+[syntax]
+comment = "#6272a4"
+keyword = "#ff79c6"
+string = "#f1fa8c"
+number = "#ffb86c"
+constant = "#bd93f9"
+function = "#50fa7b"
+type = "#8be9fd"
+operator = "#ff79c6"
+punctuation = "#f8f8f2"
+tag = "#8be9fd"
+attribute = "#50fa7b"
+inserted = "#50fa7b"
+deleted = "#ff5555"

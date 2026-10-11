@@ -1,0 +1,35 @@
+# Kanagawa Lotus
+# Source: https://github.com/rebelot/kanagawa.nvim/blob/master/lua/kanagawa/colors.lua, https://github.com/rebelot/kanagawa.nvim/blob/master/lua/kanagawa/themes.lua
+appearance = "light"
+
+[ui]
+text = "#545464"
+muted = "#8a8980"
+subtle = "#716e61"
+surface = "#e7dba0"
+accent = "#624c83"
+h1_fg = "#f2ecbc"
+h1_bg = "#624c83"
+heading = "#4d699b"
+link = "#6693bf"
+code = "#6f894e"
+match_bg = "#b5cbd2"
+current_bg = "#e98a00"
+err = "#e82424"
+ok = "#6f894e"
+warn = "#e98a00"
+
+[syntax]
+comment = "#8a8980"
+keyword = "#624c83"
+string = "#6f894e"
+number = "#b35b79"
+constant = "#cc6d00"
+function = "#4d699b"
+type = "#597b75"
+operator = "#836f4a"
+punctuation = "#4e8ca2"
+tag = "#6693bf"
+attribute = "#77713f"
+inserted = "#6e915f"
+deleted = "#d7474b"

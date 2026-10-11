@@ -1,0 +1,35 @@
+# Kanagawa Dragon
+# Source: https://github.com/rebelot/kanagawa.nvim/blob/master/lua/kanagawa/colors.lua, https://github.com/rebelot/kanagawa.nvim/blob/master/lua/kanagawa/themes.lua
+appearance = "dark"
+
+[ui]
+text = "#c5c9c5"
+muted = "#737c73"
+subtle = "#c8c093"
+surface = "#282727"
+accent = "#8992a7"
+h1_fg = "#181616"
+h1_bg = "#8992a7"
+heading = "#8ba4b0"
+link = "#949fb5"
+code = "#8a9a7b"
+match_bg = "#2d4f67"
+current_bg = "#ff9e3b"
+err = "#e82424"
+ok = "#98bb6c"
+warn = "#ff9e3b"
+
+[syntax]
+comment = "#737c73"
+keyword = "#8992a7"
+string = "#8a9a7b"
+number = "#a292a3"
+constant = "#b6927b"
+function = "#8ba4b0"
+type = "#8ea4a2"
+operator = "#c4746e"
+punctuation = "#9e9b93"
+tag = "#949fb5"
+attribute = "#c4b28a"
+inserted = "#76946a"
+deleted = "#c34043"

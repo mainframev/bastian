@@ -1,8 +1,11 @@
 use std::thread;
 use std::time::Duration;
 
+use bastian::app::Settings;
 use bastian::doc::parse;
+use bastian::exec::Interpreters;
 use bastian::reader::{Action, Reader};
+use bastian::remote::RemoteDoc;
 use bastian::render::theme::Theme;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -190,11 +193,23 @@ fn c_copies_the_whole_document() {
 
 #[test]
 fn remote_documents_resolve_links_and_always_confirm() {
-    let mut r =
-        reader("See [guide](docs/guide.md) and [logo](img/logo.png).\n\n```sh\necho hi\n```\n");
-    r.remote_base = Some(url::Url::parse("https://example.com/repo/README.md").unwrap());
-    r.untrusted = true;
-    r.assume_yes = true;
+    // Built the way the app builds fetched documents, with --yes on.
+    let settings = Settings {
+        theme: Theme::dark(),
+        max_width: 80,
+        assume_yes: true,
+        interpreters: Interpreters::default(),
+        line_numbers: false,
+        all: false,
+        mouse: false,
+    };
+    let mut r = settings.remote(RemoteDoc {
+        name: "README.md".into(),
+        base: url::Url::parse("https://example.com/repo/README.md").unwrap(),
+        text: "See [guide](docs/guide.md) and [logo](img/logo.png).\n\n```sh\necho hi\n```\n"
+            .into(),
+    });
+    r.layout(80, 10);
 
     key(&mut r, KeyCode::Char('L'));
     match key(&mut r, KeyCode::Enter) {

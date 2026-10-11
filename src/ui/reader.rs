@@ -219,12 +219,9 @@ fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {
     };
     let cwd = ids
         .first()
-        .and_then(|&id| r.code(id))
-        .and_then(|c| c.attrs.cwd.clone())
-        .map_or_else(
-            || r.base_dir.display().to_string(),
-            |d| r.base_dir.join(d).display().to_string(),
-        );
+        .map_or_else(|| r.base_dir.clone(), |&id| r.cwd(id))
+        .display()
+        .to_string();
     let lines = vec![
         Line::from(vec![
             Span::styled("Run ", Style::default().fg(t.text)),

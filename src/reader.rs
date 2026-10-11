@@ -80,9 +80,6 @@ pub struct Reader {
     pub text: String,
     /// Set for documents fetched over HTTP: links resolve against this URL.
     pub remote_base: Option<url::Url>,
-    /// The document came from somewhere untrusted (a remote URL): every
-    /// code block run asks first, even with `--yes`.
-    pub untrusted: bool,
     modified: Option<SystemTime>,
     last_check: Instant,
     pub interpreters: Interpreters,
@@ -122,7 +119,6 @@ impl Reader {
             source: None,
             text: String::new(),
             remote_base: None,
-            untrusted: false,
             modified: None,
             last_check: Instant::now(),
             interpreters: Interpreters::default(),
@@ -290,6 +286,15 @@ impl Reader {
         }
     }
 
+    /// Directory block `id` runs in: the document's, joined with the
+    /// block's `cwd` attribute if it has one.
+    pub fn cwd(&self, id: usize) -> PathBuf {
+        match self.code(id).and_then(|c| c.attrs.cwd.as_ref()) {
+            Some(dir) => self.base_dir.join(dir),
+            None => self.base_dir.clone(),
+        }
+    }
+
     /// How to run block `id`, or why it can't run.
     fn spec(&self, id: usize) -> Result<RunSpec, String> {
         let c = self.code(id).ok_or("no such block")?;
@@ -304,14 +309,10 @@ impl Reader {
         let program = cmd.remove(0);
         let mut args = cmd;
         args.push(c.src.clone());
-        let cwd = match &c.attrs.cwd {
-            Some(dir) => self.base_dir.join(dir),
-            None => self.base_dir.clone(),
-        };
         Ok(RunSpec {
             program,
             args,
-            cwd,
+            cwd: self.cwd(id),
             env: c.attrs.env.clone(),
         })
     }
@@ -328,7 +329,7 @@ impl Reader {
         let must_ask = ids
             .iter()
             .any(|&id| self.code(id).is_some_and(|c| c.attrs.confirm));
-        if self.assume_yes && !must_ask && !self.untrusted {
+        if self.assume_yes && !must_ask {
             self.start_queue(ids);
         } else {
             self.confirm = Some(ids);

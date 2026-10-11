@@ -53,7 +53,8 @@ impl Settings {
         let mut r = self.reader(doc.name, parsed, PathBuf::from("."));
         r.text = doc.text;
         r.remote_base = Some(doc.base);
-        r.untrusted = true;
+        // Untrusted source: every run asks first, even with `--yes`.
+        r.assume_yes = false;
         r
     }
 
@@ -86,24 +87,34 @@ pub struct App {
 
 impl App {
     pub fn browse(root: PathBuf, settings: Settings) -> Self {
-        Self {
-            browser: Some(Browser::new(root, settings.all)),
-            reader: None,
-            history: Vec::new(),
-            edit: None,
-            suspend: false,
-            settings,
-        }
+        let browser = Browser::new(root, settings.all);
+        Self::new(settings, Some(browser), None)
     }
 
     pub fn read(reader: Reader, settings: Settings) -> Self {
+        Self::new(settings, None, Some(reader))
+    }
+
+    fn new(settings: Settings, browser: Option<Browser>, reader: Option<Reader>) -> Self {
         Self {
-            browser: None,
-            reader: Some(reader),
+            settings,
+            browser,
+            reader,
             history: Vec::new(),
             edit: None,
             suspend: false,
-            settings,
+        }
+    }
+
+    /// Show `next` on top, keeping the current reader for Back.
+    fn push_reader(&mut self, next: Result<Reader>) {
+        match next {
+            Ok(next) => {
+                if let Some(prev) = self.reader.replace(next) {
+                    self.history.push(prev);
+                }
+            }
+            Err(err) => self.set_message(format!("{err:#}")),
         }
     }
 
@@ -171,26 +182,13 @@ impl App {
                 return self.reader.is_some() || self.browser.is_some();
             }
             reader::Action::OpenDocument(path) => {
-                let name = display_name(&path);
-                match self.settings.open(&path, name) {
-                    Ok(next) => {
-                        if let Some(prev) = self.reader.replace(next) {
-                            self.history.push(prev);
-                        }
-                    }
-                    Err(err) => self.set_message(format!("{err:#}")),
-                }
+                let next = self.settings.open(&path, display_name(&path));
+                self.push_reader(next);
             }
             reader::Action::OpenRemote(url) => {
-                match crate::remote::fetch(&crate::remote::Source::Url(url)) {
-                    Ok(doc) => {
-                        let next = self.settings.remote(doc);
-                        if let Some(prev) = self.reader.replace(next) {
-                            self.history.push(prev);
-                        }
-                    }
-                    Err(err) => self.set_message(format!("{err:#}")),
-                }
+                let next = crate::remote::fetch(&crate::remote::Source::Url(url))
+                    .map(|doc| self.settings.remote(doc));
+                self.push_reader(next);
             }
             reader::Action::OpenExternal(target) => {
                 if let Err(err) = links::open_external(&target) {
@@ -228,11 +226,9 @@ impl App {
         line: Option<usize>,
     ) -> Result<()> {
         let cmd = editor::command();
-        let mouse = self.settings.mouse;
-        leave_terminal(mouse);
-        let result = editor::open_with(&cmd, path, line);
-        *terminal = enter_terminal(mouse)?;
-        terminal.clear()?;
+        let result = with_terminal_released(terminal, self.settings.mouse, || {
+            editor::open_with(&cmd, path, line)
+        })?;
         match result {
             Ok(status) if status.success() => {}
             // The shell's "command not found" status.
@@ -281,6 +277,20 @@ pub fn leave_terminal(mouse: bool) {
     ratatui::restore();
 }
 
+/// Give the terminal back to the shell while `f` runs, then take it over
+/// again with a clean screen.
+fn with_terminal_released<T>(
+    terminal: &mut DefaultTerminal,
+    mouse: bool,
+    f: impl FnOnce() -> T,
+) -> Result<T> {
+    leave_terminal(mouse);
+    let result = f();
+    *terminal = enter_terminal(mouse)?;
+    terminal.clear()?;
+    Ok(result)
+}
+
 /// Lines the reader scrolls per mouse-wheel step.
 const WHEEL_LINES: isize = 3;
 
@@ -288,14 +298,11 @@ const WHEEL_LINES: isize = 3;
 /// it back when resumed with `fg`.
 fn suspend(terminal: &mut DefaultTerminal, mouse: bool) -> Result<()> {
     #[cfg(unix)]
-    {
-        leave_terminal(mouse);
+    with_terminal_released(terminal, mouse, || {
         // SAFETY: raise(3) with a standard signal; SIGTSTP's default action
         // stops the process until SIGCONT.
         unsafe { libc::raise(libc::SIGTSTP) };
-        *terminal = enter_terminal(mouse)?;
-        terminal.clear()?;
-    }
+    })?;
     #[cfg(not(unix))]
     let _ = (terminal, mouse);
     Ok(())

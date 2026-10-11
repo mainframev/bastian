@@ -29,11 +29,14 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
         ..r
     };
 
-    let count = if b.filter.is_empty() {
+    let mut count = if b.filter.is_empty() {
         format!("{} documents", b.entries.len())
     } else {
         format!("{} of {} documents", b.visible.len(), b.entries.len())
     };
+    if b.is_scanning() {
+        count = format!("{} {count}", spinner(b));
+    }
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(display_root(&b.root), Style::default().fg(t.heading).bold()),
@@ -45,7 +48,9 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme) {
     b.layout(usize::from(list.height / ENTRY_ROWS));
     let mut lines = Vec::new();
     if b.visible.is_empty() {
-        let msg = if b.entries.is_empty() {
+        let msg = if b.is_scanning() {
+            "Looking for Markdown files…"
+        } else if b.entries.is_empty() {
             "No Markdown files here."
         } else {
             "Nothing matches the filter."
@@ -109,6 +114,12 @@ fn display_root(root: &Path) -> String {
         Some(rel) => format!("~/{}", rel.display()),
         None => abs.display().to_string(),
     }
+}
+
+/// Braille spinner frame for the running scan, advancing every 80 ms.
+fn spinner(b: &Browser) -> char {
+    const FRAMES: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    FRAMES[(b.started.elapsed().as_millis() / 80) as usize % FRAMES.len()]
 }
 
 /// Coarse relative time, e.g. "3 days ago".

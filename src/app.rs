@@ -177,6 +177,9 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<()> {
         if let Some(r) = &mut app.reader {
             redraw |= r.tick();
         }
+        if let Some(b) = &mut app.browser {
+            redraw |= b.tick();
+        }
         if !redraw && !event::poll(TICK)? {
             continue;
         }

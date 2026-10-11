@@ -1,6 +1,9 @@
+use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::SystemTime;
 
+use ignore::WalkState;
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
@@ -35,26 +38,76 @@ pub struct Browser {
     pub message: Option<String>,
     pub height: usize,
     pub offset: usize,
+    /// Entries still arriving from the background scan.
+    incoming: Option<Receiver<Entry>>,
+    /// When the scan started, for the loading spinner.
+    pub started: std::time::Instant,
     matcher: Matcher,
 }
 
 impl Browser {
+    /// Start browsing `root`. Files are found in the background; call
+    /// `tick` to pick them up.
     pub fn new(root: PathBuf) -> Self {
-        let entries = discover(&root);
-        let mut b = Self {
+        let (tx, rx) = mpsc::channel();
+        let scan_root = root.clone();
+        std::thread::spawn(move || scan(&scan_root, tx));
+        Self {
             root,
-            visible: (0..entries.len()).collect(),
-            entries,
+            visible: Vec::new(),
+            entries: Vec::new(),
             selected: 0,
             filter: String::new(),
             prompt: None,
             message: None,
             height: 0,
             offset: 0,
+            incoming: Some(rx),
+            started: std::time::Instant::now(),
             matcher: Matcher::new(Config::DEFAULT.match_paths()),
+        }
+    }
+
+    pub fn is_scanning(&self) -> bool {
+        self.incoming.is_some()
+    }
+
+    /// Add files found since the last call. Returns true when a redraw is needed.
+    pub fn tick(&mut self) -> bool {
+        let Some(rx) = &self.incoming else {
+            return false;
         };
-        b.refilter();
-        b
+        let mut received = false;
+        loop {
+            match rx.try_recv() {
+                Ok(entry) => {
+                    self.entries.push(entry);
+                    received = true;
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.incoming = None;
+                    break;
+                }
+            }
+        }
+        if received {
+            let selected = self.selected_entry().map(|e| e.path.clone());
+            sort(&mut self.entries);
+            self.refilter();
+            // Keep the cursor on the same file while the list grows.
+            if let Some(path) = selected
+                && let Some(pos) = self
+                    .visible
+                    .iter()
+                    .position(|&i| self.entries[i].path == path)
+            {
+                self.selected = pos;
+            }
+        }
+        // While scanning, always redraw so the spinner animates; once done,
+        // redraw one last time to drop it.
+        true
     }
 
     pub fn selected_entry(&self) -> Option<&Entry> {
@@ -151,29 +204,82 @@ impl Browser {
 /// Markdown files under `root`, honoring .gitignore and skipping hidden
 /// paths, newest first.
 pub fn discover(root: &Path) -> Vec<Entry> {
-    let mut entries: Vec<Entry> = ignore::WalkBuilder::new(root)
-        .build()
-        .filter_map(Result::ok)
-        .filter(|d| d.file_type().is_some_and(|t| t.is_file()) && is_markdown(d.path()))
-        .map(|d| {
-            let path = d.path().to_path_buf();
-            let rel = path
-                .strip_prefix(root)
-                .unwrap_or(&path)
-                .display()
-                .to_string();
-            Entry {
-                title: std::fs::read_to_string(&path)
-                    .ok()
-                    .and_then(|s| first_heading(&s)),
-                modified: d.metadata().ok().and_then(|m| m.modified().ok()),
-                rel,
-                path,
-            }
-        })
-        .collect();
-    entries.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| a.rel.cmp(&b.rel)));
+    let (tx, rx) = mpsc::channel();
+    scan(root, tx);
+    let mut entries: Vec<Entry> = rx.into_iter().collect();
+    sort(&mut entries);
     entries
+}
+
+fn sort(entries: &mut [Entry]) {
+    entries.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| a.rel.cmp(&b.rel)));
+}
+
+/// Walk `root` on several threads, sending each Markdown file as it's found.
+/// Returns when the walk is done.
+pub fn scan(root: &Path, tx: Sender<Entry>) {
+    ignore::WalkBuilder::new(root).build_parallel().run(|| {
+        let tx = tx.clone();
+        Box::new(move |result| {
+            let Ok(d) = result else {
+                return WalkState::Continue;
+            };
+            if !d.file_type().is_some_and(|t| t.is_file()) || !is_markdown(d.path()) {
+                return WalkState::Continue;
+            }
+            let path = d.path().to_path_buf();
+            let entry = Entry {
+                rel: path
+                    .strip_prefix(root)
+                    .unwrap_or(&path)
+                    .display()
+                    .to_string(),
+                title: read_title(&path),
+                modified: d.metadata().ok().and_then(|m| m.modified().ok()),
+                path,
+            };
+            if tx.send(entry).is_err() {
+                return WalkState::Quit;
+            }
+            WalkState::Continue
+        })
+    });
+}
+
+/// Bytes read from the start of each file to find its title.
+const TITLE_PREFIX: u64 = 8 * 1024;
+
+fn read_title(path: &Path) -> Option<String> {
+    let mut buf = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|f| f.take(TITLE_PREFIX).read_to_end(&mut buf))
+        .ok()?;
+    title_of(&String::from_utf8_lossy(&buf))
+}
+
+/// `title:` from YAML front matter, else the first `# ` heading.
+fn title_of(src: &str) -> Option<String> {
+    let mut body = src;
+    if let Some(rest) = src
+        .strip_prefix("---\n")
+        .or_else(|| src.strip_prefix("---\r\n"))
+    {
+        let end = rest.find("\n---").unwrap_or(rest.len());
+        let front = &rest[..end];
+        let title = front.lines().find_map(|l| {
+            let v = l
+                .strip_prefix("title:")?
+                .trim()
+                .trim_matches(['"', '\''])
+                .trim();
+            (!v.is_empty()).then(|| v.to_string())
+        });
+        if title.is_some() {
+            return title;
+        }
+        body = &rest[end..];
+    }
+    first_heading(body)
 }
 
 fn is_markdown(path: &Path) -> bool {
@@ -231,12 +337,73 @@ mod tests {
         assert_eq!(rels, ["README.md", "docs/guide.markdown"]);
     }
 
+    fn wait_for_scan(b: &mut Browser) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while b.is_scanning() {
+            assert!(std::time::Instant::now() < deadline, "scan did not finish");
+            b.tick();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn title_from_front_matter_or_heading() {
+        assert_eq!(
+            title_of("---\ntitle: \"Guide\"\nlayout: x\n---\n# Heading\n").as_deref(),
+            Some("Guide")
+        );
+        assert_eq!(
+            title_of("---\nlayout: x\n---\n\n# Heading\n").as_deref(),
+            Some("Heading")
+        );
+        assert_eq!(title_of("no title here\n"), None);
+    }
+
+    #[test]
+    fn title_only_reads_file_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let late = dir.path().join("late.md");
+        let filler = "x\n".repeat(TITLE_PREFIX as usize);
+        std::fs::write(&late, format!("{filler}# Too late\n")).unwrap();
+        assert_eq!(read_title(&late), None);
+    }
+
+    #[test]
+    fn background_scan_fills_list_and_keeps_selection() {
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..50 {
+            std::fs::write(dir.path().join(format!("f{i}.md")), format!("# Doc {i}\n")).unwrap();
+        }
+        let mut b = Browser::new(dir.path().to_path_buf());
+        wait_for_scan(&mut b);
+        assert_eq!(b.entries.len(), 50);
+        assert_eq!(b.visible.len(), 50);
+
+        // A file appearing during a scan doesn't move the cursor off its file.
+        b.selected = 10;
+        let picked = b.selected_entry().unwrap().path.clone();
+        let (tx, rx) = mpsc::channel();
+        b.incoming = Some(rx);
+        tx.send(Entry {
+            path: dir.path().join("new.md"),
+            rel: "new.md".into(),
+            title: None,
+            modified: Some(SystemTime::now() + std::time::Duration::from_secs(60)),
+        })
+        .unwrap();
+        drop(tx);
+        b.tick();
+        assert_eq!(b.selected_entry().unwrap().path, picked);
+        assert!(!b.is_scanning());
+    }
+
     #[test]
     fn filter_ranks_matches() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("install.md"), "# Installation\n").unwrap();
         std::fs::write(dir.path().join("usage.md"), "# Usage\n").unwrap();
         let mut b = Browser::new(dir.path().to_path_buf());
+        wait_for_scan(&mut b);
         b.filter = "instal".into();
         b.refilter();
         let names: Vec<&str> = b

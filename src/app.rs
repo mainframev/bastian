@@ -88,7 +88,7 @@ pub struct App {
 impl App {
     pub fn browse(root: PathBuf, settings: Settings) -> Self {
         Self {
-            browser: Some(Browser::with_options(root, settings.all)),
+            browser: Some(Browser::new(root, settings.all)),
             reader: None,
             history: Vec::new(),
             edit: None,
@@ -117,9 +117,9 @@ impl App {
                 _ => return true,
             };
             if let Some(r) = &mut self.reader {
-                r.scroll_lines(step * WHEEL_LINES);
+                r.scroll_by(step * WHEEL_LINES);
             } else if let Some(b) = &mut self.browser {
-                b.move_selection(step);
+                b.move_by(step);
             }
             return true;
         }

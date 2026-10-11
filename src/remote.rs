@@ -28,13 +28,6 @@ pub struct RemoteDoc {
     pub text: String,
 }
 
-impl RemoteDoc {
-    /// Whether to parse the document as MDX, judged by its URL.
-    pub fn is_mdx(&self) -> bool {
-        self.base.path().to_ascii_lowercase().ends_with(".mdx")
-    }
-}
-
 /// Recognize `http(s)://…`, `github.com/owner/repo` and
 /// `gitlab.com/group/project` (with or without a scheme). Anything else is
 /// not remote.

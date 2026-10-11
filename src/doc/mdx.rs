@@ -83,7 +83,6 @@ impl Mapper {
                     id,
                     lang: c.lang.clone(),
                     attrs: Attrs::parse(&info),
-                    info,
                     src: format!("{}\n", c.value),
                 }));
             }
@@ -95,7 +94,6 @@ impl Mapper {
                 },
                 lang: Some("math".into()),
                 attrs: Attrs::default(),
-                info: "math".into(),
                 src: format!("{}\n", m.value),
             })),
             Node::Table(t) => {

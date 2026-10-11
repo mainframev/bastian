@@ -192,12 +192,8 @@ impl Reader {
         }
     }
 
-    /// Scroll by `delta` lines (negative is up), e.g. for the mouse wheel.
-    pub fn scroll_lines(&mut self, delta: isize) {
-        self.scroll_by(delta);
-    }
-
-    fn scroll_by(&mut self, delta: isize) {
+    /// Scroll by `delta` lines (negative is up).
+    pub fn scroll_by(&mut self, delta: isize) {
         self.follow = None;
         self.scroll = self
             .scroll
@@ -660,7 +656,7 @@ impl Reader {
                 self.follow = None;
                 self.scroll = self.max_scroll();
             }
-            KeyCode::Char('/') => self.prompt = Some(Prompt::new("/", "")),
+            KeyCode::Char('/') => self.prompt = Some(Prompt::new("")),
             KeyCode::Char('n') => self.step_match(true),
             KeyCode::Char('N') => self.step_match(false),
             KeyCode::Tab => self.move_focus(true),

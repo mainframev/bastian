@@ -41,7 +41,6 @@ fn code_file(src: &str, lang: &str) -> Document {
             id: 0,
             lang: Some(lang.to_string()),
             attrs: Attrs::default(),
-            info: lang.to_string(),
             src,
         })],
         lines: vec![0],
@@ -112,8 +111,6 @@ pub struct CodeBlock {
     /// Document-order index, stable across re-renders.
     pub id: usize,
     pub lang: Option<String>,
-    /// Full fence info string, e.g. `sh {name=deploy confirm}`.
-    pub info: String,
     pub attrs: Attrs,
     pub src: String,
 }

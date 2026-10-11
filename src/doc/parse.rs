@@ -190,7 +190,6 @@ impl Builder {
                         id,
                         lang: lang_of(&info),
                         attrs: Attrs::parse(&info),
-                        info,
                         src,
                     }));
                 }
@@ -323,7 +322,7 @@ mod tests {
         assert_eq!(codes.len(), 2);
         assert_eq!(codes[0].id, 0);
         assert_eq!(codes[0].lang.as_deref(), Some("sh"));
-        assert_eq!(codes[0].info, "sh {name=a}");
+        assert_eq!(codes[0].attrs.name.as_deref(), Some("a"));
         assert_eq!(codes[0].src, "echo a\n");
         assert_eq!(codes[1].id, 1);
         assert_eq!(codes[1].lang, None);

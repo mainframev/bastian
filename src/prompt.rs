@@ -2,7 +2,6 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 /// Single-line text input shown in the status bar.
 pub struct Prompt {
-    pub label: &'static str,
     pub text: String,
 }
 
@@ -15,9 +14,8 @@ pub enum PromptEvent {
 }
 
 impl Prompt {
-    pub fn new(label: &'static str, text: &str) -> Self {
+    pub fn new(text: &str) -> Self {
         Self {
-            label,
             text: text.to_string(),
         }
     }

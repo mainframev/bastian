@@ -134,7 +134,7 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
     } else if let Some(picker) = &r.link_picker {
         draw_links(frame, r, picker);
     } else if r.help {
-        draw_help(frame, r);
+        status::help(frame, &r.theme, HELP);
     }
 }
 
@@ -167,10 +167,6 @@ const HELP: &[(&str, &str)] = &[
     ("Esc, h", "back"),
     ("q", "quit"),
 ];
-
-fn draw_help(frame: &mut Frame, r: &Reader) {
-    status::help(frame, &r.theme, HELP);
-}
 
 fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
     let t = &r.theme;

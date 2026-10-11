@@ -63,14 +63,6 @@ pub fn path() -> Option<PathBuf> {
     Some(base.join("bastian").join("config.toml"))
 }
 
-/// Load the config file. A missing file is an empty config; a broken one is an error.
-pub fn load() -> Result<Config> {
-    match path() {
-        Some(p) if p.exists() => load_from(&p),
-        _ => Ok(Config::default()),
-    }
-}
-
 /// Which config file to use: `--config`, else `BASTIAN_CONFIG`, else the
 /// default location. Returns the path and whether it was given explicitly
 /// (an explicit file must exist). `~` and `$VAR` are expanded in both.

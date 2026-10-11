@@ -55,13 +55,8 @@ pub struct Browser {
 
 impl Browser {
     /// Start browsing `root`. Files are found in the background; call
-    /// `tick` to pick them up.
-    pub fn new(root: PathBuf) -> Self {
-        Self::with_options(root, false)
-    }
-
-    /// Like `new`; `all` also lists hidden and gitignored files.
-    pub fn with_options(root: PathBuf, all: bool) -> Self {
+    /// `tick` to pick them up. `all` also lists hidden and gitignored files.
+    pub fn new(root: PathBuf, all: bool) -> Self {
         let mut b = Self {
             root,
             all,
@@ -170,12 +165,8 @@ impl Browser {
         self.visible = scored.into_iter().map(|(i, _)| i).collect();
     }
 
-    /// Move the selection by `delta` entries, e.g. for the mouse wheel.
-    pub fn move_selection(&mut self, delta: isize) {
-        self.move_by(delta);
-    }
-
-    fn move_by(&mut self, delta: isize) {
+    /// Move the selection by `delta` entries.
+    pub fn move_by(&mut self, delta: isize) {
         let max = self.visible.len().saturating_sub(1);
         self.selected = self.selected.saturating_add_signed(delta).min(max);
     }
@@ -237,7 +228,7 @@ impl Browser {
                 self.refilter();
             }
             KeyCode::Esc => return Action::Quit,
-            KeyCode::Char('/') => self.prompt = Some(Prompt::new("/", &self.filter)),
+            KeyCode::Char('/') => self.prompt = Some(Prompt::new(&self.filter)),
             KeyCode::Char('j' | 'n') if ctrl => self.move_by(1),
             KeyCode::Char('k' | 'p') if ctrl => self.move_by(-1),
             KeyCode::Char('j') | KeyCode::Down => self.move_by(1),
@@ -484,7 +475,7 @@ mod tests {
         for i in 0..50 {
             std::fs::write(dir.path().join(format!("f{i}.md")), format!("# Doc {i}\n")).unwrap();
         }
-        let mut b = Browser::new(dir.path().to_path_buf());
+        let mut b = Browser::new(dir.path().to_path_buf(), false);
         wait_for_scan(&mut b);
         assert_eq!(b.entries.len(), 50);
         assert_eq!(b.visible.len(), 50);
@@ -514,7 +505,7 @@ mod tests {
         for i in 0..30 {
             std::fs::write(dir.path().join(format!("f{i}.md")), "x\n").unwrap();
         }
-        let mut b = Browser::new(dir.path().to_path_buf());
+        let mut b = Browser::new(dir.path().to_path_buf(), false);
         wait_for_scan(&mut b);
         assert_eq!(b.selected, 0);
     }
@@ -525,7 +516,7 @@ mod tests {
         for i in 0..40 {
             std::fs::write(dir.path().join(format!("f{i}.md")), "x\n").unwrap();
         }
-        let mut b = Browser::new(dir.path().to_path_buf());
+        let mut b = Browser::new(dir.path().to_path_buf(), false);
         wait_for_scan(&mut b);
         b.layout(10);
         let ctrl = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
@@ -552,7 +543,7 @@ mod tests {
         for i in 0..20 {
             std::fs::write(dir.path().join(format!("f{i}.md")), "x\n").unwrap();
         }
-        let mut b = Browser::new(dir.path().to_path_buf());
+        let mut b = Browser::new(dir.path().to_path_buf(), false);
         wait_for_scan(&mut b);
         b.layout(10);
         b.selected = 8;
@@ -567,7 +558,7 @@ mod tests {
         let key = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("a.md"), "# A\n").unwrap();
-        let mut b = Browser::new(dir.path().to_path_buf());
+        let mut b = Browser::new(dir.path().to_path_buf(), false);
         wait_for_scan(&mut b);
         assert!(matches!(b.on_key(key('e')), Action::Edit(p) if p == dir.path().join("a.md")));
 
@@ -589,7 +580,7 @@ mod tests {
         for i in 0..25 {
             std::fs::write(dir.path().join(format!("f{i}.md")), "x\n").unwrap();
         }
-        let mut b = Browser::new(dir.path().to_path_buf());
+        let mut b = Browser::new(dir.path().to_path_buf(), false);
         wait_for_scan(&mut b);
         b.layout(10);
         assert_eq!((b.offset, b.page()), (0, (1, 3)));
@@ -626,7 +617,7 @@ mod tests {
         for i in 0..30 {
             std::fs::write(dir.path().join(format!("doc{i}.md")), "x\n").unwrap();
         }
-        let mut b = Browser::new(dir.path().to_path_buf());
+        let mut b = Browser::new(dir.path().to_path_buf(), false);
         wait_for_scan(&mut b);
         b.layout(10);
         let key = |c, m| KeyEvent::new(c, m);
@@ -662,7 +653,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("install.md"), "# Installation\n").unwrap();
         std::fs::write(dir.path().join("usage.md"), "# Usage\n").unwrap();
-        let mut b = Browser::new(dir.path().to_path_buf());
+        let mut b = Browser::new(dir.path().to_path_buf(), false);
         wait_for_scan(&mut b);
         b.filter = "instal".into();
         b.refilter();

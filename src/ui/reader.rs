@@ -84,13 +84,14 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
     );
 
     if gutter > 0 {
-        let digits = usize::from(gutter - 1);
+        let digits = usize::from(gutter - GUTTER_GAP);
         // Source line numbers when the document maps them (code files),
-        // otherwise rendered line numbers.
+        // otherwise rendered line numbers. The gap to the text is the rest
+        // of the gutter.
         let label = |i: usize| match r.rendered.src_line.get(i) {
-            Some(Some(n)) => format!("{:>digits$} ", n + 1),
-            Some(None) => " ".repeat(digits + 1),
-            None => format!("{:>digits$} ", i + 1),
+            Some(Some(n)) => format!("{:>digits$}", n + 1),
+            Some(None) => String::new(),
+            None => format!("{:>digits$}", i + 1),
         };
         let numbers: Vec<Line> = (r.scroll..end)
             .map(|i| Line::styled(label(i), Style::default().fg(t.muted)))
@@ -148,13 +149,16 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
     }
 }
 
-/// Columns for the line-number gutter: the digits of `lines` plus a space,
-/// or nothing when line numbers are off.
+/// Blank columns between the line numbers and the text.
+pub const GUTTER_GAP: u16 = 3;
+
+/// Columns for the line-number gutter: the digits of `lines` plus the gap
+/// to the text, or nothing when line numbers are off.
 pub fn gutter_width(r: &Reader, lines: usize) -> u16 {
     if !r.line_numbers {
         return 0;
     }
-    lines.max(1).to_string().len() as u16 + 1
+    lines.max(1).to_string().len() as u16 + GUTTER_GAP
 }
 
 const HELP: &[(&str, &str)] = &[

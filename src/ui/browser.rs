@@ -245,4 +245,80 @@ mod tests {
         let berlin = TimeZone::get("Europe/Berlin").unwrap();
         assert_eq!(format_time(t, &berlin), "06 Aug 2026 09:06 CEST");
     }
+
+    /// Browse a tree with `top.md` (no title) and `docs/guide.md` (titled),
+    /// then draw the browser into a `w`×`h` screen.
+    fn screen(files: usize, logo: bool, h: u16) -> Vec<String> {
+        use ratatui::{Terminal, backend::TestBackend};
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("docs")).unwrap();
+        std::fs::write(dir.path().join("docs/guide.md"), "# Guide\n").unwrap();
+        // Newest first: the untitled file is listed above the titled one.
+        std::thread::sleep(Duration::from_millis(20));
+        std::fs::write(dir.path().join("top.md"), "no title\n").unwrap();
+        for i in 0..files {
+            std::fs::write(dir.path().join(format!("n{i}.md")), "x\n").unwrap();
+        }
+        let mut b = Browser::new(dir.path().to_path_buf(), false);
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while b.is_scanning() {
+            b.tick();
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let mut terminal = Terminal::new(TestBackend::new(50, h)).unwrap();
+        let t = Theme::dark();
+        terminal.draw(|f| draw(f, &mut b, &t, logo)).unwrap();
+        let buf = terminal.backend().buffer();
+        (0..h)
+            .map(|y| {
+                (0..50)
+                    .map(|x| buf[(x, y)].symbol().to_string())
+                    .collect::<String>()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn entries_hide_a_path_that_repeats_the_name() {
+        let rows = screen(0, false, 30);
+        let text = rows.join("\n");
+        let at = |s: &str| {
+            rows.iter()
+                .position(|r| r.contains(s))
+                .unwrap_or_else(|| panic!("{s}:\n{text}"))
+        };
+        // A titled entry shows its path under the title.
+        assert_eq!(at("docs/guide.md"), at("Guide") + 1);
+        // An untitled top-level file shows its name once, then the date,
+        // with one blank row before the next entry like any other.
+        assert_eq!(rows.iter().filter(|r| r.contains("top.md")).count(), 1);
+        assert!(at("top.md") < at("Guide"), "{text}");
+        assert_eq!(
+            at("Guide"),
+            at("top.md") + 3,
+            "name, date, one blank row:\n{text}"
+        );
+    }
+
+    #[test]
+    fn logo_can_be_turned_off() {
+        let with = screen(0, true, 30);
+        let without = screen(0, false, 30);
+        let first_doc =
+            |rows: &[String]| rows.iter().position(|r| r.contains("documents")).unwrap();
+        assert_eq!(
+            first_doc(&with) - first_doc(&without),
+            usize::from(logo::HEIGHT) - 1
+        );
+    }
+
+    #[test]
+    fn page_indicator_shows_with_more_than_one_page() {
+        // The page track; the status bar's "1/2" counts entries instead.
+        let one = screen(0, false, 30).join("\n");
+        assert!(!one.contains('━'), "{one}");
+        let many = screen(20, false, 30).join("\n");
+        assert!(many.contains('━'), "{many}");
+    }
 }

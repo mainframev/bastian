@@ -386,3 +386,53 @@ fn pictures_partly_scrolled_off_show_their_visible_rows() {
         );
     }
 }
+
+#[test]
+fn outline_panel_lists_headings_and_jumps() {
+    use bastian::ui::reader::draw;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let src = std::fs::read_to_string("tests/fixtures/outline.md").unwrap();
+    let mut r = Reader::new("t.md".into(), parse(&src), Theme::dark(), 80);
+    let mut terminal = Terminal::new(TestBackend::new(70, 30)).unwrap();
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    assert!(matches!(key(&mut r, KeyCode::Char('O')), Action::None));
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let screen: String = {
+        let buf = terminal.backend().buffer();
+        (0..30)
+            .map(|y| {
+                (0..70)
+                    .map(|x| buf[(x, y)].symbol().to_string())
+                    .collect::<String>()
+                    + "\n"
+            })
+            .collect()
+    };
+    assert!(screen.contains("outline · enter jump"), "{screen}");
+    for heading in ["Guide", "Install", "From source", "Skipped a level"] {
+        assert!(screen.contains(heading), "{heading} missing:\n{screen}");
+    }
+
+    // On a short screen, down to "Install" and jump: it lands at the top
+    // of the view.
+    key(&mut r, KeyCode::Esc);
+    let mut short = Terminal::new(TestBackend::new(70, 8)).unwrap();
+    short.draw(|f| draw(f, &mut r)).unwrap();
+    key(&mut r, KeyCode::Char('O'));
+    short.draw(|f| draw(f, &mut r)).unwrap();
+    key(&mut r, KeyCode::Char('j'));
+    key(&mut r, KeyCode::Enter);
+    assert!(r.outline.is_none());
+    let top = bastian::render::plain(&r.rendered.lines[r.scroll]);
+    assert_eq!(top.trim(), "## Install");
+
+    // A document without headings says so instead.
+    let mut plain = reader("just text\n");
+    key(&mut plain, KeyCode::Char('O'));
+    assert!(plain.outline.is_none());
+    assert_eq!(
+        plain.message.as_deref(),
+        Some("no headings in this document")
+    );
+}

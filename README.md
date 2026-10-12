@@ -26,6 +26,8 @@ Node code blocks right where you read them.
 Named after Bastian Balthazar Bux, who reads *The NeverEnding Story* until he
 ends up inside it.
 
+![Browsing, filtering, searching and the outline in bastian](demo/usage.gif)
+
 ## Install
 
 bastian is built with Cargo; get it with [rustup](https://rustup.rs) if you
@@ -297,7 +299,8 @@ pedantic group plus a few extras, configured in the `[lints]` table of
 commit in your clone (`git config core.hooksPath .githooks`). CI runs the full
 check on macOS and Linux for every push and pull request.
 
-The GIFs in this README are recorded from the scripts in `demo/` with
+The GIFs in this README are recorded from the scripts in `demo/` (on the
+sample docs in `demo/docs/`) with
 [vhs](https://github.com/charmbracelet/vhs) (`brew install vhs`); `just demo`
 re-records them with your build.
 

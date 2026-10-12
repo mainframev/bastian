@@ -3,6 +3,7 @@
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use tui_tree_widget::{TreeItem, TreeState};
+use unicode_width::UnicodeWidthStr;
 
 use crate::doc::{Block, Document, plain_text};
 use crate::render::Rendered;
@@ -53,7 +54,7 @@ impl Outline {
             };
             lines.push(line);
             let depth = insert(&mut roots, node);
-            width = width.max(depth * 2 + 4 + plain_text(inlines).chars().count());
+            width = width.max(depth * 2 + 4 + plain_text(inlines).width());
         }
         if roots.is_empty() {
             return None;
@@ -143,6 +144,14 @@ mod tests {
     fn outline(scroll: usize) -> (Outline, Rendered) {
         let r = render(&parse(DOC), 40, &Theme::dark());
         (Outline::new(&parse(DOC), &r, scroll).unwrap(), r)
+    }
+
+    #[test]
+    fn width_counts_columns_not_chars() {
+        let src = "# 日本語\n";
+        let r = render(&parse(src), 40, &Theme::dark());
+        // Marker and padding (4) plus three double-width characters.
+        assert_eq!(Outline::new(&parse(src), &r, 0).unwrap().width, 10);
     }
 
     #[test]

@@ -3,9 +3,11 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Clear;
+use unicode_width::UnicodeWidthStr;
 
 use crate::reader::{LinkPicker, Reader};
 use crate::ui::status;
+use crate::ui::text::take_width;
 
 /// The outline tree, docked to the right.
 pub(super) fn draw_outline(frame: &mut Frame, r: &mut Reader) {
@@ -16,7 +18,7 @@ pub(super) fn draw_outline(frame: &mut Frame, r: &mut Reader) {
     let area = frame.area();
     // Border and padding around the widest heading, at most half the screen.
     let title = " outline · enter jump · esc close ";
-    let width = (outline.width.max(title.chars().count()) as u16 + 4)
+    let width = (outline.width.max(title.width()) as u16 + 4)
         .min(area.width / 2)
         .max(area.width.min(24));
     let rect = Rect::new(
@@ -55,16 +57,13 @@ pub(super) fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
             let selected = i == picker.selected;
             let text_style = status::row_style(t, selected);
             let entry = format!("{}  {}", link.text, link.url);
-            let shown: String = entry.chars().take(max_w.saturating_sub(2)).collect();
-            let split = link.text.chars().count().min(shown.chars().count());
-            let (text, url): (String, String) = (
-                shown.chars().take(split).collect(),
-                shown.chars().skip(split).collect(),
-            );
+            let shown = take_width(&entry, max_w.saturating_sub(2));
+            // Both are starts of `entry`, so the shorter one ends on a char.
+            let (text, url) = shown.split_at(link.text.len().min(shown.len()));
             Line::from(vec![
                 status::select_marker(t, selected),
-                Span::styled(text, text_style),
-                Span::styled(url, Style::default().fg(t.muted)),
+                Span::styled(text.to_string(), text_style),
+                Span::styled(url.to_string(), Style::default().fg(t.muted)),
             ])
         })
         .collect();

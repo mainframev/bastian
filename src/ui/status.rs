@@ -175,7 +175,7 @@ fn box_size(area: Rect, title: &str, lines: &[Line]) -> (u16, u16) {
     let inner_w = lines
         .iter()
         .map(Line::width)
-        .chain(std::iter::once(title.chars().count()))
+        .chain(std::iter::once(title.width()))
         .max()
         .unwrap_or(20);
     let width = (inner_w as u16 + 4).min(area.width);

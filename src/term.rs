@@ -12,10 +12,14 @@ pub enum Background {
 /// How long to wait for the terminal to answer before giving up.
 const QUERY_TIMEOUT: Duration = Duration::from_millis(100);
 
-/// The terminal's background brightness: asked with OSC 11, else guessed
-/// from `COLORFGBG`. `None` when neither says.
-pub fn background() -> Option<Background> {
-    query_background(QUERY_TIMEOUT)
+/// The terminal's background brightness: asked with OSC 11 when `query`,
+/// else guessed from `COLORFGBG`. `None` when neither says. Only query with
+/// a terminal on stdout: behind a pipe the reader (a pager, say) shares
+/// `/dev/tty`.
+pub fn background(query: bool) -> Option<Background> {
+    query
+        .then(|| query_background(QUERY_TIMEOUT))
+        .flatten()
         .or_else(|| from_colorfgbg(std::env::var("COLORFGBG").ok().as_deref()?))
 }
 
@@ -110,9 +114,6 @@ fn da1_end(reply: &[u8]) -> Option<usize> {
         .map(|i| start + i)
 }
 
-/// Write `query` to the terminal and read its reply until `done` says it's
-/// complete or `timeout` passes. Talks to `/dev/tty` in raw mode, always
-/// restored, and never leaves a reader behind.
 /// Pixel width and height of one character cell, from the terminal's
 /// window size.
 pub(crate) fn cell_pixels() -> Option<(u16, u16)> {
@@ -132,6 +133,13 @@ pub(crate) fn cell_pixels() -> Option<(u16, u16)> {
     None
 }
 
+/// Write `query` to the terminal and read its reply until `done` says it's
+/// complete or `timeout` passes. Talks to `/dev/tty` in raw mode, always
+/// restored, and never leaves a reader behind.
+///
+/// Does nothing unless this process is in the terminal's foreground
+/// process group: a background job changing the terminal mode would be
+/// stopped by `SIGTTOU`.
 #[cfg(unix)]
 fn ask(query: &[u8], timeout: Duration, done: impl Fn(&[u8]) -> bool) -> Option<Vec<u8>> {
     use std::fs::OpenOptions;
@@ -144,6 +152,11 @@ fn ask(query: &[u8], timeout: Duration, done: impl Fn(&[u8]) -> bool) -> Option<
         .open("/dev/tty")
         .ok()?;
     let fd = tty.as_raw_fd();
+
+    // SAFETY: tcgetpgrp on a file descriptor we own; getpgrp can't fail.
+    if unsafe { libc::tcgetpgrp(fd) != libc::getpgrp() } {
+        return None;
+    }
 
     // Raw mode so the reply isn't echoed or line-buffered; always restored.
     // SAFETY: termios calls on a file descriptor we own, with a zeroed struct

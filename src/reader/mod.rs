@@ -228,14 +228,19 @@ impl Reader {
             self.rendered = render::render_with_runs(&self.doc, width, &self.theme, cx);
             self.width = width;
             self.dirty = false;
-            if let Some(s) = &mut self.search {
-                s.matches = find(&self.rendered, &s.query);
-                s.current = s.current.min(s.matches.len().saturating_sub(1));
-            }
+            self.refind();
         }
         self.height = usize::from(height);
         self.follow_output();
         self.scroll = self.scroll.min(self.max_scroll());
+    }
+
+    /// Search the rendered text again, keeping the current match in range.
+    fn refind(&mut self) {
+        if let Some(s) = &mut self.search {
+            s.matches = find(&self.rendered, &s.query);
+            s.current = s.current.min(s.matches.len().saturating_sub(1));
+        }
     }
 
     /// 1-based source line of the block at the top of the view, if the
@@ -254,21 +259,22 @@ impl Reader {
     pub fn tick(&mut self) -> bool {
         let reloaded = self.check_reload();
         let events = self.runner.drain();
-        // Without new events, only running blocks' timers move: patch
-        // those lines instead of laying out the whole document again.
-        // A search re-renders so its matches stay in step with the text.
         let images = self.images.poll();
-        let rerender = reloaded || images || !events.is_empty() || self.search.is_some();
-        let changed = reloaded || images || !events.is_empty() || self.is_running();
+        let rerender = reloaded || images || !events.is_empty();
+        let changed = rerender || self.is_running();
         for event in events {
             self.on_run_event(event);
         }
         self.cancel_expired();
 
+        // Without new events, only running blocks' timers move: patch
+        // those lines instead of laying out the whole document again, and
+        // search the patched text so matches stay in step with it.
         if rerender || self.dirty {
             self.dirty |= changed;
         } else if changed {
             self.refresh_timers();
+            self.refind();
         }
         changed
     }

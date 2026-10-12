@@ -42,7 +42,9 @@ tui-input = "0.15"
 tui-scrollbar = "0.2"
 tui-tree-widget = "0.24"
 unicode-width = "0.2.2"
-ureq = "3.4.2"
+# No gzip: ureq applies body limits before decoding, so a small gzipped
+# response could inflate far past them.
+ureq = { version = "3.4.2", default-features = false, features = ["rustls"] }
 url = "2.5.8"
 
 [dev-dependencies]

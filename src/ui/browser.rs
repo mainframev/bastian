@@ -279,7 +279,7 @@ fn compact_line(
         spans.push(Span::styled(path, Style::default().fg(t.subtle)));
     }
     if date_w > 0 && room > 0 {
-        spans.push(Span::raw(" ".repeat(room - used + GAP)));
+        spans.push(Span::raw(" ".repeat((room + GAP).saturating_sub(used))));
         spans.push(Span::styled(
             date.to_string(),
             Style::default().fg(t.muted).add_modifier(Modifier::DIM),
@@ -304,15 +304,23 @@ fn page_indicator(t: &Theme, page: usize, pages: usize) -> Line<'static> {
 
 /// Keep the last `max` columns of `s`, marking the cut with `…`.
 fn shorten_left(s: &str, max: usize) -> String {
-    let chars: Vec<char> = s.chars().collect();
-    if chars.len() <= max {
+    if s.width() <= max {
         return s.to_string();
     }
     if max == 0 {
         return String::new();
     }
-    let keep = &chars[chars.len() - (max - 1)..];
-    format!("…{}", keep.iter().collect::<String>())
+    let mut keep = Vec::new();
+    let mut w = 0;
+    for c in s.chars().rev() {
+        let cw = c.width().unwrap_or(0);
+        if w + cw + 1 > max {
+            break;
+        }
+        keep.push(c);
+        w += cw;
+    }
+    format!("…{}", keep.iter().rev().collect::<String>())
 }
 
 /// Keep the first `max` columns of `s`, marking the cut with `…`.
@@ -385,6 +393,9 @@ mod tests {
         assert_eq!(shorten_left("~/code/app", 20), "~/code/app");
         assert_eq!(shorten_left("~/code/app", 6), "…e/app");
         assert_eq!(shorten_left("~/code/app", 0), "");
+        // Wide characters count by the columns they take.
+        assert_eq!(shorten_left("日本語/説明書.md", 10), "…説明書.md");
+        assert!(shorten_left("日本語/説明書.md", 10).width() <= 10);
     }
 
     #[test]

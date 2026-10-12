@@ -207,8 +207,8 @@ impl Mapper {
                 );
             }
             Node::LinkReference(l) => children(self, &l.children, style, out),
-            Node::Image(i) => push(out, format!("[image: {}]", i.alt), style.clone()),
-            Node::ImageReference(i) => push(out, format!("[image: {}]", i.alt), style.clone()),
+            Node::Image(i) => push(out, super::image_placeholder(&i.alt), style.clone()),
+            Node::ImageReference(i) => push(out, super::image_placeholder(&i.alt), style.clone()),
             Node::Html(h) => push(out, h.value.clone(), with(&|s| s.muted = true)),
             Node::MdxJsxTextElement(el) => {
                 let muted = with(&|s| s.muted = true);

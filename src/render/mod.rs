@@ -56,7 +56,6 @@ pub struct ImageSlot {
 /// written in the document.
 pub type ImageSizes = HashMap<String, (u16, u16)>;
 
-/// Pictures taller than this many rows are scaled down.
 /// Settings that change how documents render.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Options {
@@ -94,6 +93,9 @@ pub struct CodeRange {
     /// End of the run panel under the box, or `lines.end` without one.
     pub output_end: usize,
 }
+
+/// The bar down the left of quotes and run output.
+const QUOTE_BAR: &str = "│ ";
 
 pub fn render(doc: &Document, width: u16, theme: &Theme) -> Rendered {
     render_with(doc, width, theme, Options::default())
@@ -319,7 +321,7 @@ impl Renderer<'_> {
             Block::List { start, items } => self.list(*start, items, width),
             Block::Quote(inner) => {
                 let mut out = Out::default();
-                let bar = [Span::styled("│ ", Style::default().fg(t.muted))];
+                let bar = [Span::styled(QUOTE_BAR, Style::default().fg(t.muted))];
                 out.append(
                     self.blocks(inner, width.saturating_sub(2), true),
                     &bar,
@@ -350,7 +352,10 @@ impl Renderer<'_> {
     fn image(&self, alt: &str, url: &str, width: usize) -> Out {
         let caption = Style::default().fg(self.theme.muted);
         let Some(&(w, h)) = self.images.get(url) else {
-            return Out::from(wrap(&[(format!("[image: {alt}]"), caption)], width));
+            return Out::from(wrap(
+                &[(crate::doc::image_placeholder(alt), caption)],
+                width,
+            ));
         };
         let (cols, rows) = fit_image(w, h, width as u16, self.opts.image_rows);
         let mut lines = vec![Line::default(); usize::from(rows)];
@@ -540,7 +545,7 @@ impl Renderer<'_> {
             return lines;
         }
 
-        let bar = Span::styled("│ ", Style::default().fg(t.muted));
+        let bar = Span::styled(QUOTE_BAR, Style::default().fg(t.muted));
         if run.dropped > 0 {
             lines.push(Line::from(vec![
                 bar.clone(),

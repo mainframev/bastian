@@ -7,7 +7,7 @@ mod builtin;
 mod file;
 mod list;
 
-pub use builtin::{builtin_names, canonical};
+pub use builtin::builtin_names;
 pub use list::{Listing, format_list, list};
 
 use std::path::Path;
@@ -17,7 +17,7 @@ use serde::Deserialize;
 
 use crate::render::theme::Theme;
 use build::build;
-use builtin::builtin;
+use builtin::{alias, builtin};
 use file::{ThemeFile, user_file};
 
 /// The default `dark_theme`.
@@ -36,6 +36,16 @@ pub enum Appearance {
 /// themes directory) or a built-in.
 pub fn exists(name: &str, dir: Option<&Path>) -> bool {
     user_file(name, dir).is_some() || builtin(name).is_some()
+}
+
+/// The theme `name` loads: itself when `dir` has a file of that name, which
+/// wins as in `load`, else the built-in an alias stands for.
+pub fn canonical<'a>(name: &'a str, dir: Option<&Path>) -> &'a str {
+    if user_file(name, dir).is_some() {
+        name
+    } else {
+        alias(name)
+    }
 }
 
 /// Load the theme called `name`. A file in `dir` wins over a built-in of the
@@ -67,7 +77,7 @@ fn read(name: &str, dir: Option<&Path>, chain: &mut Vec<String>) -> Result<(Them
         let src = builtin(name)
             .ok_or_else(|| anyhow!("unknown theme {name:?}; run `bastian themes` to list them"))?;
         let file = toml::from_str(src).with_context(|| format!("parsing built-in theme {name}"))?;
-        (file, canonical(name).to_string())
+        (file, alias(name).to_string())
     };
     match file.extends.clone() {
         Some(base) => {
@@ -103,6 +113,14 @@ mod tests {
             assert_eq!(t.appearance, expect, "{name}");
         }
         assert_eq!(BUILTINS.len(), 22);
+    }
+
+    #[test]
+    fn a_user_file_shadows_an_alias() {
+        let dir = theme_dir(&[("tokyonight", "extends = \"nord\"\n")]);
+        assert_eq!(canonical("tokyonight", None), "tokyonight-night");
+        assert_eq!(canonical("tokyonight", Some(dir.path())), "tokyonight");
+        assert_eq!(canonical("kanagawa", Some(dir.path())), "kanagawa-wave");
     }
 
     #[test]

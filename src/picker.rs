@@ -76,7 +76,7 @@ impl ThemePicker {
             .collect();
         let current = entries
             .iter()
-            .position(|e| e.name == themes::canonical(current));
+            .position(|e| e.name == themes::canonical(current, dir));
         Self {
             selected: current.unwrap_or(0),
             current,
@@ -124,6 +124,16 @@ mod tests {
 
     fn key(p: &mut ThemePicker, code: KeyCode) -> Event {
         p.on_key(KeyEvent::new(code, KeyModifiers::NONE))
+    }
+
+    #[test]
+    fn a_user_theme_named_like_an_alias_is_current() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("tokyonight.toml");
+        std::fs::write(file, "extends = \"nord\"\n").unwrap();
+        let p = ThemePicker::new(Some(dir.path()), "tokyonight");
+        let current = p.current.map(|i| p.entries[i].name.as_str());
+        assert_eq!(current, Some("tokyonight"));
     }
 
     #[test]

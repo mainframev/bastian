@@ -45,8 +45,8 @@ pub fn builtin_names() -> impl Iterator<Item = &'static str> {
     BUILTINS.iter().map(|(name, _)| *name)
 }
 
-/// The theme `name` stands for, following aliases.
-pub fn canonical(name: &str) -> &str {
+/// The built-in theme `name` stands for, following aliases.
+pub(super) fn alias(name: &str) -> &str {
     ALIASES
         .iter()
         .find(|(alias, _)| *alias == name)
@@ -54,7 +54,7 @@ pub fn canonical(name: &str) -> &str {
 }
 
 pub(super) fn builtin(name: &str) -> Option<&'static str> {
-    let name = canonical(name);
+    let name = alias(name);
     BUILTINS
         .iter()
         .find(|(n, _)| *n == name)

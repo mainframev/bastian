@@ -79,7 +79,7 @@ pub fn format_list(r: &Resolved, dir: Option<&Path>, color: bool) -> String {
             ("light_theme", &r.light_theme.value),
         ]
         .into_iter()
-        .filter(|(_, v)| canonical(v) == l.name)
+        .filter(|(_, v)| canonical(v, dir) == l.name)
         .map(|(k, _)| k)
         .collect();
         let origin = match (&l.path, l.overrides) {

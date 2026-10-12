@@ -43,6 +43,7 @@ impl Reader {
         let ctrl = prompt::ctrl(&key);
         match key.code {
             KeyCode::Char('q') => return Action::Quit,
+            KeyCode::Esc if self.link_focus.is_some() => self.link_focus = None,
             KeyCode::Esc if self.search.is_some() => self.search = None,
             KeyCode::Esc if self.focus.is_some() => self.focus = None,
             KeyCode::Esc | KeyCode::Char('h') | KeyCode::Left => return Action::Back,
@@ -57,8 +58,17 @@ impl Reader {
             KeyCode::Char('/') => self.prompt = Some(Prompt::new("")),
             KeyCode::Char('n') => self.step_match(true),
             KeyCode::Char('N') => self.step_match(false),
-            KeyCode::Tab => self.move_focus(true),
-            KeyCode::BackTab => self.move_focus(false),
+            KeyCode::Char('s') => self.move_link_focus(true),
+            KeyCode::Char('S') => self.move_link_focus(false),
+            KeyCode::Enter if self.link_focus.is_some() => return self.follow_focused_link(),
+            KeyCode::Tab => {
+                self.link_focus = None;
+                self.move_focus(true);
+            }
+            KeyCode::BackTab => {
+                self.link_focus = None;
+                self.move_focus(false);
+            }
             KeyCode::Enter | KeyCode::Char('r') => self.run_focused(false),
             KeyCode::Char('R') => self.run_focused(true),
             KeyCode::Char('x') => self.cancel(),

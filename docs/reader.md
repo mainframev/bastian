@@ -20,6 +20,7 @@ footnote reference is a link: `L` jumps to its note.
 | `/`, `n/N`                  | search, next/previous match                                  |
 | `O`                         | outline: jump to a heading                                   |
 | `L`                         | list links; `Enter` follows one                              |
+| `s/S`                       | focus the next/previous link; `Enter` follows it             |
 | `Tab`, `Shift-Tab`          | focus the next/previous code block                           |
 | `Enter`, `r`                | run the focused block                                        |
 | `R`                         | run every block from the focused one, stopping at a failure  |
@@ -58,6 +59,11 @@ press `Enter` to jump to a heading, `Esc` to close it.
 - `#anchor` links scroll to their heading;
 - links to Markdown files open in bastian (`Esc` comes back);
 - anything else goes to your system's opener (a browser for web links).
+
+`s` and `S` step through the links in place instead, starting from the ones
+in view. The status bar shows where the focused link leads before you follow
+it: the heading an anchor points to, a footnote's text, a Markdown file's
+title or the URL. `Enter` follows it and `Esc` lets go.
 
 Links are also clickable in terminals that support hyperlinks (OSC 8: iTerm2,
 kitty, WezTerm, Ghostty, Windows Terminal, recent tmux with `hyperlinks` in

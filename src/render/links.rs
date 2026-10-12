@@ -33,7 +33,7 @@ pub(super) fn locate_links(lines: &[Line], runs: &[(String, usize)], t: &Theme) 
                     return out;
                 };
                 match out.last_mut() {
-                    Some(l) if l.line == i && l.col + l.width == col && l.url == *url => {
+                    Some(l) if l.line == i && l.col + l.width == col && l.id == run => {
                         l.width += w;
                     }
                     _ => out.push(LinkSpan {
@@ -41,6 +41,7 @@ pub(super) fn locate_links(lines: &[Line], runs: &[(String, usize)], t: &Theme) 
                         col,
                         width: w,
                         url: url.clone(),
+                        id: run,
                     }),
                 }
                 left = left.saturating_sub(used);

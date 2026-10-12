@@ -42,12 +42,22 @@ pub(super) fn draw_images(frame: &mut Frame, r: &mut Reader, content: Rect, end:
 
 /// Make visible links clickable: an OSC 8 hyperlink over each link's text.
 /// Lines with search matches keep their highlighting instead.
-pub(super) fn draw_hyperlinks(frame: &mut Frame, r: &Reader, content: Rect, end: usize) {
+pub(super) fn draw_hyperlinks(
+    frame: &mut Frame,
+    r: &Reader,
+    content: Rect,
+    end: usize,
+    skip: &std::ops::Range<usize>,
+) {
     let first = r.rendered.links.partition_point(|l| l.line < r.scroll);
-    for link in r.rendered.links[first..]
+    for (i, link) in r.rendered.links[first..]
         .iter()
-        .take_while(|l| l.line < end)
+        .enumerate()
+        .take_while(|(_, l)| l.line < end)
     {
+        if skip.contains(&(first + i)) {
+            continue;
+        }
         if r.search.as_ref().is_some_and(|s| {
             // Matches are in line order.
             let i = s.matches.partition_point(|m| m.line < link.line);

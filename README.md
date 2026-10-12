@@ -7,21 +7,15 @@
 [![Build status](https://github.com/mainframev/bastian/actions/workflows/ci.yml/badge.svg)](https://github.com/mainframev/bastian/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A terminal Markdown reader, made to bring documentation into the command line
-and make it a pleasure to read there.
+**Make documentation a pleasure to read, right in your terminal.**
 
-Use it to discover Markdown files and read them without leaving the terminal.
-bastian finds the Markdown in a directory and its subdirectories, or across a
-Git repository, and lists it newest first, ready to filter. Open a document to
-read it laid out for the terminal: headings, lists and tables fitted to the
-width, highlighted code, links you can follow or click, images where the
-terminal can draw them, an outline to jump through, search, and a live reload
-whenever the file changes.
+bastian lists the Markdown in a local folder and its subfolders, newest first
+and ready to filter, then lays it out for the terminal: fitted tables,
+highlighted code, clickable links, images, an outline, search and live reload.
 
-It reads local files, standard input, URLs and GitHub or GitLab READMEs, MDX
-as well as plain Markdown, and comes with popular color themes or your own.
-For runbooks and setup guides it can also run a document's shell, Python or
-Node code blocks right where you read them.
+It also opens single documents from stdin, a URL or a GitHub/GitLab repo's
+README, handles MDX, comes with themes, and can even run a runbook's shell,
+Python or Node blocks in place.
 
 Named after Bastian Balthazar Bux, who reads _The NeverEnding Story_ until he
 ends up inside it.

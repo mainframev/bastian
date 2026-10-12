@@ -1,13 +1,18 @@
+mod media;
+mod overlays;
+
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Clear, Paragraph};
+use ratatui::widgets::Paragraph;
 
 pub use super::MARGIN;
 use super::status;
 use super::text::highlight;
-use crate::reader::{LinkPicker, Reader};
+use crate::reader::Reader;
+use media::{draw_hyperlinks, draw_images};
+use overlays::{draw_confirm, draw_links, draw_outline};
 
 pub fn draw(frame: &mut Frame, r: &mut Reader) {
     // A blank row above the document (the `Find:` line takes it while
@@ -189,188 +194,6 @@ const HELP: &[(&str, &str)] = &[
     ("Esc, h", "back"),
     ("q", "quit"),
 ];
-
-/// The outline tree, docked to the right.
-fn draw_outline(frame: &mut Frame, r: &mut Reader) {
-    let t = r.theme.clone();
-    let Some(outline) = &mut r.outline else {
-        return;
-    };
-    let area = frame.area();
-    // Border and padding around the widest heading, at most half the screen.
-    let title = " outline · enter jump · esc close ";
-    let width = (outline.width.max(title.chars().count()) as u16 + 4)
-        .min(area.width / 2)
-        .max(area.width.min(24));
-    let rect = Rect::new(
-        area.right().saturating_sub(width + 1),
-        area.y + 1,
-        width,
-        area.height.saturating_sub(3),
-    );
-    let tree = tui_tree_widget::Tree::new(&outline.items)
-        .expect("heading ids are unique")
-        .block(status::panel_block(&t, title))
-        .style(Style::default().fg(t.text))
-        .highlight_style(status::row_style(&t, true))
-        .highlight_symbol("▶ ")
-        .node_open_symbol("▾ ")
-        .node_closed_symbol("▸ ")
-        .node_no_children_symbol("  ");
-    frame.render_widget(Clear, rect);
-    frame.render_stateful_widget(tree, rect, &mut outline.state);
-}
-
-fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
-    let t = &r.theme;
-    let area = frame.area();
-    // Leave room for the border and a margin around the box.
-    let rows = area.height.saturating_sub(6).max(1) as usize;
-    let start = status::window(picker.selected, picker.links.len(), rows, false);
-    let max_w = area.width.saturating_sub(10) as usize;
-    let lines: Vec<Line> = picker
-        .links
-        .iter()
-        .enumerate()
-        .skip(start)
-        .take(rows)
-        .map(|(i, link)| {
-            let selected = i == picker.selected;
-            let text_style = status::row_style(t, selected);
-            let entry = format!("{}  {}", link.text, link.url);
-            let shown: String = entry.chars().take(max_w.saturating_sub(2)).collect();
-            let split = link.text.chars().count().min(shown.chars().count());
-            let (text, url): (String, String) = (
-                shown.chars().take(split).collect(),
-                shown.chars().skip(split).collect(),
-            );
-            Line::from(vec![
-                status::select_marker(t, selected),
-                Span::styled(text, text_style),
-                Span::styled(url, Style::default().fg(t.muted)),
-            ])
-        })
-        .collect();
-    let title = format!(
-        " links {}/{} · enter open · esc close ",
-        picker.selected + 1,
-        picker.links.len()
-    );
-    status::modal(frame, t, &title, lines);
-}
-
-fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {
-    let t = &r.theme;
-    let what = match ids {
-        [id] => r.label(*id),
-        _ => format!("{} blocks, in order", ids.len()),
-    };
-    let cwd = ids
-        .first()
-        .map_or_else(|| r.base_dir.clone(), |&id| r.cwd(id))
-        .display()
-        .to_string();
-    let lines = vec![
-        Line::from(vec![
-            Span::styled("Run ", Style::default().fg(t.text)),
-            Span::styled(what, Style::default().fg(t.accent).bold()),
-            Span::styled("?", Style::default().fg(t.text)),
-        ]),
-        Line::styled(format!("in {cwd}"), Style::default().fg(t.muted)),
-        Line::default(),
-        Line::from(vec![
-            Span::styled("y", Style::default().fg(t.ok).bold()),
-            Span::styled(" run   ", Style::default().fg(t.subtle)),
-            Span::styled("n", Style::default().fg(t.err).bold()),
-            Span::styled(" cancel", Style::default().fg(t.subtle)),
-        ]),
-    ];
-    status::modal(frame, t, " run ", lines);
-}
-
-/// Pictures over the rows reserved for them. A picture partly scrolled
-/// off shows its visible rows: the slot-sized picture is cropped from the
-/// top or the bottom.
-fn draw_images(frame: &mut Frame, r: &mut Reader, content: Rect, end: usize) {
-    let scroll = r.scroll;
-    let slots: Vec<_> = r
-        .rendered
-        .images
-        .iter()
-        .filter(|s| s.line < end && s.line + usize::from(s.rows) > scroll)
-        .cloned()
-        .collect();
-    for slot in slots {
-        let Some(protocol) = r.images.protocol(&slot.url, slot.cols, slot.rows) else {
-            continue;
-        };
-        let top = slot.line.max(scroll);
-        let bottom = (slot.line + usize::from(slot.rows)).min(end);
-        let x = content.x + slot.col as u16;
-        let area = Rect::new(
-            x,
-            content.y + (top - scroll) as u16,
-            slot.cols.min(content.right().saturating_sub(x)),
-            (bottom - top) as u16,
-        );
-        let crop = ratatui_image::CropOptions {
-            clip_top: slot.line < scroll,
-            clip_left: false,
-        };
-        frame.render_stateful_widget(
-            ratatui_image::StatefulImage::default().resize(ratatui_image::Resize::Crop(Some(crop))),
-            area,
-            protocol,
-        );
-    }
-}
-
-/// Make visible links clickable: an OSC 8 hyperlink over each link's text.
-/// Lines with search matches keep their highlighting instead.
-fn draw_hyperlinks(frame: &mut Frame, r: &Reader, content: Rect, end: usize) {
-    let first = r.rendered.links.partition_point(|l| l.line < r.scroll);
-    for link in r.rendered.links[first..]
-        .iter()
-        .take_while(|l| l.line < end)
-    {
-        if r.search
-            .as_ref()
-            .is_some_and(|s| s.matches.iter().any(|m| m.line == link.line))
-        {
-            continue;
-        }
-        let Some(target) = r.hyperlink_target(&link.url) else {
-            continue;
-        };
-        let line = &r.rendered.lines[link.line];
-        let (mut label, mut style, mut col) = (String::new(), None, 0);
-        for span in &line.spans {
-            let w = span.width();
-            if col + w > link.col && col < link.col + link.width {
-                // hyperrat writes the label raw, past ratatui's filter.
-                label.push_str(&crate::render::strip_controls(&span.content));
-                style.get_or_insert(span.style);
-            }
-            col += w;
-        }
-        let x = content.x + link.col as u16;
-        let width = (link.width as u16).min(content.right().saturating_sub(x));
-        let y = content.y + (link.line - r.scroll) as u16;
-        let area = Rect::new(x, y, width, 1);
-        frame.render_widget(
-            hyperrat::Link::new(label, target).style(style.unwrap_or_default()),
-            area,
-        );
-        // The first cell holds the whole escape sequence plus the label.
-        // Tell the diff how many columns it really covers, or it measures the
-        // escape sequence and skips the rest of the line.
-        if let Some(width) = std::num::NonZeroU16::new(width)
-            && let Some(cell) = frame.buffer_mut().cell_mut((x, y))
-        {
-            cell.set_diff_option(ratatui::buffer::CellDiffOption::ForcedWidth(width));
-        }
-    }
-}
 
 /// `Find:` line above the document, with the match count on the right.
 fn draw_find(frame: &mut Frame, r: &Reader, area: Rect) {

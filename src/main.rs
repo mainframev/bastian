@@ -373,7 +373,7 @@ fn settings(
     scan.overrides(std::path::Path::new("."))?;
     let date_format = r.dates.value.then_some(r.date_format.value);
     if let Some(f) = &date_format {
-        bastian::ui::browser::check_date_format(f)?;
+        config::check_date_format(f)?;
     }
     let settings = Settings {
         theme: themes::load(&name, themes_dir)?,

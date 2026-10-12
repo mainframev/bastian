@@ -245,6 +245,21 @@ fn remote_documents_resolve_links_and_always_confirm() {
 }
 
 #[test]
+fn reload_with_changed_code_drops_pending_confirmation() {
+    let mut r = reader("```sh\necho one\n```\n");
+    key(&mut r, KeyCode::Tab);
+    key(&mut r, KeyCode::Char('r'));
+    assert_eq!(r.confirm, Some(vec![0]));
+
+    // Prose edits keep the prompt: block 0 is still the same code.
+    r.replace_doc(parse("intro\n\n```sh\necho one\n```\n"));
+    assert_eq!(r.confirm, Some(vec![0]));
+
+    r.replace_doc(parse("```sh\nrm -rf ~\n```\n\n```sh\necho one\n```\n"));
+    assert_eq!(r.confirm, None);
+}
+
+#[test]
 fn replaced_document_is_highlighted_afresh() {
     let mut r = reader("```sh\necho old\n```\n");
     let text = |r: &Reader| bastian::render::to_plain(&r.rendered.lines);

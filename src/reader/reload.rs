@@ -66,6 +66,9 @@ impl Reader {
         }
         self.runs = runs;
         self.follow = self.follow.and_then(|id| moved.get(id).copied().flatten());
+        // The focused link may now be a different one; Enter mustn't follow
+        // a link the preview didn't show.
+        self.link_focus = None;
         self.focus = self
             .focus
             .and_then(|id| moved.get(id).copied().flatten().or(Some(id)))

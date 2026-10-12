@@ -61,6 +61,10 @@ pub struct Reader {
     pub prompt: Option<Prompt>,
     /// Focused code block id.
     pub focus: Option<usize>,
+    /// Focused link, as an index into `link_stops()`.
+    pub link_focus: Option<usize>,
+    /// Where the focused link leads, for the status bar.
+    pub link_preview: String,
     pub runs: HashMap<usize, BlockRun>,
     /// Blocks waiting for a yes/no before they run.
     pub confirm: Option<Vec<usize>>,
@@ -135,6 +139,8 @@ impl Reader {
             search: None,
             prompt: None,
             focus: None,
+            link_focus: None,
+            link_preview: String::new(),
             runs: HashMap::new(),
             confirm: None,
             message: None,
@@ -241,6 +247,10 @@ impl Reader {
             self.width = width;
             self.dirty = false;
             self.refind();
+            let stops = self.link_stops().len();
+            if self.link_focus.is_some_and(|i| i >= stops) {
+                self.link_focus = None;
+            }
         }
         self.height = usize::from(height);
         if let Some(position) = self.restore {

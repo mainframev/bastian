@@ -111,6 +111,7 @@ struct Builder {
     metadata: bool,
     table: Option<TableState>,
     next_code_id: usize,
+    next_link_id: usize,
     footnotes: Footnotes,
     /// Source line of the footnote definition being read.
     footnote_line: usize,
@@ -202,7 +203,10 @@ impl Builder {
             Tag::Strong => self.set_count(|b| &mut b.strong, 1),
             Tag::Emphasis => self.set_count(|b| &mut b.emphasis, 1),
             Tag::Strikethrough => self.set_count(|b| &mut b.strike, 1),
-            Tag::Link { dest_url, .. } => self.style.link = Some(dest_url.into_string()),
+            Tag::Link { dest_url, .. } => {
+                self.style.link = Some(dest_url.into_string());
+                self.style.link_id = Some(self.next_link_id());
+            }
             Tag::Image { dest_url, .. } => {
                 self.images.push(dest_url.into_string());
                 self.push_text(super::IMAGE_PREFIX);
@@ -307,7 +311,10 @@ impl Builder {
             TagEnd::Strong => self.set_count(|b| &mut b.strong, -1),
             TagEnd::Emphasis => self.set_count(|b| &mut b.emphasis, -1),
             TagEnd::Strikethrough => self.set_count(|b| &mut b.strike, -1),
-            TagEnd::Link => self.style.link = None,
+            TagEnd::Link => {
+                self.style.link = None;
+                self.style.link_id = None;
+            }
             TagEnd::Image => self.push_text("]"),
             TagEnd::MetadataBlock(_) => self.metadata = false,
             TagEnd::FootnoteDefinition => {
@@ -339,8 +346,14 @@ impl Builder {
 
     /// A footnote reference: `[n]`, linking to the footnote's anchor.
     fn footnote_ref(&mut self, label: &str) {
-        let r = self.footnotes.reference(label, &self.style);
+        let mut r = self.footnotes.reference(label, &self.style);
+        r.style.link_id = Some(self.next_link_id());
         push_inline(&mut self.inlines, &r.text, &r.style);
+    }
+
+    fn next_link_id(&mut self) -> usize {
+        self.next_link_id += 1;
+        self.next_link_id - 1
     }
 
     fn next_id(&mut self) -> usize {

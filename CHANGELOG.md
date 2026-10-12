@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-10-12
+
+### Features
+
+- *(render)* GitHub alerts, footnotes and task checkboxes  by @mainframev in [#10](https://github.com/mainframev/bastian/pull/10) ([3905cf0](https://github.com/mainframev/bastian/commit/3905cf0f782a0821bb27945d8d359213dc2d3caa))
+- *(cli)* [**breaking**] Drop the man command, take on|off for --images  by @mainframev in [#15](https://github.com/mainframev/bastian/pull/15) ([b96f688](https://github.com/mainframev/bastian/commit/b96f688a74870b09a4dbd42e687ba21d252560e0))
+- *(reader)* Reopen files where they were last read  by @mainframev in [#12](https://github.com/mainframev/bastian/pull/12) ([3950c23](https://github.com/mainframev/bastian/commit/3950c2386b7d66c356f6edd73b99711a62c3527f))
+- *(render)* Break CJK text between characters  by @mainframev in [#11](https://github.com/mainframev/bastian/pull/11) ([229d953](https://github.com/mainframev/bastian/commit/229d953d3ee2348b2a8333ddb85631ec5a6c431a))
+- *(reader)* Step through links in place with s/S  by @mainframev in [#13](https://github.com/mainframev/bastian/pull/13) ([7b48504](https://github.com/mainframev/bastian/commit/7b485043438e694282c96183ed226318e8734e66))
+
+### Fixes
+
+- *(doc)* Cap container nesting depth  by @mainframev in [#16](https://github.com/mainframev/bastian/pull/16) ([8f7bfbb](https://github.com/mainframev/bastian/commit/8f7bfbbaa650432bebb5ebbabc896954bd8c4e37))
+- *(remote)* Cap downloaded bytes, not compressed bytes  by @mainframev in [#17](https://github.com/mainframev/bastian/pull/17) ([4aaf053](https://github.com/mainframev/bastian/commit/4aaf053f67bf5e0d0b63cf783050cd506db3f888))
+- *(reader)* Confirm before opening non-web links  by @mainframev in [#18](https://github.com/mainframev/bastian/pull/18) ([635debb](https://github.com/mainframev/bastian/commit/635debb1911d9f1a41a6c27fb367a23496adf57a))
+- *(exec)* Bound block output and kill blocks that ignore SIGTERM  by @mainframev in [#19](https://github.com/mainframev/bastian/pull/19) ([479940d](https://github.com/mainframev/bastian/commit/479940dbea1cf20d521581bf40e9e69a70592439))
+- *(term)* Keep terminal queries away from pagers and background jobs  by @mainframev in [#20](https://github.com/mainframev/bastian/pull/20) ([4251949](https://github.com/mainframev/bastian/commit/4251949c142dc69f2804c4c7db61efb9184885e3))
 ## [0.1.0] - 2026-10-12
 
 ### Features

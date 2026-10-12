@@ -72,7 +72,7 @@ pub fn resolve(url: &str, base_dir: &Path) -> Target {
     let is_md = path
         .extension()
         .and_then(|e| e.to_str())
-        .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "md" | "markdown" | "mdx"));
+        .is_some_and(doc::is_markdown_ext);
     if is_md && path.is_file() {
         Target::Document(path)
     } else {
@@ -152,6 +152,16 @@ mod tests {
         );
         assert!(matches!(resolve("logo.png", d), Target::External(_)));
         assert!(matches!(resolve("nope.md", d), Target::Missing(_)));
+    }
+
+    #[test]
+    fn every_markdown_extension_opens_in_bastian() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        for name in ["a.mkd", "b.mdown", "c.mkdn", "d.MD"] {
+            std::fs::write(d.join(name), "# Doc\n").unwrap();
+            assert_eq!(resolve(name, d), Target::Document(d.join(name)), "{name}");
+        }
     }
 
     #[test]

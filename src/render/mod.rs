@@ -907,7 +907,7 @@ mod tests {
     fn images_reserve_rows_once_loaded() {
         let doc = parse("- item\n\n  ![A cat](cat.png)\n");
         let placeholder = render(&doc, 40, &Theme::dark());
-        assert!(placeholder.images.is_empty());
+        assert!(placeholder.images.is_empty(), "{:?}", placeholder.images);
         assert!(to_plain(&placeholder.lines).contains("[image: A cat]"));
 
         let sizes = ImageSizes::from([("cat.png".to_string(), (60, 40))]);

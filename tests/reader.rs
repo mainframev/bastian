@@ -497,6 +497,18 @@ fn reload_with_changed_code_drops_pending_confirmation() {
 }
 
 #[test]
+fn reload_drops_pending_open_prompt() {
+    let mut r = picking("vscode://file/etc/hosts", std::path::Path::new("."));
+    key(&mut r, KeyCode::Enter);
+    assert_eq!(r.confirm_open.as_deref(), Some("vscode://file/etc/hosts"));
+
+    // Even an unchanged link may now sit elsewhere; ask again after a reload.
+    r.replace_doc(parse("[x](vscode://file/etc/hosts)\n"));
+    assert_eq!(r.confirm_open, None);
+    assert!(matches!(key(&mut r, KeyCode::Char('y')), Action::None));
+}
+
+#[test]
 fn replaced_document_is_highlighted_afresh() {
     let mut r = reader("```sh\necho old\n```\n");
     let text = |r: &Reader| bastian::render::to_plain(&r.rendered.lines);

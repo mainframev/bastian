@@ -44,7 +44,7 @@ fn utf8(bytes: &[u8]) -> Result<String> {
 
 /// UTF-16 code units, decoding lossily (an odd trailing byte is dropped).
 fn utf16(bytes: &[u8], unit: fn([u8; 2]) -> u16) -> String {
-    let units: Vec<u16> = bytes.chunks_exact(2).map(|c| unit([c[0], c[1]])).collect();
+    let units: Vec<u16> = bytes.as_chunks().0.iter().map(|&c| unit(c)).collect();
     String::from_utf16_lossy(&units)
 }
 

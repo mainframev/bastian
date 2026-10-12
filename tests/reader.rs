@@ -409,6 +409,49 @@ fn open_prompt_shows_the_whole_target() {
 }
 
 #[test]
+fn open_prompt_elides_the_middle_of_a_long_target() {
+    use bastian::ui::reader::draw;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    // About 15 rows at 36 columns, where 7 fit.
+    let target = format!("vscode://host/{}/tail/setup.command", "x".repeat(500));
+    let mut r = picking(&target, std::path::Path::new("."));
+    key(&mut r, KeyCode::Enter);
+    assert_eq!(r.confirm_open.as_deref(), Some(target.as_str()));
+    let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let buf = terminal.backend().buffer();
+    let rows: Vec<String> = (0..12)
+        .map(|y| (0..40).map(|x| buf[(x, y)].symbol()).collect())
+        .collect();
+    let screen = rows.join("\n");
+    let shown: String = screen.chars().filter(|c| !"│ \n".contains(*c)).collect();
+    assert!(shown.contains("vscode://host/xxx"), "{screen}");
+    assert!(shown.contains("xxx/tail/setup.command"), "{screen}");
+    assert!(
+        rows.iter().any(|row| row.trim_matches(['│', ' ']) == "…"),
+        "{screen}"
+    );
+    assert!(
+        rows.iter()
+            .any(|row| row.contains("y open") && row.contains("n cancel")),
+        "{screen}"
+    );
+
+    // Even a screen too short for the question keeps the keys.
+    for height in 3..8 {
+        let mut terminal = Terminal::new(TestBackend::new(40, height)).unwrap();
+        terminal.draw(|f| draw(f, &mut r)).unwrap();
+        let buf = terminal.backend().buffer();
+        let has_keys = (0..height).any(|y| {
+            let row: String = (0..40).map(|x| buf[(x, y)].symbol()).collect();
+            row.contains("y open")
+        });
+        assert!(has_keys, "height {height}");
+    }
+}
+
+#[test]
 fn remote_documents_resolve_links_and_always_confirm() {
     // Built the way the app builds fetched documents, with --yes on.
     let settings = settings(true, None);

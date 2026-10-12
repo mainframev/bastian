@@ -8,7 +8,7 @@ mod file;
 mod list;
 
 pub use builtin::{builtin_names, canonical};
-pub use list::{Listing, list};
+pub use list::{Listing, format_list, list};
 
 use std::path::Path;
 

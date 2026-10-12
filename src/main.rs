@@ -5,127 +5,9 @@ use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser};
 
 use bastian::app::{self, Settings};
-use bastian::config::{self, ColorMode, Confirm};
-use bastian::exec::Interpreters;
-
-use bastian::term::{self, Background};
-use bastian::{browser, doc, images, output, paths, remote, render, text, themes};
-
-/// Read Markdown in the terminal: browse, search and follow your docs.
-#[derive(Parser)]
-#[command(version, after_help = config_help(), args_conflicts_with_subcommands = true)]
-#[allow(
-    clippy::doc_markdown,
-    reason = "clap prints these doc comments as --help text, where backticks would show"
-)]
-struct Cli {
-    #[command(subcommand)]
-    command: Option<Command>,
-
-    /// Markdown file to read, `-` for stdin, a directory to browse, an
-    /// http(s) URL, or github.com/owner/repo or gitlab.com/group/project for
-    /// a repository's README. Defaults to browsing the current directory.
-    path: Option<PathBuf>,
-
-    /// Maximum width of the rendered document [default: 100].
-    #[arg(short, long)]
-    width: Option<u16>,
-
-    /// Color theme: auto (match the terminal background), dark, light, or a
-    /// theme name; `bastian themes` lists them [default: auto].
-    #[arg(short, long, value_name = "NAME", value_parser = ThemeArg, hide_possible_values = true)]
-    theme: Option<String>,
-
-    /// Run code blocks without asking first. Blocks marked `confirm` still ask.
-    #[arg(short, long)]
-    yes: bool,
-
-    /// Also list hidden and gitignored files in the browser.
-    #[arg(short, long)]
-    all: bool,
-
-    /// Show line numbers in the reader.
-    #[arg(short = 'n', long)]
-    line_numbers: bool,
-
-    /// Print the rendered document instead of opening the TUI.
-    #[arg(short, long)]
-    print: bool,
-
-    /// Show the rendered document in $PAGER (default `less -R`) instead of
-    /// the TUI.
-    #[arg(long)]
-    pager: bool,
-
-    /// Color printed output: auto colors on a terminal, honoring NO_COLOR and
-    /// CLICOLOR_FORCE [default: auto].
-    #[arg(long, value_enum)]
-    color: Option<ColorMode>,
-
-    /// Config file to use instead of the default (also BASTIAN_CONFIG).
-    /// `~` and `$VAR` are expanded.
-    #[arg(long, value_name = "PATH")]
-    config: Option<String>,
-
-    /// Scroll with the mouse wheel. Captures the mouse, so selecting text in
-    /// the terminal needs a modifier key (often shift or option).
-    #[arg(long)]
-    mouse: bool,
-
-    /// Hide the logo at the top of the file browser.
-    #[arg(long)]
-    no_logo: bool,
-
-    /// Draw pictures for images in documents, where the terminal can
-    /// (overrides `images = false`; `i` toggles them in the reader).
-    #[arg(long, overrides_with = "no_images")]
-    images: bool,
-
-    /// Show images in documents as their alt text instead of pictures.
-    #[arg(long, overrides_with = "images")]
-    no_images: bool,
-
-    /// How the file browser marks the selected file [default: bar].
-    #[arg(long, value_enum, value_name = "STYLE")]
-    selector: Option<config::Selector>,
-
-    /// How the file list lays out each file [default: cards].
-    #[arg(long, value_enum, value_name = "LAYOUT")]
-    list_layout: Option<config::ListLayout>,
-
-    /// Order of the files in the browser [default: modified].
-    #[arg(long, value_enum, value_name = "ORDER")]
-    sort: Option<config::SortBy>,
-
-    /// Print the effective settings and where each came from, then exit.
-    #[arg(long)]
-    print_config: bool,
-}
-
-#[derive(clap::Subcommand)]
-enum Command {
-    /// Open the config file in your editor, creating it from a commented
-    /// template if it doesn't exist. (To read a file named `config`, use
-    /// `./config`.)
-    Config,
-    /// Print a shell completion script, e.g. `bastian completions zsh`.
-    Completions {
-        #[arg(value_enum)]
-        shell: clap_complete::Shell,
-    },
-    /// Print the man page (roff), e.g. `bastian man | man -l -`.
-    Man,
-    /// Pick a theme with a live preview and save it to the config file
-    /// (lists the themes instead when output isn't a terminal).
-    Themes,
-}
-
-fn config_help() -> String {
-    match config::path() {
-        Some(p) => format!("Config file: {}", p.display()),
-        None => "Config file: none (HOME is not set)".to_string(),
-    }
-}
+use bastian::cli::{Cli, Command};
+use bastian::config;
+use bastian::{browser, doc, output, paths, remote, text, themes};
 
 fn main() -> Result<()> {
     // Exit quietly when a reader such as `head` closes our output, like
@@ -173,30 +55,7 @@ fn main() -> Result<()> {
         Some((path, explicit)) => config::load_at(path, *explicit)?,
         None => config::Config::default(),
     };
-    let resolved = config::resolve(
-        file,
-        &config::env_vars(),
-        config::Config {
-            theme: cli.theme,
-            width: cli.width,
-            confirm: cli.yes.then_some(Confirm::Never),
-            line_numbers: cli.line_numbers.then_some(true),
-            color: cli.color,
-            pager: cli.pager.then_some(true),
-            all: cli.all.then_some(true),
-            mouse: cli.mouse.then_some(true),
-            logo: cli.no_logo.then_some(false),
-            images: match (cli.images, cli.no_images) {
-                (true, _) => Some(true),
-                (_, true) => Some(false),
-                _ => None,
-            },
-            selector: cli.selector,
-            list_layout: cli.list_layout,
-            sort: cli.sort,
-            ..config::Config::default()
-        },
-    )?;
+    let resolved = config::resolve(file, &config::env_vars(), cli.overrides())?;
     let mut resolved = resolved;
     if cli.print_config {
         print!(
@@ -217,7 +76,10 @@ fn main() -> Result<()> {
         std::env::var("CLICOLOR_FORCE").ok().as_deref(),
     );
     if list_themes && !pick_theme {
-        print!("{}", theme_list(&resolved, themes_dir.as_deref(), color));
+        print!(
+            "{}",
+            themes::format_list(&resolved, themes_dir.as_deref(), color)
+        );
         return Ok(());
     }
     let checked = config::check_themes(&resolved, |name| {
@@ -243,7 +105,7 @@ fn main() -> Result<()> {
             _ => None,
         },
     };
-    let out = Output {
+    let out = output::Output {
         width: output::print_width(
             &resolved.width,
             crossterm::terminal::size().ok().map(|(w, _)| w),
@@ -254,7 +116,8 @@ fn main() -> Result<()> {
     };
     let tui = pick_theme || (!cli.print && out.pager.is_none() && stdout_tty);
     // Plain output has no colors, so it skips the background query.
-    let (settings, current) = settings(resolved, themes_dir.as_deref(), tui || out.color, tui)?;
+    let (settings, current) =
+        Settings::from_resolved(resolved, themes_dir.as_deref(), tui || out.color, tui)?;
     let theme_files = app::ThemeFiles {
         current,
         ..theme_files
@@ -283,7 +146,7 @@ fn main() -> Result<()> {
     let app = if let Some(source) = remote {
         let fetched = remote::fetch(&source)?;
         if !tui {
-            return print(&fetched.parse(), &settings, &out);
+            return out.print(&fetched.parse(), &settings.theme, settings.render);
         }
         let reader = settings.remote(fetched);
         app::App::read(reader, settings)
@@ -303,7 +166,7 @@ fn main() -> Result<()> {
         let src = text::decode(&bytes).context("reading stdin")?;
         let doc = doc::parse(&src);
         if !tui {
-            return print(&doc, &settings, &out);
+            return out.print(&doc, &settings.theme, settings.render);
         }
         let mut reader = settings.reader("stdin".into(), doc, PathBuf::from("."));
         reader.text = src;
@@ -311,7 +174,11 @@ fn main() -> Result<()> {
     } else {
         if !tui {
             let src = text::read_text(&path)?;
-            return print(&doc::parse_for(&src, Some(&path)), &settings, &out);
+            return out.print(
+                &doc::parse_for(&src, Some(&path)),
+                &settings.theme,
+                settings.render,
+            );
         }
         let reader = settings.open(&path, path.display().to_string())?;
         app::App::read(reader, settings)
@@ -351,167 +218,4 @@ fn edit_config(path: &std::path::Path) -> Result<()> {
         bastian::editor::open_with(&cmd, path, None).with_context(|| format!("running {cmd}"))?;
     anyhow::ensure!(status.success(), "{cmd} exited with {status}");
     Ok(())
-}
-
-/// Turn resolved configuration into what the app runs with. `colored` says
-/// whether the theme's colors will show; if not, `auto` doesn't ask the
-/// terminal for its background.
-fn settings(
-    r: config::Resolved,
-    themes_dir: Option<&std::path::Path>,
-    colored: bool,
-    tui: bool,
-) -> Result<(Settings, String)> {
-    let light = colored && r.theme.value == "auto" && term::background() == Some(Background::Light);
-    let name = config::theme_name(&r, light).to_string();
-    let scan = browser::Scan {
-        all: r.all.value,
-        sort: r.sort.value,
-        extensions: r.extensions.value,
-        ignore: r.ignore.value,
-    };
-    scan.overrides(std::path::Path::new("."))?;
-    let date_format = r.dates.value.then_some(r.date_format.value);
-    if let Some(f) = &date_format {
-        config::check_date_format(f)?;
-    }
-    let settings = Settings {
-        theme: themes::load(&name, themes_dir)?,
-        max_width: r.width.value,
-        assume_yes: r.confirm.value == Confirm::Never,
-        line_numbers: r.line_numbers.value,
-        scan,
-        date_format,
-        render: render::Options {
-            image_rows: r.image_height.value,
-            tab_width: r.tab_width.value,
-        },
-        hyperlinks: r.hyperlinks.value,
-        scrollbar: r.scrollbar.value,
-        editor: Some(r.editor.value).filter(|e| !e.trim().is_empty()),
-        mouse: r.mouse.value,
-        logo: r.logo.value,
-        // Only the TUI draws pictures.
-        images: (tui && r.images.value).then(images::Support::detect),
-        show_images: r.images.value,
-        selector: r.selector.value,
-        list_layout: r.list_layout.value,
-        interpreters: Interpreters::new(r.interpreters),
-    };
-    Ok((settings, name))
-}
-
-/// `bastian themes`: one row per theme with its appearance, where it comes
-/// from, a color swatch when `color`, and which settings point at it.
-fn theme_list(r: &config::Resolved, dir: Option<&std::path::Path>, color: bool) -> String {
-    use ratatui::style::Color;
-    let rows = themes::list(dir);
-    let w = rows.iter().map(|l| l.name.len()).max().unwrap_or(0);
-    let swatch = |c: Color| match c {
-        Color::Rgb(r, g, b) => format!("\x1b[38;2;{r};{g};{b}m██\x1b[0m"),
-        _ => String::new(),
-    };
-    let mut out = String::new();
-    for l in rows {
-        let roles: Vec<&str> = [
-            ("theme", &r.theme.value),
-            ("dark_theme", &r.dark_theme.value),
-            ("light_theme", &r.light_theme.value),
-        ]
-        .into_iter()
-        .filter(|(_, v)| themes::canonical(v) == l.name)
-        .map(|(k, _)| k)
-        .collect();
-        let origin = match (&l.path, l.overrides) {
-            (Some(p), true) => format!("{} (overrides built-in)", paths::tilde(p)),
-            (Some(p), false) => paths::tilde(p),
-            (None, _) => "built-in".to_string(),
-        };
-        let (appearance, colors) = match &l.theme {
-            Ok(t) => {
-                let appearance = match t.appearance {
-                    themes::Appearance::Dark => "dark",
-                    themes::Appearance::Light => "light",
-                };
-                let colors: String = [t.accent, t.heading, t.link, t.code, t.ok, t.warn, t.err]
-                    .into_iter()
-                    .map(swatch)
-                    .collect();
-                (
-                    appearance,
-                    if color {
-                        format!("{colors}  ")
-                    } else {
-                        String::new()
-                    },
-                )
-            }
-            Err(_) => ("?", String::new()),
-        };
-        out.push_str(&format!(
-            "{:<w$}  {appearance:<5}  {colors}{origin}",
-            l.name
-        ));
-        if !roles.is_empty() {
-            out.push_str(&format!("  ← {}", roles.join(", ")));
-        }
-        if let Err(e) = &l.theme {
-            out.push_str(&format!("\n{:<w$}  error: {e:#}", ""));
-        }
-        out.push('\n');
-    }
-    out
-}
-
-/// `--theme` accepts any name (checked later against the registry) but
-/// offers the built-ins to shell completion.
-#[derive(Clone)]
-struct ThemeArg;
-
-impl clap::builder::TypedValueParser for ThemeArg {
-    type Value = String;
-
-    fn parse_ref(
-        &self,
-        _cmd: &clap::Command,
-        _arg: Option<&clap::Arg>,
-        value: &std::ffi::OsStr,
-    ) -> Result<String, clap::Error> {
-        value
-            .to_str()
-            .map(str::to_string)
-            .ok_or_else(|| clap::Error::new(clap::error::ErrorKind::InvalidUtf8))
-    }
-
-    fn possible_values(
-        &self,
-    ) -> Option<Box<dyn Iterator<Item = clap::builder::PossibleValue> + '_>> {
-        let names = config::THEME_MODES
-            .into_iter()
-            .chain(themes::builtin_names());
-        Some(Box::new(names.map(clap::builder::PossibleValue::new)))
-    }
-}
-
-/// How non-interactive output is written.
-struct Output {
-    width: u16,
-    color: bool,
-    /// Pager command when paging, `None` to write to stdout.
-    pager: Option<String>,
-}
-
-fn print(doc: &doc::Document, settings: &Settings, out: &Output) -> Result<()> {
-    let rendered = render::render_with(doc, out.width, &settings.theme, settings.render);
-    let text = if out.color {
-        render::to_ansi(&rendered.lines)
-    } else {
-        render::to_plain(&rendered.lines)
-    };
-    if let Some(pager) = &out.pager {
-        output::page(&format!("{text}\n"), pager)
-    } else {
-        println!("{text}");
-        Ok(())
-    }
 }

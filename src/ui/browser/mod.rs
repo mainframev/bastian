@@ -128,7 +128,13 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, look: Look) {
     let list_area = inset(list);
     // Rows of the selected entry, for the highlight selector.
     let mut selected_rows = 0..0;
-    for (row, &idx) in b.visible.iter().enumerate().skip(b.offset()).take(b.height) {
+    for (row, &idx) in b
+        .visible
+        .iter()
+        .enumerate()
+        .skip(b.offset())
+        .take(b.page_len())
+    {
         let e = &b.entries[idx];
         let selected = row == b.selected;
         let start = lines.len();
@@ -171,7 +177,7 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, look: Look) {
     }
     // In entries, so the thumb moves a page at a time like the list.
     if look.scrollbar {
-        status::scrollbar(frame, t, list, b.visible.len(), b.height, b.offset());
+        status::scrollbar(frame, t, list, b.visible.len(), b.page_len(), b.offset());
     }
 
     let idle = if b.filter.is_empty() {
@@ -222,12 +228,7 @@ mod tests {
             std::fs::write(dir.path().join(format!("n{i}.md")), "x\n").unwrap();
         }
         let mut b = Browser::new(dir.path().to_path_buf(), crate::browser::Scan::default());
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while b.is_scanning() {
-            b.tick();
-            assert!(std::time::Instant::now() < deadline);
-            std::thread::sleep(Duration::from_millis(5));
-        }
+        crate::browser::tests::wait_for_scan(&mut b);
         let mut terminal = Terminal::new(TestBackend::new(50, h)).unwrap();
         let t = Theme::dark();
         terminal.draw(|f| draw(f, &mut b, &t, look)).unwrap();

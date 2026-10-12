@@ -48,10 +48,11 @@ pub(super) fn draw_hyperlinks(frame: &mut Frame, r: &Reader, content: Rect, end:
         .iter()
         .take_while(|l| l.line < end)
     {
-        if r.search
-            .as_ref()
-            .is_some_and(|s| s.matches.iter().any(|m| m.line == link.line))
-        {
+        if r.search.as_ref().is_some_and(|s| {
+            // Matches are in line order.
+            let i = s.matches.partition_point(|m| m.line < link.line);
+            s.matches.get(i).is_some_and(|m| m.line == link.line)
+        }) {
             continue;
         }
         let Some(target) = r.hyperlink_target(&link.url) else {

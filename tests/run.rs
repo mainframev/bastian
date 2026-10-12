@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use bastian::doc::parse;
 use bastian::exec::Status;
-use bastian::reader::Reader;
+use bastian::reader::{Match, Reader};
 use bastian::render::theme::Theme;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -238,6 +238,50 @@ fn running_timer_updates_in_place() {
     let full = bastian::render::to_plain(&r.rendered.lines);
     let mask = |s: &str| s.replace(|c: char| c.is_ascii_digit(), "#");
     assert_eq!(mask(&patched), mask(&full));
+    key(&mut r, KeyCode::Char('x'));
+    settle(&mut r);
+}
+
+#[test]
+fn search_follows_a_running_timer() {
+    let mut r = reader("```sh\nsleep 3\n```\n");
+    key(&mut r, KeyCode::Tab);
+    key(&mut r, KeyCode::Enter);
+    key(&mut r, KeyCode::Char('y'));
+    r.tick();
+    r.layout(80, 40);
+    thread::sleep(Duration::from_millis(200));
+    assert!(r.tick());
+    r.layout(80, 40);
+    let timer = |r: &Reader| -> String {
+        let text = bastian::render::to_plain(&r.rendered.lines);
+        let at = text.find("running ").expect("running status line");
+        text[at..]
+            .split_whitespace()
+            .take(2)
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+
+    // Search for the elapsed time as it reads now, e.g. "running 0.2s".
+    let shown = timer(&r);
+    key(&mut r, KeyCode::Char('/'));
+    for c in shown.chars() {
+        key(&mut r, KeyCode::Char(c));
+    }
+    key(&mut r, KeyCode::Enter);
+    assert_eq!(r.search.as_ref().unwrap().matches.len(), 1);
+
+    // Ticks patch the timer in place; the match has to go with the old text.
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while timer(&r) == shown {
+        assert!(Instant::now() < deadline, "timer did not advance");
+        thread::sleep(Duration::from_millis(50));
+        assert!(r.tick());
+        r.layout(80, 40);
+    }
+    assert_eq!(r.search.as_ref().unwrap().matches, Vec::<Match>::new());
+    key(&mut r, KeyCode::Esc);
     key(&mut r, KeyCode::Char('x'));
     settle(&mut r);
 }

@@ -133,7 +133,7 @@ pub enum SortBy {
 pub const DATE_FORMAT: &str = "%d %b %Y %H:%M %Z";
 
 /// The Markdown extensions the browser lists by default.
-pub const EXTENSIONS: &[&str] = &["md", "markdown", "mdx", "mdown", "mkdn", "mkd"];
+pub const EXTENSIONS: &[&str] = crate::doc::MARKDOWN_EXTENSIONS;
 
 #[cfg(test)]
 mod tests;

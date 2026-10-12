@@ -30,7 +30,7 @@ impl Renderer<'_> {
         for out in &run.output {
             let style = Style::default().fg(if out.stderr { t.err } else { t.subtle });
             for row in hard_wrap(
-                vec![Span::styled(out.text.clone(), style)],
+                &[Span::styled(out.text.as_str(), style)],
                 width.saturating_sub(2),
             ) {
                 let mut spans = vec![bar.clone()];

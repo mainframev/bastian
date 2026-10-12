@@ -72,14 +72,13 @@ pub fn classify(input: &str) -> Option<Source> {
 
 /// Fetch a remote document.
 pub fn fetch(source: &Source) -> Result<RemoteDoc> {
-    let agent = agent();
     match source {
         Source::Url(url) => {
             // A file page on GitHub/GitLab is HTML; read the raw file behind
             // it. Links still resolve against the page, so they open as pages
             // in a browser and Markdown ones come back here as raw files.
             let raw = raw_url(url).unwrap_or_else(|| url.clone());
-            let text = get(agent, raw.as_str(), "text/markdown, text/plain, */*")?;
+            let text = get(raw.as_str(), "text/markdown, text/plain, */*")?;
             Ok(RemoteDoc {
                 name: url.to_string(),
                 base: url.clone(),
@@ -88,9 +87,8 @@ pub fn fetch(source: &Source) -> Result<RemoteDoc> {
         }
         Source::GitHub { owner, repo } => {
             let api = format!("https://api.github.com/repos/{owner}/{repo}/readme");
-            let meta: Value =
-                serde_json::from_str(&get(agent, &api, "application/vnd.github+json")?)
-                    .context("reading GitHub's README metadata")?;
+            let meta: Value = serde_json::from_str(&get(&api, "application/vnd.github+json")?)
+                .context("reading GitHub's README metadata")?;
             let raw = meta["download_url"]
                 .as_str()
                 .ok_or_else(|| anyhow!("GitHub returned no README download URL"))?;
@@ -98,7 +96,7 @@ pub fn fetch(source: &Source) -> Result<RemoteDoc> {
             let file = meta["name"].as_str().unwrap_or("README");
             Ok(RemoteDoc {
                 name: format!("{owner}/{repo} {file}"),
-                text: get(agent, raw, "text/plain")?,
+                text: get(raw, "text/plain")?,
                 base,
             })
         }
@@ -107,7 +105,7 @@ pub fn fetch(source: &Source) -> Result<RemoteDoc> {
                 "https://gitlab.com/api/v4/projects/{}",
                 url::form_urlencoded::byte_serialize(project.as_bytes()).collect::<String>()
             );
-            let meta: Value = serde_json::from_str(&get(agent, &api, "application/json")?)
+            let meta: Value = serde_json::from_str(&get(&api, "application/json")?)
                 .context("reading GitLab's project metadata")?;
             let readme = meta["readme_url"]
                 .as_str()
@@ -120,7 +118,7 @@ pub fn fetch(source: &Source) -> Result<RemoteDoc> {
                 .unwrap_or("README");
             Ok(RemoteDoc {
                 name: format!("{project} {file}"),
-                text: get(agent, &raw, "text/plain")?,
+                text: get(&raw, "text/plain")?,
                 base,
             })
         }
@@ -172,8 +170,8 @@ fn agent() -> &'static ureq::Agent {
 
 /// GET `url` as text, with clear errors for HTTP failures and GitHub's rate
 /// limit. `GITHUB_TOKEN` is sent to api.github.com when set.
-fn get(agent: &ureq::Agent, url: &str, accept: &str) -> Result<String> {
-    respond(agent, url, accept)?
+fn get(url: &str, accept: &str) -> Result<String> {
+    respond(url, accept)?
         .body_mut()
         .with_config()
         .limit(MAX_BYTES)
@@ -183,7 +181,7 @@ fn get(agent: &ureq::Agent, url: &str, accept: &str) -> Result<String> {
 
 /// GET `url` as raw bytes (e.g. an image), up to `limit` bytes.
 pub(crate) fn fetch_bytes(url: &str, limit: u64) -> Result<Vec<u8>> {
-    respond(agent(), url, "*/*")?
+    respond(url, "*/*")?
         .body_mut()
         .with_config()
         .limit(limit)
@@ -192,12 +190,8 @@ pub(crate) fn fetch_bytes(url: &str, limit: u64) -> Result<Vec<u8>> {
 }
 
 /// Send the GET and turn HTTP failures into errors.
-fn respond(
-    agent: &ureq::Agent,
-    url: &str,
-    accept: &str,
-) -> Result<ureq::http::Response<ureq::Body>> {
-    let mut req = agent
+fn respond(url: &str, accept: &str) -> Result<ureq::http::Response<ureq::Body>> {
+    let mut req = agent()
         .get(url)
         .header("Accept", accept)
         .header("User-Agent", concat!("bastian/", env!("CARGO_PKG_VERSION")));
@@ -230,8 +224,9 @@ pub fn resolve_link(base: &Url, href: &str) -> Option<Url> {
 
 /// Whether a resolved link points at a document bastian should open itself.
 pub(crate) fn is_document(url: &Url) -> bool {
-    let path = url.path().to_ascii_lowercase();
-    doc::is_markdown_ext(path.rsplit('.').next().unwrap_or("")) && path.contains('.')
+    url.path()
+        .rsplit_once('.')
+        .is_some_and(|(_, ext)| doc::is_markdown_ext(ext))
 }
 
 #[cfg(test)]

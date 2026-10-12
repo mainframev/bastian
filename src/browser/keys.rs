@@ -31,7 +31,7 @@ impl Browser {
             self.selected = nav::step(self.selected, self.visible.len(), motion);
             return Action::None;
         }
-        let page = self.height.max(1) as isize;
+        let page = self.height as isize;
         let ctrl = prompt::ctrl(&key);
         match key.code {
             KeyCode::Char('d') if ctrl => self.move_by(page / 2),

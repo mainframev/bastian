@@ -1,0 +1,4 @@
+# Conventional commit check (CI's "Conventional Commits" job).
+# Merging a pull request with a merge commit adds "Merge pull request #N ..."
+# to main; that message isn't meant to follow the convention.
+ignore_merge_commits = true

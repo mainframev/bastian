@@ -66,6 +66,8 @@ jobs:
     needs: [build, publish-crates]
     permissions:
       contents: write
+      # git-cliff reads PR numbers and authors for the notes.
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7
         with:

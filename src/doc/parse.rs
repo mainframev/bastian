@@ -1,13 +1,18 @@
-use pulldown_cmark::{Alignment, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{
+    Alignment, BlockQuoteKind, CodeBlockKind, Event, Options, Parser, Tag, TagEnd,
+};
 
-use super::{Align, Attrs, Block, CodeBlock, Document, Inline, InlineStyle, push_inline};
+use super::{
+    Align, Attrs, Block, CalloutKind, CodeBlock, Document, Inline, InlineStyle, push_inline,
+};
 
 pub fn parse(src: &str) -> Document {
     let opts = Options::ENABLE_TABLES
         | Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TASKLISTS
         | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
-        | Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS;
+        | Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS
+        | Options::ENABLE_GFM;
     let newlines: Vec<usize> = src.match_indices('\n').map(|(i, _)| i).collect();
     let line_of = |offset: usize| newlines.partition_point(|&n| n < offset);
     let mut b = Builder::default();
@@ -30,12 +35,25 @@ pub fn parse(src: &str) -> Document {
 
 /// Open container blocks while walking the event stream.
 enum Frame {
-    Quote(Vec<Block>),
+    /// A block quote, or a GitHub alert when it has a kind.
+    Quote(Option<CalloutKind>, Vec<Block>),
     List {
         start: Option<u64>,
         items: Vec<Vec<Block>>,
     },
     Item(Vec<Block>),
+}
+
+impl From<BlockQuoteKind> for CalloutKind {
+    fn from(k: BlockQuoteKind) -> Self {
+        match k {
+            BlockQuoteKind::Note => CalloutKind::Note,
+            BlockQuoteKind::Tip => CalloutKind::Tip,
+            BlockQuoteKind::Important => CalloutKind::Important,
+            BlockQuoteKind::Warning => CalloutKind::Warning,
+            BlockQuoteKind::Caution => CalloutKind::Caution,
+        }
+    }
 }
 
 impl From<Alignment> for Align {
@@ -117,9 +135,10 @@ impl Builder {
                 self.flush();
                 self.heading = Some(level as u8);
             }
-            Tag::BlockQuote(_) => {
+            Tag::BlockQuote(kind) => {
                 self.flush();
-                self.stack.push(Frame::Quote(Vec::new()));
+                self.stack
+                    .push(Frame::Quote(kind.map(CalloutKind::from), Vec::new()));
             }
             Tag::List(start) => {
                 self.flush();
@@ -174,8 +193,12 @@ impl Builder {
             }
             TagEnd::BlockQuote(_) => {
                 self.flush();
-                if let Some(Frame::Quote(blocks)) = self.stack.pop() {
-                    self.push_block(Block::Quote(blocks));
+                match self.stack.pop() {
+                    Some(Frame::Quote(Some(kind), blocks)) => {
+                        self.push_block(Block::Callout { kind, blocks });
+                    }
+                    Some(Frame::Quote(None, blocks)) => self.push_block(Block::Quote(blocks)),
+                    _ => {}
                 }
             }
             TagEnd::List(_) => {
@@ -273,7 +296,7 @@ impl Builder {
 
     fn push_block(&mut self, block: Block) {
         match self.stack.last_mut() {
-            Some(Frame::Quote(blocks) | Frame::Item(blocks)) => blocks.push(block),
+            Some(Frame::Quote(_, blocks) | Frame::Item(blocks)) => blocks.push(block),
             // Blocks never appear directly inside a list, only inside items.
             Some(Frame::List { .. }) | None => {
                 self.root.push(block);
@@ -423,6 +446,17 @@ mod tests {
             panic!("expected paragraph");
         };
         assert_eq!(inl[1].style.link.as_deref(), Some("https://x.dev"));
+    }
+
+    #[test]
+    fn gfm_alerts_become_callouts() {
+        let doc = parse("> [!WARNING]\n> Mind the *gap*.\n\n> [!bogus]\n> plain\n");
+        let Block::Callout { kind, blocks } = &doc.blocks[0] else {
+            panic!("expected callout, got {:?}", doc.blocks[0]);
+        };
+        assert_eq!(*kind, CalloutKind::Warning);
+        assert!(matches!(&blocks[..], [Block::Paragraph(i)] if plain_text(i) == "Mind the gap."));
+        assert!(matches!(&doc.blocks[1], Block::Quote(_)));
     }
 
     #[test]

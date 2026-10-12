@@ -2,7 +2,9 @@
 
 Opening a document, from the [file list](file-list.md) or with
 `bastian README.md`, shows it laid out for the terminal: headings, lists and
-tables fitted to the width, highlighted code, links, images and quotes.
+tables fitted to the width, highlighted code, links, images, quotes and
+GitHub alerts (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`,
+`[!CAUTION]`).
 
 ← [README](../README.md)
 

@@ -84,7 +84,7 @@ pub fn visit<'a>(blocks: &'a [Block], f: &mut impl FnMut(&'a Block)) {
     for b in blocks {
         f(b);
         match b {
-            Block::Quote(inner) => visit(inner, f),
+            Block::Quote(inner) | Block::Callout { blocks: inner, .. } => visit(inner, f),
             Block::List { items, .. } => items.iter().for_each(|i| visit(i, f)),
             _ => {}
         }
@@ -119,6 +119,11 @@ pub enum Block {
         items: Vec<Vec<Block>>,
     },
     Quote(Vec<Block>),
+    /// A GitHub alert: `> [!NOTE]` and friends.
+    Callout {
+        kind: CalloutKind,
+        blocks: Vec<Block>,
+    },
     Code(CodeBlock),
     Table {
         /// Per-column alignment; may be shorter than the widest row.
@@ -136,6 +141,27 @@ pub enum Block {
         alt: String,
         url: String,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CalloutKind {
+    Note,
+    Tip,
+    Important,
+    Warning,
+    Caution,
+}
+
+impl CalloutKind {
+    pub fn title(self) -> &'static str {
+        match self {
+            CalloutKind::Note => "Note",
+            CalloutKind::Tip => "Tip",
+            CalloutKind::Important => "Important",
+            CalloutKind::Warning => "Warning",
+            CalloutKind::Caution => "Caution",
+        }
+    }
 }
 
 /// Horizontal alignment of a table column.

@@ -307,7 +307,7 @@ fn image_block(inlines: &[Inline], url: &str) -> Option<Block> {
     })
 }
 
-fn lang_of(info: &str) -> Option<String> {
+pub(super) fn lang_of(info: &str) -> Option<String> {
     let lang = info
         .split(|c: char| c.is_whitespace() || c == '{' || c == ',')
         .next()

@@ -257,6 +257,15 @@ fn reopening_a_file_returns_to_where_it_was_left() {
     assert!(again.scroll > 0);
     assert_eq!(again.source_line(), left_at);
 
+    // Keys that don't move the view keep the restore going; moving ends it.
+    key(&mut again, KeyCode::Char('#'));
+    again.layout(60, 10);
+    assert_eq!(again.source_line(), left_at);
+    assert!(again.restore.is_some());
+    key(&mut again, KeyCode::Char('j'));
+    again.layout(60, 10);
+    assert_eq!(again.restore, None);
+
     // Back at the top, the position is forgotten.
     key(&mut again, KeyCode::Char('g'));
     again.remember_position();

@@ -48,7 +48,6 @@ impl Reader {
     /// Scroll by `delta` lines (negative is up).
     pub fn scroll_by(&mut self, delta: isize) {
         self.follow = None;
-        self.restore = None;
         self.scroll = self
             .scroll
             .saturating_add_signed(delta)

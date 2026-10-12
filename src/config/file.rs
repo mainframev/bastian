@@ -76,6 +76,7 @@ pub const TEMPLATE: &str = r#"# bastian configuration. Every key is optional; co
 # hyperlinks = true     # clickable links (turn off if your terminal shows
 #                       # escape codes instead)
 # scrollbar = true      # show scrollbars
+# remember_position = true  # reopen files where you left off
 # editor = "nvim"       # used by `e`, before $VISUAL and $EDITOR
 
 # [interpreters]

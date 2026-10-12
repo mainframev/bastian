@@ -8,6 +8,7 @@ use crate::prompt::{self, Edited, Prompt};
 impl Reader {
     pub fn on_key(&mut self, key: KeyEvent) -> Action {
         self.message = None;
+        self.restore = None;
         if self.help {
             self.help = false;
             return Action::None;

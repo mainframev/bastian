@@ -120,7 +120,7 @@ mod tests {
             [("A".into(), "1".into()), ("B".into(), "x=y".into())]
         );
         assert_eq!(a.timeout, Some(Duration::from_mins(2)));
-        assert!(a.unknown.is_empty());
+        assert!(a.unknown.is_empty(), "{:?}", a.unknown);
     }
 
     #[test]

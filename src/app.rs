@@ -718,7 +718,7 @@ mod tests {
         press(&mut app, KeyCode::Char('i'));
         let off = text(&mut app);
         let r = app.reader.as_ref().unwrap();
-        assert!(r.rendered.images.is_empty());
+        assert!(r.rendered.images.is_empty(), "{:?}", r.rendered.images);
         assert!(off.contains("a red square"), "{off}");
         assert_eq!(r.message.as_deref(), Some("images off"));
         // Readers opened afterwards start with pictures off too.

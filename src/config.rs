@@ -930,7 +930,8 @@ mod tests {
         assert_eq!(c.scrollbar, Some(false));
         assert_eq!(c.editor.as_deref(), Some("nvim -p"));
         assert_eq!(c.interpreters["ruby"], ["ruby", "-e"]);
-        assert!(c.interpreters["fish"].is_empty());
+        let fish = &c.interpreters["fish"];
+        assert!(fish.is_empty(), "{fish:?}");
     }
 
     #[test]

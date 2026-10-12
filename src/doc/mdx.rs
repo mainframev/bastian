@@ -424,7 +424,7 @@ Use <Badge>new</Badge> for the inline API and {props.version} too.
         assert!(parse("<Callout>\n\ntext\n").is_none());
         // parse_for then falls back to plain Markdown instead of failing.
         let doc = crate::doc::parse_for("<Callout>\n\ntext\n", Some(std::path::Path::new("a.mdx")));
-        assert!(!doc.blocks.is_empty());
+        assert!(!doc.blocks.is_empty(), "no blocks parsed");
     }
 
     #[test]

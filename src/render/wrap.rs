@@ -127,12 +127,17 @@ impl Wrapper {
                 if self.cur_w + chunk_w + cw > self.width && self.cur_w + chunk_w > 0 {
                     let mut carry = Vec::new();
                     if kinsoku {
+                        // What moves down must still fit with `c` on the
+                        // next line; the width wins over punctuation rules.
                         let mut next = c;
+                        let mut moved_w = cw;
                         while chunk.len() > 1
                             && let Some(&(last, ..)) = chunk.last()
                             && (no_break_before(next) || no_break_after(last))
+                            && moved_w + last.width().unwrap_or(0) <= self.width
                         {
                             carry.push(chunk.pop().expect("chunk has more than one char"));
+                            moved_w += last.width().unwrap_or(0);
                             next = last;
                         }
                         carry.reverse();
@@ -333,6 +338,18 @@ mod tests {
                 .collect::<String>(),
             "「ab"
         );
+    }
+
+    #[test]
+    fn kinsoku_never_overflows_the_line() {
+        // From 2: a double-width character never fits in 1.
+        for width in 2..8 {
+            for text in ["Rust」）》", "「「「ab」」」", "ab」」」」」"] {
+                for line in wrap(&run(text), width) {
+                    assert!(line.width() <= width, "{text:?} at {width}: {line:?}");
+                }
+            }
+        }
     }
 
     #[test]

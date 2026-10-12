@@ -113,6 +113,25 @@ fn da1_end(reply: &[u8]) -> Option<usize> {
 /// Write `query` to the terminal and read its reply until `done` says it's
 /// complete or `timeout` passes. Talks to `/dev/tty` in raw mode, always
 /// restored, and never leaves a reader behind.
+/// Pixel width and height of one character cell, from the terminal's
+/// window size.
+pub fn cell_pixels() -> Option<(u16, u16)> {
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsRawFd;
+        let tty = std::fs::File::open("/dev/tty").ok()?;
+        // SAFETY: TIOCGWINSZ fills a winsize struct we own, on an open fd.
+        let mut ws: libc::winsize = unsafe { std::mem::zeroed() };
+        if unsafe { libc::ioctl(tty.as_raw_fd(), libc::TIOCGWINSZ, &raw mut ws) } != 0 {
+            return None;
+        }
+        (ws.ws_xpixel > 0 && ws.ws_ypixel > 0 && ws.ws_col > 0 && ws.ws_row > 0)
+            .then(|| (ws.ws_xpixel / ws.ws_col, ws.ws_ypixel / ws.ws_row))
+    }
+    #[cfg(not(unix))]
+    None
+}
+
 #[cfg(unix)]
 fn ask(query: &[u8], timeout: Duration, done: impl Fn(&[u8]) -> bool) -> Option<Vec<u8>> {
     use std::fs::OpenOptions;

@@ -5,7 +5,8 @@ Opening a document, from the [file list](file-list.md) or with
 tables fitted to the width, highlighted code, links, images, quotes and
 GitHub alerts (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`,
 `[!CAUTION]`) and footnotes, which are numbered and listed at the end. A
-footnote reference is a link: `L` jumps to its note.
+footnote reference is a link: use `L` to list it, then `Enter` to jump to
+its note.
 
 ← [README](../README.md)
 

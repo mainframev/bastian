@@ -521,6 +521,17 @@ impl Reader {
     /// state whose block still exists.
     pub fn replace_doc(&mut self, doc: Document) {
         let codes = collect_code(&doc.blocks);
+        // A pending prompt or queue names blocks by index. Once the blocks
+        // change, those indexes point at code the user never agreed to run.
+        let same = codes.len() == self.codes.len()
+            && codes
+                .iter()
+                .zip(&self.codes)
+                .all(|(a, b)| a.lang == b.lang && a.attrs == b.attrs && a.src == b.src);
+        if !same {
+            self.confirm = None;
+            self.queue.clear();
+        }
         self.runs
             .retain(|id, run| *id < codes.len() || run.is_running());
         if self.focus.is_some_and(|id| id >= codes.len()) {

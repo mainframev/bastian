@@ -2,7 +2,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
-use super::wrap::wrap;
+use super::wrap::{words, wrap};
 use super::{Out, Renderer};
 use crate::doc::{Align, Inline, plain_text};
 
@@ -31,11 +31,7 @@ impl Renderer<'_> {
             for i in 0..cols {
                 let s = text(row, i);
                 let line = s.lines().map(UnicodeWidthStr::width).max().unwrap_or(0);
-                let word = s
-                    .split_whitespace()
-                    .map(UnicodeWidthStr::width)
-                    .max()
-                    .unwrap_or(0);
+                let word = words(&s).map(UnicodeWidthStr::width).max().unwrap_or(0);
                 natural[i] = natural[i].max(line);
                 min[i] = min[i].max(word.min(MAX_MIN_COLUMN));
             }

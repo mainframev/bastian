@@ -34,6 +34,11 @@ fn tasks_40() {
 }
 
 #[test]
+fn cjk_30() {
+    snapshot("cjk", 30);
+}
+
+#[test]
 fn code_ranges_cover_code_lines() {
     let src = "text\n\n```sh\na\nb\n```\n\nmore\n\n```\nc\n```\n";
     let r = render(&parse(src), 40, &Theme::dark());

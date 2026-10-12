@@ -79,7 +79,10 @@ fn footnote_reference_in_a_title_is_listed_and_followed() {
     let src = format!("# Title[^t]\n\n{filler}[^t]: Where the title comes from.\n");
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('L'));
-    let picker = r.link_picker.as_ref().expect("the title's reference is listed");
+    let picker = r
+        .link_picker
+        .as_ref()
+        .expect("the title's reference is listed");
     assert_eq!(picker.links[0].url, "#fn:t");
     key(&mut r, KeyCode::Enter);
     let shown: Vec<String> = r.rendered.lines[r.scroll..]

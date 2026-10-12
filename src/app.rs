@@ -412,7 +412,20 @@ pub fn base_dir(path: &Path) -> PathBuf {
 pub fn enter_terminal(mouse: bool) -> Result<DefaultTerminal> {
     let terminal = ratatui::init();
     if mouse {
-        execute!(std::io::stdout(), EnableMouseCapture)?;
+        // ratatui's panic hook restores the screen but not mouse capture,
+        // which would leave the shell printing escapes on every click.
+        static HOOK: std::sync::Once = std::sync::Once::new();
+        HOOK.call_once(|| {
+            let restore = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                let _ = execute!(std::io::stdout(), DisableMouseCapture);
+                restore(info);
+            }));
+        });
+        if let Err(e) = execute!(std::io::stdout(), EnableMouseCapture) {
+            leave_terminal(mouse);
+            return Err(e.into());
+        }
     }
     Ok(terminal)
 }

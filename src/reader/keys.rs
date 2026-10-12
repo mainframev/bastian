@@ -1,10 +1,9 @@
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
+use super::{Action, LinkPicker, Reader};
 use crate::links;
 use crate::outline::{self, Outline};
 use crate::prompt::{self, Edited, Prompt};
-
-use super::{Action, LinkPicker, Reader};
 
 impl Reader {
     pub fn on_key(&mut self, key: KeyEvent) -> Action {

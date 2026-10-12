@@ -189,7 +189,7 @@ impl Reader {
             return web(abs);
         }
         if let Some(base) = &self.remote_base {
-            return web(base.join(url).ok()?);
+            return web(crate::remote::resolve_link(base, url)?);
         }
         let path = url.split(['?', '#']).next().unwrap_or(url);
         Some(ImageSource::File(self.base_dir.join(path)))

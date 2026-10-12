@@ -92,6 +92,9 @@ pub struct LinkSpan {
     pub width: usize,
     /// The link target as written in the document.
     pub url: String,
+    /// Which link this is, in document order; the pieces of a link that
+    /// wraps share it.
+    pub id: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]

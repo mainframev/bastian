@@ -84,7 +84,9 @@ pub fn visit<'a>(blocks: &'a [Block], f: &mut impl FnMut(&'a Block)) {
     for b in blocks {
         f(b);
         match b {
-            Block::Quote(inner) | Block::Callout { blocks: inner, .. } => visit(inner, f),
+            Block::Quote(inner)
+            | Block::Callout { blocks: inner, .. }
+            | Block::Footnote { blocks: inner, .. } => visit(inner, f),
             Block::List { items, .. } => items.iter().for_each(|i| visit(i, f)),
             _ => {}
         }
@@ -125,6 +127,13 @@ pub enum Block {
         blocks: Vec<Block>,
     },
     Code(CodeBlock),
+    /// A footnote definition, listed at the end of the document.
+    Footnote {
+        label: String,
+        /// Shown as `[number]`, in order of first reference.
+        number: usize,
+        blocks: Vec<Block>,
+    },
     Table {
         /// Per-column alignment; may be shorter than the widest row.
         align: Vec<Align>,
@@ -198,6 +207,79 @@ pub struct InlineStyle {
     pub link: Option<String>,
     /// De-emphasized syntax such as inline JSX tags and expressions.
     pub muted: bool,
+}
+
+/// Anchor (without `#`) that a footnote's references link to.
+pub fn footnote_anchor(label: &str) -> String {
+    format!("fn-{}", crate::links::slug(label))
+}
+
+/// Footnotes gathered while parsing. References are numbered in the order
+/// they first appear; definitions are held back and listed at the end.
+#[derive(Default)]
+struct Footnotes {
+    /// Lowercased labels in order of first reference.
+    refs: Vec<String>,
+    /// `(label, blocks, source line)` of each definition.
+    defs: Vec<(String, Vec<Block>, usize)>,
+}
+
+impl Footnotes {
+    /// The `[n]` text for a reference to `label`, linking to its note.
+    fn reference(&mut self, label: &str, style: &InlineStyle) -> Inline {
+        let key = label.to_lowercase();
+        let n = if let Some(i) = self.refs.iter().position(|l| *l == key) {
+            i + 1
+        } else {
+            self.refs.push(key);
+            self.refs.len()
+        };
+        let mut style = style.clone();
+        style.link = Some(format!("#{}", footnote_anchor(label)));
+        Inline {
+            text: format!("[{n}]"),
+            style,
+        }
+    }
+
+    fn define(&mut self, label: String, blocks: Vec<Block>, line: usize) {
+        self.defs.push((label, blocks, line));
+    }
+
+    /// Append a rule and the notes to a document's top-level `blocks` (and
+    /// their source `lines`): referenced ones by number, then any that are
+    /// never referenced.
+    fn append_to(self, blocks: &mut Vec<Block>, lines: &mut Vec<usize>) {
+        let mut unreferenced = self.refs.len();
+        let mut notes: Vec<_> = self
+            .defs
+            .into_iter()
+            .map(|(label, inner, line)| {
+                let key = label.to_lowercase();
+                let number = if let Some(i) = self.refs.iter().position(|l| *l == key) {
+                    i + 1
+                } else {
+                    unreferenced += 1;
+                    unreferenced
+                };
+                (number, label, inner, line)
+            })
+            .collect();
+        notes.sort_by_key(|n| n.0);
+        let Some(first) = notes.first() else {
+            return;
+        };
+        blocks.push(Block::Rule);
+        lines.push(first.3);
+        for (number, label, inner, line) in notes {
+            blocks.push(Block::Footnote {
+                label,
+                number,
+                blocks: inner,
+            });
+            lines.push(line);
+        }
+    }
 }
 
 pub fn plain_text(inlines: &[Inline]) -> String {

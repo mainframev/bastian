@@ -4,7 +4,8 @@ Opening a document, from the [file list](file-list.md) or with
 `bastian README.md`, shows it laid out for the terminal: headings, lists and
 tables fitted to the width, highlighted code, links, images, quotes and
 GitHub alerts (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`,
-`[!CAUTION]`).
+`[!CAUTION]`) and footnotes, which are numbered and listed at the end. A
+footnote reference is a link: `L` jumps to its note.
 
 ← [README](../README.md)
 

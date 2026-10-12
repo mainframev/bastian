@@ -99,6 +99,7 @@ impl Reader {
                 {
                     Some(i)
                 }
+                Block::Footnote { label, .. } if doc::footnote_anchor(label) == anchor => Some(i),
                 _ => None,
             });
         if let Some(i) = top {

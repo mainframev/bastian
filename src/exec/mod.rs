@@ -3,6 +3,7 @@ use std::io::{BufRead, BufReader, Read};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -133,7 +134,7 @@ impl BlockRun {
 pub struct Runner {
     tx: SyncSender<RunEvent>,
     rx: Receiver<RunEvent>,
-    pids: HashMap<usize, u32>,
+    procs: HashMap<usize, Proc>,
     cancelled: HashSet<usize>,
     /// When SIGTERM went to each cancelled block still awaiting SIGKILL.
     term_sent: HashMap<usize, Instant>,
@@ -145,7 +146,7 @@ impl Default for Runner {
         Self {
             tx,
             rx,
-            pids: HashMap::new(),
+            procs: HashMap::new(),
             cancelled: HashSet::new(),
             term_sent: HashMap::new(),
         }
@@ -167,7 +168,14 @@ impl Runner {
 
         let started = Instant::now();
         let mut child = cmd.spawn()?;
-        self.pids.insert(id, child.id());
+        let reaped = Arc::new(Mutex::new(false));
+        self.procs.insert(
+            id,
+            Proc {
+                pid: child.id(),
+                reaped: Arc::clone(&reaped),
+            },
+        );
         self.cancelled.remove(&id);
         self.term_sent.remove(&id);
 
@@ -180,7 +188,15 @@ impl Runner {
             for r in readers.into_iter().flatten() {
                 let _ = r.join();
             }
-            let code = child.wait().ok().and_then(|s| s.code());
+            // Wait for the leader to exit but leave it a zombie, so its pid
+            // and process group can't be reused while `reaped` is false.
+            #[cfg(unix)]
+            wait_exit_unreaped(child.id());
+            let code = {
+                let mut reaped = reaped.lock().unwrap_or_else(PoisonError::into_inner);
+                *reaped = true;
+                child.wait().ok().and_then(|s| s.code())
+            };
             let _ = tx.send(RunEvent::Exit {
                 id,
                 code,
@@ -220,31 +236,31 @@ impl Runner {
     }
 
     pub fn cancel(&mut self, id: usize) {
-        if let Some(&pid) = self.pids.get(&id) {
+        if let Some(proc) = self.procs.get(&id) {
             self.cancelled.insert(id);
             self.term_sent.entry(id).or_insert_with(Instant::now);
-            kill_group(pid, Signal::Term);
+            proc.signal(Signal::Term);
         }
     }
 
     /// SIGKILL cancelled blocks still running `KILL_GRACE` after SIGTERM,
     /// once per block.
     pub fn escalate(&mut self) {
-        let pids = &self.pids;
+        let procs = &self.procs;
         self.term_sent.retain(|id, sent| {
-            let Some(&pid) = pids.get(id) else {
+            let Some(proc) = procs.get(id) else {
                 return false;
             };
             if sent.elapsed() < KILL_GRACE {
                 return true;
             }
-            kill_group(pid, Signal::Kill);
+            proc.signal(Signal::Kill);
             false
         });
     }
 
     pub fn is_running(&self, id: usize) -> bool {
-        self.pids.contains_key(&id)
+        self.procs.contains_key(&id)
     }
 
     /// Events received since the last call, without blocking.
@@ -252,7 +268,7 @@ impl Runner {
         let mut events: Vec<RunEvent> = self.rx.try_iter().collect();
         for e in &mut events {
             if let RunEvent::Exit { id, cancelled, .. } = e {
-                self.pids.remove(id);
+                self.procs.remove(id);
                 self.term_sent.remove(id);
                 *cancelled = self.cancelled.remove(id);
             }
@@ -263,16 +279,63 @@ impl Runner {
 
 impl Drop for Runner {
     fn drop(&mut self) {
-        if self.pids.is_empty() {
-            return;
+        let mut signalled = false;
+        for proc in self.procs.values() {
+            signalled |= proc.signal(Signal::Term);
         }
-        for &pid in self.pids.values() {
-            kill_group(pid, Signal::Term);
+        if !signalled {
+            return;
         }
         // A short grace period to clean up, then stop whatever ignored it.
         thread::sleep(Duration::from_millis(100));
-        for &pid in self.pids.values() {
-            kill_group(pid, Signal::Kill);
+        for proc in self.procs.values() {
+            proc.signal(Signal::Kill);
+        }
+    }
+}
+
+/// A block's process group leader, and whether the waiter thread has
+/// reaped it.
+struct Proc {
+    pid: u32,
+    reaped: Arc<Mutex<bool>>,
+}
+
+impl Proc {
+    /// Signal the block's process group unless the leader was reaped.
+    /// Until then the leader is at worst a zombie, which keeps its pid
+    /// and group id from being reused, so the signal can't reach an
+    /// unrelated process. Returns whether the signal was sent.
+    fn signal(&self, sig: Signal) -> bool {
+        let reaped = self.reaped.lock().unwrap_or_else(PoisonError::into_inner);
+        if *reaped {
+            return false;
+        }
+        kill_group(self.pid, sig);
+        #[cfg(test)]
+        tests::SIGNALS.with(|n| n.set(n.get() + 1));
+        true
+    }
+}
+
+/// Block until process `pid` exits, without reaping it.
+#[cfg(unix)]
+fn wait_exit_unreaped(pid: u32) {
+    loop {
+        // SAFETY: an all-zero siginfo_t is a valid value of this plain C struct.
+        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        // SAFETY: `info` is a valid, writable siginfo_t for the call. WNOWAIT
+        // leaves the child waitable, so `Child::wait` still reaps it.
+        let rc = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                pid as libc::id_t,
+                &raw mut info,
+                libc::WEXITED | libc::WNOWAIT,
+            )
+        };
+        if rc == 0 || std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
+            return;
         }
     }
 }
@@ -302,6 +365,12 @@ fn kill_group(_pid: u32, _sig: Signal) {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+
+    thread_local! {
+        /// Signals sent by `Proc::signal` on this test's thread.
+        pub(super) static SIGNALS: Cell<usize> = const { Cell::new(0) };
+    }
 
     fn spec(src: &str) -> RunSpec {
         RunSpec {
@@ -353,6 +422,7 @@ mod tests {
         r.start(0, &spec("sleep 30 & sleep 30")).unwrap();
         thread::sleep(Duration::from_millis(100));
         r.cancel(0);
+        assert_eq!(SIGNALS.with(Cell::get), 1);
         let (_, exit) = run_until_exit(&mut r, Duration::from_secs(2));
         assert!(matches!(
             exit,
@@ -399,7 +469,7 @@ mod tests {
         let mut r = Runner::default();
         r.start(0, &spec("trap '' TERM; sleep 30")).unwrap();
         thread::sleep(Duration::from_millis(100));
-        let pid = r.pids[&0] as libc::pid_t;
+        let pid = r.procs[&0].pid as libc::pid_t;
         drop(r);
         let deadline = Instant::now() + Duration::from_secs(2);
         // SAFETY: kill(2) with signal 0 only checks that the group exists.
@@ -407,6 +477,30 @@ mod tests {
             assert!(Instant::now() < deadline, "block survived drop");
             thread::sleep(Duration::from_millis(10));
         }
+    }
+
+    #[test]
+    fn reaped_blocks_are_never_signalled() {
+        let mut r = Runner::default();
+        r.start(0, &spec("true")).unwrap();
+        let reaped = Arc::clone(&r.procs[&0].reaped);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        // Wait for the waiter thread to reap the block, without draining
+        // its exit, so the runner still holds the stale pid.
+        while !*reaped.lock().unwrap() {
+            assert!(Instant::now() < deadline, "block was not reaped");
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(r.is_running(0));
+
+        r.cancel(0);
+        r.term_sent
+            .insert(0, Instant::now().checked_sub(KILL_GRACE).unwrap());
+        r.escalate();
+        let started = Instant::now();
+        drop(r);
+        assert_eq!(SIGNALS.with(Cell::get), 0);
+        assert!(started.elapsed() < Duration::from_millis(100));
     }
 
     #[test]

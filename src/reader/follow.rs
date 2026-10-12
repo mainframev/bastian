@@ -33,14 +33,16 @@ impl Reader {
         let Some(picker) = &mut self.link_picker else {
             return Action::None;
         };
-        let len = picker.links.len();
+        let motion = match key.code {
+            KeyCode::Tab => Some(Motion::Down),
+            KeyCode::BackTab => Some(Motion::Up),
+            _ => nav::list_motion(&key),
+        };
+        if let Some(motion) = motion {
+            picker.selected = nav::step(picker.selected, picker.links.len(), motion);
+            return Action::None;
+        }
         match key.code {
-            KeyCode::Char('j') | KeyCode::Down | KeyCode::Tab => {
-                picker.selected = nav::step(picker.selected, len, Motion::Down);
-            }
-            KeyCode::Char('k') | KeyCode::Up | KeyCode::BackTab => {
-                picker.selected = nav::step(picker.selected, len, Motion::Up);
-            }
             KeyCode::Enter => {
                 let url = picker.links[picker.selected].url.clone();
                 self.link_picker = None;
@@ -122,4 +124,37 @@ pub(super) fn heading_texts(blocks: &[Block]) -> Vec<String> {
         }
     });
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    use crate::doc::parse;
+    use crate::reader::Reader;
+    use crate::render::theme::Theme;
+
+    fn press(r: &mut Reader, code: KeyCode, mods: KeyModifiers) {
+        r.on_key(KeyEvent::new(code, mods));
+    }
+
+    #[test]
+    fn link_picker_takes_the_list_keys() {
+        let src = "[a](https://a.dev) [b](https://b.dev) [c](https://c.dev)\n";
+        let mut r = Reader::new("t".into(), parse(src), Theme::dark(), 80);
+        r.layout(80, 20);
+        press(&mut r, KeyCode::Char('L'), KeyModifiers::NONE);
+        let selected = |r: &Reader| r.link_picker.as_ref().unwrap().selected;
+        press(&mut r, KeyCode::Char('G'), KeyModifiers::NONE);
+        assert_eq!(selected(&r), 2);
+        press(&mut r, KeyCode::Char('p'), KeyModifiers::CONTROL);
+        assert_eq!(selected(&r), 1);
+        press(&mut r, KeyCode::Home, KeyModifiers::NONE);
+        assert_eq!(selected(&r), 0);
+        press(&mut r, KeyCode::Char('n'), KeyModifiers::CONTROL);
+        press(&mut r, KeyCode::Tab, KeyModifiers::NONE);
+        assert_eq!(selected(&r), 2);
+        press(&mut r, KeyCode::BackTab, KeyModifiers::NONE);
+        assert_eq!(selected(&r), 1);
+    }
 }

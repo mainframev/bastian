@@ -37,7 +37,8 @@ pub struct Browser {
     pub prompt: Option<Prompt>,
     /// One-shot error shown in the status bar until the next key.
     pub message: Option<String>,
-    pub height: usize,
+    /// Entries per page, at least 1: only `layout` sets it.
+    height: usize,
     /// Entries still arriving from the background scan.
     incoming: Option<Receiver<Entry>>,
     /// When the scan started, for the loading spinner.
@@ -166,6 +167,11 @@ impl Browser {
     /// scrolling entry by entry.
     pub fn layout(&mut self, rows: usize) {
         self.height = rows.max(1);
+    }
+
+    /// Entries per page, as last set by `layout`.
+    pub fn page_len(&self) -> usize {
+        self.height
     }
 
     /// Index of the first entry on the current page.

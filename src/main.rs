@@ -89,9 +89,9 @@ struct Cli {
     #[arg(long, value_enum, value_name = "STYLE")]
     selector: Option<config::Selector>,
 
-    /// How the file browser lays out each file [default: cards].
+    /// How the file list lays out each file [default: cards].
     #[arg(long, value_enum, value_name = "LAYOUT")]
-    browser_layout: Option<config::BrowserLayout>,
+    list_layout: Option<config::ListLayout>,
 
     /// Order of the files in the browser [default: modified].
     #[arg(long, value_enum, value_name = "ORDER")]
@@ -192,7 +192,7 @@ fn main() -> Result<()> {
                 _ => None,
             },
             selector: cli.selector,
-            browser_layout: cli.browser_layout,
+            list_layout: cli.list_layout,
             sort: cli.sort,
             ..config::Config::default()
         },
@@ -403,7 +403,7 @@ fn settings(
         images: (tui && r.images.value).then(images::Support::detect),
         show_images: r.images.value,
         selector: r.selector.value,
-        browser_layout: r.browser_layout.value,
+        list_layout: r.list_layout.value,
         interpreters: Interpreters::new(r.interpreters),
     };
     Ok((settings, name))

@@ -15,7 +15,7 @@ use super::inset;
 use super::logo;
 use super::status;
 use crate::browser::{Browser, Entry};
-use crate::config::{BrowserLayout, Selector};
+use crate::config::{ListLayout, Selector};
 use crate::render::theme::Theme;
 
 const HELP: &[(&str, &str)] = &[
@@ -46,7 +46,7 @@ pub struct Look<'a> {
     /// strftime format of each file's date; `None` leaves dates out.
     pub date_format: Option<&'a str>,
     pub selector: Selector,
-    pub layout: BrowserLayout,
+    pub layout: ListLayout,
     /// A scrollbar beside the list when it's longer than a page.
     pub scrollbar: bool,
 }
@@ -86,8 +86,8 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, look: Look) {
     };
     let entry_rows = match look.layout {
         // A row less without the date line.
-        BrowserLayout::Cards => CARD_ROWS - u16::from(look.date_format.is_none()),
-        BrowserLayout::Compact => 1,
+        ListLayout::Cards => CARD_ROWS - u16::from(look.date_format.is_none()),
+        ListLayout::Compact => 1,
     };
     b.layout(usize::from(list.height / entry_rows));
 
@@ -140,10 +140,10 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, look: Look) {
             .map(|(f, time)| format_time(time, &tz, f))
             .unwrap_or_default();
         match look.layout {
-            BrowserLayout::Cards => {
+            ListLayout::Cards => {
                 lines.extend(card_lines(e, &date, t, look.selector, selected));
             }
-            BrowserLayout::Compact => lines.push(compact_line(
+            ListLayout::Compact => lines.push(compact_line(
                 e,
                 &date,
                 t,
@@ -155,7 +155,7 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, look: Look) {
         if selected {
             selected_rows = start..lines.len();
         }
-        if look.layout == BrowserLayout::Cards {
+        if look.layout == ListLayout::Cards {
             lines.push(Line::default());
         }
     }
@@ -457,7 +457,7 @@ mod tests {
             .unwrap_or_else(|| panic!("no {s}:\n{}", rows.join("\n")))
     }
 
-    fn look(selector: Selector, layout: BrowserLayout) -> Look<'static> {
+    fn look(selector: Selector, layout: ListLayout) -> Look<'static> {
         Look {
             logo: false,
             date_format: Some(crate::config::DATE_FORMAT),
@@ -476,7 +476,7 @@ mod tests {
             (Selector::Block, '▌', 2),
             (Selector::Arrow, '❯', 1),
         ] {
-            let rows = rows(&styled_screen(0, look(selector, BrowserLayout::Cards), 30));
+            let rows = rows(&styled_screen(0, look(selector, ListLayout::Cards), 30));
             let text = rows.join("\n");
             let with: Vec<usize> = (0..rows.len())
                 .filter(|&i| rows[i].starts_with(&format!("  {glyph} ")))
@@ -493,7 +493,7 @@ mod tests {
     #[test]
     fn highlight_selector_colors_the_selected_rows() {
         let t = Theme::dark();
-        let buf = styled_screen(0, look(Selector::Highlight, BrowserLayout::Cards), 30);
+        let buf = styled_screen(0, look(Selector::Highlight, ListLayout::Cards), 30);
         let rows = rows(&buf);
         let (top, guide) = (row_of(&rows, "top.md"), row_of(&rows, "Guide"));
         let bg = |y: usize| buf[(10, y as u16)].bg;
@@ -508,7 +508,7 @@ mod tests {
     fn compact_layout_lists_one_file_per_row() {
         let rows = rows(&styled_screen(
             0,
-            look(Selector::Bar, BrowserLayout::Compact),
+            look(Selector::Bar, ListLayout::Compact),
             30,
         ));
         let text = rows.join("\n");
@@ -526,7 +526,7 @@ mod tests {
     fn compact_pages_hold_a_file_per_list_row() {
         let rows = rows(&styled_screen(
             40,
-            look(Selector::Bar, BrowserLayout::Compact),
+            look(Selector::Bar, ListLayout::Compact),
             30,
         ));
         let text = rows.join("\n");
@@ -601,7 +601,7 @@ mod tests {
     fn dates_can_be_left_out() {
         let look = Look {
             date_format: None,
-            ..look(Selector::Bar, BrowserLayout::Cards)
+            ..look(Selector::Bar, ListLayout::Cards)
         };
         let rows = rows(&styled_screen(0, look, 30));
         let text = rows.join("\n");

@@ -31,6 +31,9 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<Option<String
         if let Some(r) = &mut app.reader {
             redraw |= r.tick();
         }
+        for r in &mut app.history {
+            r.tick_hidden();
+        }
         if let Some(b) = &mut app.browser {
             redraw |= b.tick();
         }

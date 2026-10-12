@@ -117,9 +117,11 @@ impl Wrapper {
     /// rather than start a line with closing punctuation or end one with
     /// opening punctuation.
     fn push_split(&mut self, pieces: &[(&str, Style)], kinsoku: bool) {
-        let mut chunk: Vec<(char, Style)> = Vec::new();
+        // Each char remembers which piece it came from, so pieces that look
+        // alike (two adjacent links) still come out as separate spans.
+        let mut chunk: Vec<(char, Style, usize)> = Vec::new();
         let mut chunk_w = 0;
-        for &(text, style) in pieces {
+        for (piece, &(text, style)) in pieces.iter().enumerate() {
             for c in text.chars() {
                 let cw = c.width().unwrap_or(0);
                 if self.cur_w + chunk_w + cw > self.width && self.cur_w + chunk_w > 0 {
@@ -127,7 +129,7 @@ impl Wrapper {
                     if kinsoku {
                         let mut next = c;
                         while chunk.len() > 1
-                            && let Some(&(last, _)) = chunk.last()
+                            && let Some(&(last, ..)) = chunk.last()
                             && (no_break_before(next) || no_break_after(last))
                         {
                             carry.push(chunk.pop().expect("chunk has more than one char"));
@@ -138,19 +140,19 @@ impl Wrapper {
                     self.push_chars(&chunk);
                     self.newline();
                     chunk = carry;
-                    chunk_w = chunk.iter().map(|(c, _)| c.width().unwrap_or(0)).sum();
+                    chunk_w = chunk.iter().map(|(c, ..)| c.width().unwrap_or(0)).sum();
                 }
-                chunk.push((c, style));
+                chunk.push((c, style, piece));
                 chunk_w += cw;
             }
         }
         self.push_chars(&chunk);
     }
 
-    /// Push characters as spans, one per run of the same style.
-    fn push_chars(&mut self, chars: &[(char, Style)]) {
-        for group in chars.chunk_by(|a, b| a.1 == b.1) {
-            let text: String = group.iter().map(|(c, _)| c).collect();
+    /// Push characters as spans, one per run from the same piece.
+    fn push_chars(&mut self, chars: &[(char, Style, usize)]) {
+        for group in chars.chunk_by(|a, b| a.2 == b.2) {
+            let text: String = group.iter().map(|(c, ..)| c).collect();
             let w = text.width();
             self.push(text, group[0].1, w);
         }
@@ -331,6 +333,20 @@ mod tests {
                 .collect::<String>(),
             "「ab"
         );
+    }
+
+    #[test]
+    fn split_words_keep_their_pieces_apart() {
+        // Two adjacent links in one word too wide for the line: same look,
+        // still two spans, so each keeps its own target.
+        let link = Style::default().underlined();
+        let runs = vec![("abcdef".to_string(), link), ("ghij".to_string(), link)];
+        let lines = wrap(&runs, 8);
+        let spans: Vec<Vec<&str>> = lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
+            .collect();
+        assert_eq!(spans, [vec!["abcdef", "gh"], vec!["ij"]]);
     }
 
     #[test]

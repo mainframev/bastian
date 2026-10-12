@@ -9,14 +9,62 @@ pub(super) fn is_link_style(style: Style, t: &Theme) -> bool {
     style.fg == Some(t.link) && style.add_modifier.contains(Modifier::UNDERLINED)
 }
 
-/// Match link-styled spans, in order, to the link runs the renderer styled
-/// (`(url, non-space characters)`), and merge each run's spans on a line.
-/// Wrapping only drops whitespace, so counting the other characters ties
-/// every span back to its run, even across line breaks.
-pub(super) fn locate_links(lines: &[Line], runs: &[(String, usize)], t: &Theme) -> Vec<LinkSpan> {
+/// Text the renderer drew in the link style, in the order it will appear
+/// on screen.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct LinkRun {
+    pub url: String,
+    /// Non-space characters of the text.
+    pub chars: usize,
+    /// The link occurrence it belongs to (`InlineStyle::link_id`).
+    pub id: usize,
+}
+
+/// Match link-styled spans, in order, to the link runs the renderer
+/// styled, and merge each link's spans on a line. Wrapping only drops
+/// whitespace, so counting the other characters ties every span back to
+/// its run, even across line breaks.
+pub(super) fn locate_links(lines: &[Line], runs: &[LinkRun], t: &Theme) -> Vec<LinkSpan> {
     let mut out: Vec<LinkSpan> = Vec::new();
+    walk(lines, runs, t, |i, col, w, _, run| match out.last_mut() {
+        Some(l) if l.line == i && l.col + l.width == col && l.id == run.id => l.width += w,
+        _ => out.push(LinkSpan {
+            line: i,
+            col,
+            width: w,
+            url: run.url.clone(),
+            id: run.id,
+        }),
+    });
+    out
+}
+
+/// `runs` cut at the ends of `lines`: what each line holds of them, so a
+/// table can list its cells' runs in screen order.
+pub(super) fn runs_by_line(lines: &[Line], runs: &[LinkRun], t: &Theme) -> Vec<Vec<LinkRun>> {
+    let mut out: Vec<Vec<LinkRun>> = vec![Vec::new(); lines.len()];
+    walk(lines, runs, t, |i, _, _, used, run| {
+        match out[i].last_mut() {
+            Some(last) if last.id == run.id => last.chars += used,
+            _ => out[i].push(LinkRun {
+                chars: used,
+                ..run.clone()
+            }),
+        }
+    });
+    out
+}
+
+/// Call `f(line, col, width, non-space chars, run)` for each link-styled
+/// span, with the run it belongs to.
+fn walk(
+    lines: &[Line],
+    runs: &[LinkRun],
+    t: &Theme,
+    mut f: impl FnMut(usize, usize, usize, usize, &LinkRun),
+) {
     let mut run = 0;
-    let mut left = runs.first().map_or(0, |r| r.1);
+    let mut left = runs.first().map_or(0, |r| r.chars);
     for (i, line) in lines.iter().enumerate() {
         let mut col = 0;
         for span in &line.spans {
@@ -27,28 +75,17 @@ pub(super) fn locate_links(lines: &[Line], runs: &[(String, usize)], t: &Theme) 
                 // still belong to the run they follow.
                 while used > 0 && left == 0 && run + 1 < runs.len() {
                     run += 1;
-                    left = runs[run].1;
+                    left = runs[run].chars;
                 }
-                let Some((url, _)) = runs.get(run) else {
-                    return out;
+                let Some(r) = runs.get(run) else {
+                    return;
                 };
-                match out.last_mut() {
-                    Some(l) if l.line == i && l.col + l.width == col && l.url == *url => {
-                        l.width += w;
-                    }
-                    _ => out.push(LinkSpan {
-                        line: i,
-                        col,
-                        width: w,
-                        url: url.clone(),
-                    }),
-                }
+                f(i, col, w, used, r);
                 left = left.saturating_sub(used);
             }
             col += w;
         }
     }
-    out
 }
 
 #[cfg(test)]

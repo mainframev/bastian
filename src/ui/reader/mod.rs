@@ -78,8 +78,24 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
         })
         .collect();
     frame.render_widget(Paragraph::new(visible), content);
+    // The focused link: drawn plain (no hyperlink) and highlighted.
+    let focused = r
+        .link_focus
+        .and_then(|i| r.link_stops().get(i).cloned())
+        .unwrap_or_default();
     if r.hyperlinks {
-        draw_hyperlinks(frame, r, content, end);
+        draw_hyperlinks(frame, r, content, end, &focused);
+    }
+    for link in focused.iter().map(|&i| &r.rendered.links[i]) {
+        if (r.scroll..end).contains(&link.line) {
+            let x = content.x + link.col as u16;
+            let width = (link.width as u16).min(content.right().saturating_sub(x));
+            let y = content.y + (link.line - r.scroll) as u16;
+            frame.buffer_mut().set_style(
+                Rect::new(x, y, width, 1),
+                Style::default().fg(t.h1_fg).bg(t.current_bg),
+            );
+        }
     }
     draw_images(frame, r, content, end);
     if r.scrollbar {
@@ -134,13 +150,17 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
     } else {
         r.scroll * 100 / r.max_scroll()
     };
-    let right = if r.search.is_none() && r.focus.is_some() {
+    let right = if let Some((i, n)) = r.link_position() {
+        format!("link {i}/{n}  {pct:>3}%")
+    } else if r.search.is_none() && r.focus.is_some() {
         let (i, n) = r.focus_position().unwrap_or((0, 0));
         format!("block {i}/{n}  {pct:>3}%")
     } else {
         format!("{} lines  {pct:>3}%", r.rendered.lines.len())
     };
-    let hint = if r.focus.is_some() {
+    let hint = if r.link_focus.is_some() {
+        format!("{}  · enter follow · s/S next/prev", r.link_preview)
+    } else if r.focus.is_some() {
         format!("{}  enter run · R all · x stop · y copy · ? more", r.name)
     } else {
         format!("{}  e edit · ? more", r.name)
@@ -185,6 +205,7 @@ const HELP: &[(&str, &str)] = &[
     ("y", "copy focused block"),
     ("c", "copy whole document"),
     ("L", "list links"),
+    ("s/S", "focus next/previous link; enter follows it"),
     ("e", "edit at this line in $VISUAL/$EDITOR"),
     ("ctrl-z", "suspend (resume with fg)"),
     ("#", "toggle line numbers"),

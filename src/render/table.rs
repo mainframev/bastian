@@ -2,6 +2,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
+use super::links::runs_by_line;
 use super::wrap::{words, wrap};
 use super::{Out, Renderer};
 use crate::doc::{Align, Inline, plain_text};
@@ -42,15 +43,31 @@ impl Renderer<'_> {
 
         let sep = Style::default().fg(t.muted);
         let row_lines = |row: &[Vec<Inline>], base: Style| -> Vec<Line<'static>> {
+            let mut cell_links = Vec::new();
             let cells: Vec<Vec<Line<'static>>> = widths
                 .iter()
                 .enumerate()
                 .map(|(i, &w)| {
                     let inlines = row.get(i).map_or(&[][..], Vec::as_slice);
-                    wrap(&self.runs(inlines, base), w)
+                    let before = self.link_runs.borrow().len();
+                    let lines = wrap(&self.runs(inlines, base), w);
+                    let runs = self.link_runs.borrow_mut().split_off(before);
+                    cell_links.push(runs_by_line(&lines, &runs, t));
+                    lines
                 })
                 .collect();
             let height = cells.iter().map(Vec::len).max().unwrap_or(1);
+            // Cells are styled one after another but drawn side by side, a
+            // line at a time: list their link runs in that order.
+            let mut link_runs = self.link_runs.borrow_mut();
+            for k in 0..height {
+                for runs in &mut cell_links {
+                    if let Some(line) = runs.get_mut(k) {
+                        link_runs.append(line);
+                    }
+                }
+            }
+            drop(link_runs);
             (0..height)
                 .map(|k| {
                     let mut spans = vec![Span::raw(" ")];

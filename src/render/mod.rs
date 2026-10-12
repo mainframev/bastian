@@ -25,7 +25,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::doc::{Block, CalloutKind, Document, Inline, plain_text};
 use crate::exec::{BlockRun, Interpreters};
-use links::{is_link_style, locate_links};
+use links::{LinkRun, is_link_style, locate_links};
 use theme::Theme;
 use wrap::wrap;
 
@@ -92,6 +92,9 @@ pub struct LinkSpan {
     pub width: usize,
     /// The link target as written in the document.
     pub url: String,
+    /// Which link this is, in document order; the pieces of a link that
+    /// wraps share it.
+    pub id: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -237,7 +240,7 @@ struct Renderer<'a> {
     theme: &'a Theme,
     cx: Context<'a>,
     /// Link runs in the order they were styled, for `locate_links`.
-    link_runs: RefCell<Vec<(String, usize)>>,
+    link_runs: RefCell<Vec<LinkRun>>,
 }
 
 impl Renderer<'_> {
@@ -433,11 +436,20 @@ impl Renderer<'_> {
                 if i.style.muted {
                     s = s.fg(t.muted);
                 }
-                if let Some(url) = &i.style.link
+                if let (Some(url), Some(id)) = (&i.style.link, i.style.link_id)
                     && is_link_style(s, t)
                 {
                     let chars = i.text.chars().filter(|c| !c.is_whitespace()).count();
-                    self.link_runs.borrow_mut().push((url.clone(), chars));
+                    let mut link_runs = self.link_runs.borrow_mut();
+                    // `[the **docs**](url)` is several inlines but one link.
+                    match link_runs.last_mut() {
+                        Some(run) if run.id == id => run.chars += chars,
+                        _ => link_runs.push(LinkRun {
+                            url: url.clone(),
+                            chars,
+                            id,
+                        }),
+                    }
                 }
                 (i.text.clone(), s)
             })

@@ -144,8 +144,8 @@ pub fn modal(frame: &mut Frame, t: &Theme, title: &str, lines: Vec<Line>) {
 }
 
 /// A popup list of `lines` showing at most `rows` of them, with `selected`
-/// marked `▶ ` and kept in view. `centered` keeps it mid-list while
-/// scrolling rather than at the edge.
+/// marked `▶ ` and kept in view. Right-docked lists keep the selection
+/// mid-list while scrolling; centered lists keep it at the edge.
 pub fn list_popup(
     frame: &mut Frame,
     t: &Theme,

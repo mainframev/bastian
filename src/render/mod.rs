@@ -152,11 +152,7 @@ pub(crate) struct Context<'a> {
 pub(crate) fn render_with_runs(doc: &Document, width: u16, theme: &Theme, cx: Context) -> Rendered {
     let r = Renderer {
         theme,
-        runs: cx.runs,
-        interpreters: cx.interpreters,
-        highlights: cx.highlights,
-        images: cx.images,
-        opts: cx.opts,
+        cx,
         link_runs: RefCell::default(),
     };
     let width = usize::from(width).max(10);
@@ -239,11 +235,7 @@ impl Out {
 
 struct Renderer<'a> {
     theme: &'a Theme,
-    runs: &'a HashMap<usize, BlockRun>,
-    interpreters: &'a Interpreters,
-    highlights: &'a Highlights,
-    images: &'a ImageSizes,
-    opts: Options,
+    cx: Context<'a>,
     /// Link runs in the order they were styled, for `locate_links`.
     link_runs: RefCell<Vec<(String, usize)>>,
 }

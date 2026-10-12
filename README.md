@@ -82,6 +82,8 @@ bastian -t kanagawa README.md  # use another theme
 | `Esc`, `h` | back to the previous document or the browser |
 | `q` | quit |
 
+![Switching themes with T while reading](demo/reader-themes.gif)
+
 In the browser: `j/k` to move, `h/l` (or `←/→`) for the previous/next page,
 `ctrl-d/u` and `ctrl-f/b` to page, `/` to filter,
 `Enter` to open, `e` to edit, `r` to rescan for new or deleted files, `?` for
@@ -227,6 +229,8 @@ bastian themes               # pick one with a live preview; Enter saves it
 bastian -t nord README.md    # use a theme just this once
 ```
 
+![The theme picker previewing themes on a sample document](demo/themes.gif)
+
 Or set it in the config file. The default, `auto`, follows the terminal's
 background:
 
@@ -237,10 +241,6 @@ light_theme = "rose-pine-dawn"
 ```
 
 Press `T` while reading or browsing to open the same picker.
-
-![The theme picker previewing themes on a sample document](demo/themes.gif)
-
-![Switching themes with T while reading](demo/reader-themes.gif)
 
 ### Your own themes
 

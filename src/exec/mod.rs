@@ -253,7 +253,9 @@ impl Runner {
 
     /// Events received since the last call, without blocking.
     pub fn drain(&mut self) -> Vec<RunEvent> {
-        let mut events: Vec<RunEvent> = self.rx.try_iter().collect();
+        // At most one channel's worth per call, so a block that keeps
+        // writing can't hold the UI here; the rest waits for the next tick.
+        let mut events: Vec<RunEvent> = self.rx.try_iter().take(CHANNEL_CAPACITY).collect();
         for e in &mut events {
             if let RunEvent::Exit { id, cancelled, .. } = e {
                 self.procs.remove(id);
@@ -314,17 +316,24 @@ impl<R: BufRead> Iterator for LineSplitter<R> {
             let mut buf = std::mem::take(&mut self.carry);
             let limit = self.cap.saturating_sub(buf.len()).max(1) as u64;
             let read = self.reader.by_ref().take(limit).read_until(b'\n', &mut buf);
-            if !read.is_ok_and(|n| n > 0) {
+            let Some(n) = read.ok().filter(|&n| n > 0) else {
                 // End of stream: whatever was carried is all there is.
                 return (!buf.is_empty()).then(|| String::from_utf8_lossy(&buf).into_owned());
-            }
+            };
+            // Short of the cap without a newline: the stream ended mid-line,
+            // so nothing follows to complete a cut-off character.
+            let at_eof = n < limit as usize && !buf.ends_with(b"\n");
             // A cut that landed just before the line end already emitted the line.
             if std::mem::replace(&mut self.continued, !buf.ends_with(b"\n"))
                 && matches!(buf.as_slice(), b"\n" | b"\r\n")
             {
                 continue;
             }
-            let text = decode(&buf, &mut self.carry);
+            let text = if at_eof {
+                String::from_utf8_lossy(&buf).into_owned()
+            } else {
+                decode(&buf, &mut self.carry)
+            };
             if text.is_empty() && !self.carry.is_empty() {
                 continue;
             }
@@ -630,10 +639,33 @@ mod tests {
     }
 
     #[test]
+    fn drain_takes_at_most_one_channel_per_call() {
+        let mut r = Runner::default();
+        r.start(0, &spec("seq 1 20000")).unwrap();
+        // Let the readers fill the channel and block on it.
+        thread::sleep(Duration::from_millis(300));
+        assert!(r.drain().len() <= CHANNEL_CAPACITY);
+        let mut lines = 0;
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while r.is_running(0) {
+            assert!(Instant::now() < deadline, "block never finished");
+            let events = r.drain();
+            assert!(events.len() <= CHANNEL_CAPACITY);
+            lines += events
+                .iter()
+                .filter(|e| matches!(e, RunEvent::Output { .. }))
+                .count();
+        }
+        assert!(lines > 0);
+    }
+
+    #[test]
     fn invalid_utf8_is_replaced() {
         assert_eq!(split(b"a\xffb\n", 8), ["a\u{FFFD}b"]);
         // A cut-off character at the end of the stream is still shown.
-        assert_eq!(split(b"ab\xe6\x97", 8), ["ab", "\u{FFFD}"]);
+        assert_eq!(split(b"ab\xe6\x97", 8), ["ab\u{FFFD}"]);
+        // Cut at the cap, then the stream ends: the carried bytes follow.
+        assert_eq!(split(b"abcdef\xe6\x97", 8), ["abcdef", "\u{FFFD}"]);
         assert_eq!(split(b"ab\xe6\x97\n", 8), ["ab\u{FFFD}"]);
     }
 

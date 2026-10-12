@@ -44,7 +44,12 @@ fn press(app: &mut App, code: KeyCode) -> bool {
 /// in `dir`.
 fn reading(dir: &Path, current: &str) -> App {
     let s = settings();
-    let reader = s.reader("t".into(), doc::parse("# A\n\ntext\n"), PathBuf::from("."));
+    let reader = s.reader(
+        "t".into(),
+        doc::parse("# A\n\ntext\n"),
+        String::new(),
+        PathBuf::from("."),
+    );
     let mut app = App::read(reader, s);
     app.themes = ThemeFiles {
         dir: Some(dir.join("themes")),
@@ -127,7 +132,12 @@ fn bastian_themes_quits_once_a_theme_is_picked() {
 fn mouse_wheel_scrolls_the_reader() {
     let settings = settings();
     let src: String = (0..50).map(|i| format!("line {i}\n\n")).collect();
-    let mut reader = settings.reader("t".into(), doc::parse(&src), PathBuf::from("."));
+    let mut reader = settings.reader(
+        "t".into(),
+        doc::parse(&src),
+        String::new(),
+        PathBuf::from("."),
+    );
     reader.layout(80, 10);
     let mut app = App::read(reader, settings);
     assert!(app.on_event(&wheel(MouseEventKind::ScrollDown)));
@@ -152,6 +162,7 @@ fn i_toggles_pictures_in_every_reader() {
     let reader = s.reader(
         "t".into(),
         doc::parse("![a red square](p.png)\n"),
+        String::new(),
         dir.path().to_path_buf(),
     );
     let mut app = App::read(reader, s);
@@ -186,7 +197,7 @@ fn i_toggles_pictures_in_every_reader() {
     // Readers opened afterwards start with pictures off too.
     assert!(
         !app.settings
-            .reader("u".into(), doc::parse(""), dir.path().into())
+            .reader("u".into(), doc::parse(""), String::new(), dir.path().into())
             .images
             .enabled()
     );

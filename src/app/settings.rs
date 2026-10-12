@@ -99,8 +99,11 @@ impl Settings {
         Ok((settings, name))
     }
 
-    pub fn reader(&self, name: String, doc: Document, base_dir: PathBuf) -> Reader {
+    /// A reader for `doc`, parsed from `text`, with code that runs in
+    /// `base_dir`.
+    pub fn reader(&self, name: String, doc: Document, text: String, base_dir: PathBuf) -> Reader {
         let mut r = Reader::new(name, doc, self.theme.clone(), self.max_width);
+        r.text = text;
         r.base_dir = base_dir;
         r.assume_yes = self.assume_yes;
         r.interpreters = self.interpreters.clone();
@@ -121,8 +124,7 @@ impl Settings {
     /// directory and always ask first; it has no file to watch or edit.
     pub fn remote(&self, doc: crate::remote::RemoteDoc) -> Reader {
         let parsed = doc.parse();
-        let mut r = self.reader(doc.name, parsed, PathBuf::from("."));
-        r.text = doc.text;
+        let mut r = self.reader(doc.name, parsed, doc.text, PathBuf::from("."));
         r.remote_base = Some(doc.base);
         // Untrusted source: every run asks first, even with `--yes`.
         r.assume_yes = false;
@@ -134,10 +136,9 @@ impl Settings {
         let src = crate::text::read_text(path)?;
         let doc = doc::parse_for(&src, Some(path));
         let code_file = doc.code_file;
-        let mut r = self.reader(name, doc, paths::base_dir(path));
+        let mut r = self.reader(name, doc, src, paths::base_dir(path));
         // Source files always show their line numbers.
         r.line_numbers |= code_file;
-        r.text = src;
         r.watch(path.to_path_buf());
         Ok(r)
     }

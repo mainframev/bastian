@@ -222,7 +222,7 @@ impl App {
                     .map_or_else(|| path.display().to_string(), |e| e.rel.clone());
                 match self.settings.open(&path, name) {
                     Ok(r) => self.reader = Some(r),
-                    Err(err) => b.message = Some(format!("{err:#}")),
+                    Err(err) => self.set_message(format!("{err:#}")),
                 }
                 true
             }

@@ -482,6 +482,31 @@ fn remote_documents_resolve_links_and_always_confirm() {
 }
 
 #[test]
+fn remote_markdown_links_with_other_schemes_ask() {
+    let settings = settings(false, None);
+    for target in [
+        "file:///tmp/a.md",
+        "vscode://file/a.md",
+        "mailto:user@example.md",
+    ] {
+        let mut r = settings.remote(RemoteDoc {
+            name: "README.md".into(),
+            base: url::Url::parse("https://example.com/repo/README.md").unwrap(),
+            text: format!("[x]({target})\n"),
+        });
+        r.layout(80, 10);
+        key(&mut r, KeyCode::Char('L'));
+        let action = key(&mut r, KeyCode::Enter);
+        if target.starts_with("mailto:") {
+            assert!(matches!(action, Action::OpenExternal(t) if t == target));
+        } else {
+            assert!(matches!(action, Action::None), "{target}");
+            assert_eq!(r.confirm_open.as_deref(), Some(target));
+        }
+    }
+}
+
+#[test]
 fn reload_with_changed_code_drops_pending_confirmation() {
     let mut r = reader("```sh\necho one\n```\n");
     key(&mut r, KeyCode::Tab);

@@ -745,6 +745,25 @@ impl Reader {
 
     /// Rendered line of the heading whose GitHub-style slug is `anchor`.
     fn heading_line(&self, anchor: &str) -> Option<usize> {
+        // Top-level headings know where they start, so a TOC line or a
+        // paragraph with the same words can't be mistaken for them.
+        let top = self
+            .doc
+            .blocks
+            .iter()
+            .enumerate()
+            .find_map(|(i, b)| match b {
+                Block::Heading { inlines, .. }
+                    if links::slug(&doc::plain_text(inlines)) == anchor =>
+                {
+                    Some(i)
+                }
+                _ => None,
+            });
+        if let Some(i) = top {
+            return self.rendered.block_starts.get(i).copied();
+        }
+        // Headings nested in quotes, lists or components: match by text.
         let text = heading_texts(&self.doc.blocks)
             .into_iter()
             .find(|h| links::slug(h) == anchor)?;

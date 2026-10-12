@@ -278,6 +278,12 @@ impl Reader {
             .map(|(_, src)| src + 1)
     }
 
+    /// Upkeep for a reader that isn't shown (on the history stack): kill
+    /// cancelled blocks that ignore SIGTERM. Output stays queued for `tick`.
+    pub fn tick_hidden(&mut self) {
+        self.runner.escalate();
+    }
+
     /// Apply process events and timeouts. Returns true when anything changed.
     pub fn tick(&mut self) -> bool {
         let reloaded = self.check_reload();

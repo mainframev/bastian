@@ -45,10 +45,6 @@ fn main() -> Result<()> {
             );
             return Ok(());
         }
-        Some(Command::Man) => {
-            clap_mangen::Man::new(Cli::command()).render(&mut std::io::stdout())?;
-            return Ok(());
-        }
         Some(Command::Themes) | None => {}
     }
     let file = match &located {

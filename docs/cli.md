@@ -67,7 +67,6 @@ instead of opening the TUI.
 bastian themes                    # pick a theme with a live preview and save it
 bastian config                    # open the config file in your editor
 bastian completions zsh > ~/.zfunc/_bastian   # also bash, fish, elvish, powershell
-bastian man > bastian.1 && man ./bastian.1    # the man page
 ```
 
 `bastian themes` prints the theme list instead when its output isn't a

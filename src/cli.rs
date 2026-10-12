@@ -72,14 +72,10 @@ pub struct Cli {
     #[arg(long)]
     pub no_logo: bool,
 
-    /// Draw pictures for images in documents, where the terminal can
-    /// (overrides `images = false`; `i` toggles them in the reader).
-    #[arg(long, overrides_with = "no_images")]
-    pub images: bool,
-
-    /// Show images in documents as their alt text instead of pictures.
-    #[arg(long, overrides_with = "images")]
-    pub no_images: bool,
+    /// Draw pictures for images in documents where the terminal can, or
+    /// show their alt text; `i` toggles them in the reader [default: on].
+    #[arg(long, value_enum, value_name = "WHEN", overrides_with = "images")]
+    pub images: Option<Switch>,
 
     /// How the file browser marks the selected file [default: bar].
     #[arg(long, value_enum, value_name = "STYLE")]
@@ -151,6 +147,13 @@ impl clap::builder::TypedValueParser for ThemeArg {
     }
 }
 
+/// A setting turned on or off from the command line.
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Switch {
+    On,
+    Off,
+}
+
 impl Cli {
     /// The settings given as flags, as a config layer above the file and
     /// the environment.
@@ -165,11 +168,7 @@ impl Cli {
             all: self.all.then_some(true),
             mouse: self.mouse.then_some(true),
             logo: self.no_logo.then_some(false),
-            images: match (self.images, self.no_images) {
-                (true, _) => Some(true),
-                (_, true) => Some(false),
-                _ => None,
-            },
+            images: self.images.map(|s| s == Switch::On),
             selector: self.selector,
             list_layout: self.list_layout,
             sort: self.sort,

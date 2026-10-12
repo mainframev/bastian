@@ -5,6 +5,7 @@ mod parse;
 pub use attrs::Attrs;
 pub use parse::parse;
 
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 /// Parse a document, choosing the MDX front end for `.mdx` files. Invalid
@@ -86,7 +87,9 @@ pub fn visit<'a>(blocks: &'a [Block], f: &mut impl FnMut(&'a Block)) {
     for b in blocks {
         f(b);
         match b {
-            Block::Quote(inner) => visit(inner, f),
+            Block::Quote(inner)
+            | Block::Callout { blocks: inner, .. }
+            | Block::Footnote { blocks: inner, .. } => visit(inner, f),
             Block::List { items, .. } => items.iter().for_each(|i| visit(i, f)),
             _ => {}
         }
@@ -119,9 +122,23 @@ pub enum Block {
         /// Starting number for ordered lists, `None` for bullet lists.
         start: Option<u64>,
         items: Vec<Vec<Block>>,
+        /// Per item, parallel to `items`: `Some(done)` for task items.
+        tasks: Vec<Option<bool>>,
     },
     Quote(Vec<Block>),
+    /// A GitHub alert: `> [!NOTE]` and friends.
+    Callout {
+        kind: CalloutKind,
+        blocks: Vec<Block>,
+    },
     Code(CodeBlock),
+    /// A footnote definition, listed at the end of the document.
+    Footnote {
+        label: String,
+        /// Shown as `[number]`, in order of first reference.
+        number: usize,
+        blocks: Vec<Block>,
+    },
     Table {
         /// Per-column alignment; may be shorter than the widest row.
         align: Vec<Align>,
@@ -138,6 +155,39 @@ pub enum Block {
         alt: String,
         url: String,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CalloutKind {
+    Note,
+    Tip,
+    Important,
+    Warning,
+    Caution,
+}
+
+impl CalloutKind {
+    pub fn title(self) -> &'static str {
+        match self {
+            CalloutKind::Note => "Note",
+            CalloutKind::Tip => "Tip",
+            CalloutKind::Important => "Important",
+            CalloutKind::Warning => "Warning",
+            CalloutKind::Caution => "Caution",
+        }
+    }
+
+    /// The kind an alert marker names: `NOTE` in `> [!NOTE]`, any case.
+    pub fn from_marker(marker: &str) -> Option<Self> {
+        Some(match marker.to_ascii_uppercase().as_str() {
+            "NOTE" => CalloutKind::Note,
+            "TIP" => CalloutKind::Tip,
+            "IMPORTANT" => CalloutKind::Important,
+            "WARNING" => CalloutKind::Warning,
+            "CAUTION" => CalloutKind::Caution,
+            _ => return None,
+        })
+    }
 }
 
 /// Horizontal alignment of a table column.
@@ -174,6 +224,123 @@ pub struct InlineStyle {
     pub link: Option<String>,
     /// De-emphasized syntax such as inline JSX tags and expressions.
     pub muted: bool,
+    /// A footnote reference, left out of heading anchors.
+    pub footnote: bool,
+}
+
+/// Anchor (without `#`) that a footnote's references link to. Labels
+/// match case-insensitively; anything else in them is kept, so distinct
+/// labels never share an anchor. The `:` keeps it apart from heading
+/// anchors, which never contain one.
+pub fn footnote_anchor(label: &str) -> String {
+    format!("fn:{}", label.to_lowercase())
+}
+
+/// A heading's text for its anchor: without footnote references, as
+/// GitHub slugs it.
+pub fn anchor_text(inlines: &[Inline]) -> String {
+    inlines
+        .iter()
+        .filter(|i| !i.style.footnote)
+        .map(|i| i.text.as_str())
+        .collect()
+}
+
+/// Footnotes gathered while parsing. References are numbered in the order
+/// they first appear; definitions are held back and listed at the end.
+#[derive(Default)]
+struct Footnotes {
+    /// Lowercased label → number, in order of first reference.
+    refs: HashMap<String, usize>,
+    /// `(label, blocks, source line)` of each definition.
+    defs: Vec<(String, Vec<Block>, usize)>,
+    /// Lowercased labels of `defs`.
+    defined: HashSet<String>,
+}
+
+impl Footnotes {
+    /// The `[n]` text for a reference to `label`, linking to its note.
+    fn reference(&mut self, label: &str, style: &InlineStyle) -> Inline {
+        let next = self.refs.len() + 1;
+        let n = *self.refs.entry(label.to_lowercase()).or_insert(next);
+        let mut style = style.clone();
+        style.link = Some(format!("#{}", footnote_anchor(label)));
+        style.footnote = true;
+        Inline {
+            text: format!("[{n}]"),
+            style,
+        }
+    }
+
+    /// Whether a definition of `label` should be read: as on GitHub, the
+    /// first one wins, and later ones are skipped whole, so nothing in them
+    /// (references, code blocks) counts.
+    fn claim(&mut self, label: &str) -> bool {
+        self.defined.insert(label.to_lowercase())
+    }
+
+    /// Record a definition `claim` allowed.
+    fn define(&mut self, label: String, blocks: Vec<Block>, line: usize) {
+        self.defs.push((label, blocks, line));
+    }
+
+    /// Append a rule and the notes to a document's top-level `blocks` (and
+    /// their source `lines`): referenced ones by number, then any that are
+    /// never referenced.
+    fn append_to(self, blocks: &mut Vec<Block>, lines: &mut Vec<usize>) {
+        let mut unreferenced = self.refs.len();
+        let mut notes: Vec<_> = self
+            .defs
+            .into_iter()
+            .map(|(label, inner, line)| {
+                let number = if let Some(&n) = self.refs.get(&label.to_lowercase()) {
+                    n
+                } else {
+                    unreferenced += 1;
+                    unreferenced
+                };
+                (number, label, inner, line)
+            })
+            .collect();
+        notes.sort_by_key(|n| n.0);
+        let Some(first) = notes.first() else {
+            return;
+        };
+        blocks.push(Block::Rule);
+        lines.push(first.3);
+        for (number, label, inner, line) in notes {
+            blocks.push(Block::Footnote {
+                label,
+                number,
+                blocks: inner,
+            });
+            lines.push(line);
+        }
+        // Code in notes was numbered where it was defined; ids follow the
+        // order blocks are shown in.
+        renumber_code(blocks, &mut 0);
+    }
+}
+
+/// Number code blocks in document order, as `visit` walks them.
+fn renumber_code(blocks: &mut [Block], next: &mut usize) {
+    for b in blocks {
+        match b {
+            Block::Code(c) => {
+                c.id = *next;
+                *next += 1;
+            }
+            Block::Quote(inner)
+            | Block::Callout { blocks: inner, .. }
+            | Block::Footnote { blocks: inner, .. } => renumber_code(inner, next),
+            Block::List { items, .. } => {
+                for item in items {
+                    renumber_code(item, next);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 pub fn plain_text(inlines: &[Inline]) -> String {

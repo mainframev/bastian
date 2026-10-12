@@ -14,8 +14,8 @@ wrap it across more than one line at narrow widths.
 • second item with a much longer description that should
   wrap neatly under its own bullet marker
   • nested item
-• [x] done task
-• [ ] open task
+☑ done task
+☐ open task
 
 1. one
 2. two

@@ -1,0 +1,23 @@
+---
+source: tests/render.rs
+expression: to_plain(&rendered.lines)
+---
+ Footnotes
+
+A claim that needs a source[1], and
+another one with a much longer note[2].
+The first source again[1].
+
+## Later
+
+Text after the definitions.
+
+────────────────────────────────────────
+
+[1] The source, with a link.
+
+[2] A longer footnote that wraps across
+    several lines when the terminal is
+    narrow, with a second paragraph.
+
+    Like this one.

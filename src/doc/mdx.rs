@@ -6,7 +6,40 @@
 use markdown::mdast::{AlignKind, AttributeContent, AttributeValue, Node};
 use markdown::{Constructs, MdxSignal, ParseOptions};
 
-use super::{Align, Attrs, Block, CodeBlock, Document, Inline, InlineStyle, push_inline};
+use super::{
+    Align, Attrs, Block, CalloutKind, CodeBlock, Document, Footnotes, Inline, InlineStyle,
+    push_inline,
+};
+
+/// A quote's blocks as a GitHub alert when its first line is just a
+/// marker like `[!NOTE]` (markdown-rs doesn't parse these), else a quote.
+fn alert(mut blocks: Vec<Block>) -> Block {
+    let kind = match blocks.first() {
+        Some(Block::Paragraph(inl)) => inl.first().and_then(|first| {
+            let line = first.text.split('\n').next()?;
+            let marker = line.trim_end().strip_prefix("[!")?.strip_suffix(']')?;
+            (first.style == InlineStyle::default())
+                .then(|| CalloutKind::from_marker(marker))
+                .flatten()
+        }),
+        _ => None,
+    };
+    let Some(kind) = kind else {
+        return Block::Quote(blocks);
+    };
+    if let Some(Block::Paragraph(inl)) = blocks.first_mut() {
+        let rest = inl[0].text.split_once('\n').map_or("", |(_, r)| r);
+        if rest.is_empty() {
+            inl.remove(0);
+        } else {
+            inl[0].text = rest.to_string();
+        }
+        if inl.is_empty() {
+            blocks.remove(0);
+        }
+    }
+    Block::Callout { kind, blocks }
+}
 
 /// Parse MDX, or `None` when the source isn't valid MDX (e.g. broken JSX),
 /// so the caller can fall back to the plain Markdown parser.
@@ -18,6 +51,8 @@ pub fn parse(src: &str) -> Option<Document> {
             gfm_strikethrough: true,
             gfm_task_list_item: true,
             gfm_autolink_literal: true,
+            gfm_footnote_definition: true,
+            gfm_label_start_footnote: true,
             ..Constructs::mdx()
         },
         // ESM is only recognized with a parser; accept every import/export
@@ -38,6 +73,7 @@ pub fn parse(src: &str) -> Option<Document> {
             .map_or(0, |p| p.start.line.saturating_sub(1));
         lines.extend(std::iter::repeat_n(line, blocks.len() - before));
     }
+    m.footnotes.append_to(&mut blocks, &mut lines);
     Some(Document {
         blocks,
         lines,
@@ -48,6 +84,7 @@ pub fn parse(src: &str) -> Option<Document> {
 #[derive(Default)]
 struct Mapper {
     next_code_id: usize,
+    footnotes: Footnotes,
 }
 
 impl Mapper {
@@ -77,10 +114,18 @@ impl Mapper {
                 }),
                 children => out.push(Block::Paragraph(self.inlines(children))),
             },
-            Node::Blockquote(q) => out.push(Block::Quote(self.blocks(&q.children))),
+            Node::Blockquote(q) => out.push(alert(self.blocks(&q.children))),
             Node::List(l) => out.push(Block::List {
                 start: l.ordered.then(|| u64::from(l.start.unwrap_or(1))),
                 items: l.children.iter().map(|item| self.list_item(item)).collect(),
+                tasks: l
+                    .children
+                    .iter()
+                    .map(|item| match item {
+                        Node::ListItem(i) => i.checked,
+                        _ => None,
+                    })
+                    .collect(),
             }),
             Node::Code(c) => {
                 let info = match (&c.lang, &c.meta) {
@@ -137,8 +182,15 @@ impl Mapper {
             | Node::Toml(_)
             | Node::MdxjsEsm(_)
             | Node::MdxFlowExpression(_)
-            | Node::Definition(_)
-            | Node::FootnoteDefinition(_) => {}
+            | Node::Definition(_) => {}
+            Node::FootnoteDefinition(f) => {
+                let label = f.label.clone().unwrap_or_else(|| f.identifier.clone());
+                if self.footnotes.claim(&label) {
+                    let blocks = self.blocks(&f.children);
+                    let line = f.position.as_ref().map_or(0, |p| p.start.line - 1);
+                    self.footnotes.define(label, blocks, line);
+                }
+            }
             // Stray phrasing content at block level: wrap it in a paragraph.
             other => {
                 let inlines = self.inlines(std::slice::from_ref(other));
@@ -150,21 +202,10 @@ impl Mapper {
     }
 
     fn list_item(&mut self, node: &Node) -> Vec<Block> {
-        let Node::ListItem(item) = node else {
-            return self.blocks(std::slice::from_ref(node));
-        };
-        let mut blocks = self.blocks(&item.children);
-        if let Some(done) = item.checked {
-            let mark = Inline {
-                text: if done { "[x] " } else { "[ ] " }.into(),
-                style: InlineStyle::default(),
-            };
-            match blocks.first_mut() {
-                Some(Block::Paragraph(inl)) => inl.insert(0, mark),
-                _ => blocks.insert(0, Block::Paragraph(vec![mark])),
-            }
+        match node {
+            Node::ListItem(item) => self.blocks(&item.children),
+            _ => self.blocks(std::slice::from_ref(node)),
         }
-        blocks
     }
 
     fn inlines(&mut self, nodes: &[Node]) -> Vec<Inline> {
@@ -220,7 +261,11 @@ impl Mapper {
             Node::MdxTextExpression(e) if !is_comment(&e.value) => {
                 push_inline(out, &format!("{{{}}}", e.value), &with(&|s| s.muted = true));
             }
-            Node::MdxTextExpression(_) | Node::FootnoteReference(_) => {}
+            Node::FootnoteReference(f) => {
+                let label = f.label.as_deref().unwrap_or(&f.identifier);
+                out.push(self.footnotes.reference(label, style));
+            }
+            Node::MdxTextExpression(_) => {}
             // Containers that can't appear inline: render their text.
             other => {
                 if let Some(nodes) = other.children() {

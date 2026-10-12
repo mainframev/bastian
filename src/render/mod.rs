@@ -23,7 +23,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
-use crate::doc::{Block, Document, Inline, plain_text};
+use crate::doc::{Block, CalloutKind, Document, Inline, plain_text};
 use crate::exec::{BlockRun, Interpreters};
 use links::{is_link_style, locate_links};
 use theme::Theme;
@@ -267,7 +267,11 @@ impl Renderer<'_> {
                 &self.runs(inlines, Style::default().fg(t.text)),
                 width,
             )),
-            Block::List { start, items } => self.list(*start, items, width),
+            Block::List {
+                start,
+                items,
+                tasks,
+            } => self.list(*start, items, tasks, width),
             Block::Quote(inner) => {
                 let mut out = Out::default();
                 let bar = [Span::styled(QUOTE_BAR, Style::default().fg(t.muted))];
@@ -275,6 +279,34 @@ impl Renderer<'_> {
                     self.blocks(inner, width.saturating_sub(2), true),
                     &bar,
                     &bar,
+                );
+                out
+            }
+            Block::Callout { kind, blocks } => {
+                let color = match kind {
+                    CalloutKind::Note => t.link,
+                    CalloutKind::Tip => t.ok,
+                    CalloutKind::Important => t.accent,
+                    CalloutKind::Warning => t.warn,
+                    CalloutKind::Caution => t.err,
+                };
+                let style = Style::default().fg(color);
+                let mut inner = Out::from(vec![Line::styled(kind.title(), style.bold())]);
+                inner.append(self.blocks(blocks, width.saturating_sub(2), true), &[], &[]);
+                let bar = [Span::styled("▌ ", style)];
+                let mut out = Out::default();
+                out.append(inner, &bar, &bar);
+                out
+            }
+            Block::Footnote { number, blocks, .. } => {
+                let marker = format!("[{number}] ");
+                let pad = [Span::raw(" ".repeat(marker.width()))];
+                let first = [Span::styled(marker, Style::default().fg(t.muted))];
+                let mut out = Out::default();
+                out.append(
+                    non_empty(self.blocks(blocks, width.saturating_sub(pad[0].width()), true)),
+                    &first,
+                    &pad,
                 );
                 out
             }
@@ -319,25 +351,60 @@ impl Renderer<'_> {
         Out::from(lines)
     }
 
-    fn list(&self, start: Option<u64>, items: &[Vec<Block>], width: usize) -> Out {
+    fn list(
+        &self,
+        start: Option<u64>,
+        items: &[Vec<Block>],
+        tasks: &[Option<bool>],
+        width: usize,
+    ) -> Out {
         let t = self.theme;
-        let markers: Vec<String> = match start {
+        let numbers: Vec<String> = match start {
             Some(n) => (0..items.len() as u64)
                 .map(|i| format!("{}. ", n + i))
                 .collect(),
-            None => vec!["• ".to_string(); items.len()],
+            None => vec![String::new(); items.len()],
         };
-        let marker_w = markers.iter().map(|m| m.width()).max().unwrap_or(2);
+        let num_w = numbers.iter().map(|m| m.width()).max().unwrap_or(0);
+        let has_tasks = tasks.iter().any(Option::is_some);
+        // Bullets give way to checkboxes; numbers keep theirs in front.
+        let markers: Vec<Vec<Span<'static>>> = numbers
+            .into_iter()
+            .enumerate()
+            .map(|(i, number)| {
+                let number = format!("{number:>num_w$}");
+                let task = match tasks.get(i).copied().flatten() {
+                    Some(true) => Some(Span::styled("☑ ", Style::default().fg(t.ok))),
+                    Some(false) => Some(Span::styled("☐ ", Style::default().fg(t.muted))),
+                    None if has_tasks && start.is_some() => Some(Span::raw("  ")),
+                    None => None,
+                };
+                let mut spans = Vec::new();
+                if start.is_some() {
+                    spans.push(Span::styled(number, Style::default().fg(t.accent)));
+                }
+                match task {
+                    Some(task) => spans.push(task),
+                    None if start.is_none() => {
+                        spans.push(Span::styled("• ", Style::default().fg(t.accent)));
+                    }
+                    None => {}
+                }
+                spans
+            })
+            .collect();
+        let width_of = |m: &[Span]| m.iter().map(Span::width).sum::<usize>();
+        let marker_w = markers.iter().map(|m| width_of(m)).max().unwrap_or(2);
         let pad = [Span::raw(" ".repeat(marker_w))];
 
         let mut out = Out::default();
-        for (item, marker) in items.iter().zip(markers) {
-            let first = [Span::styled(
-                format!("{marker:>marker_w$}"),
-                Style::default().fg(t.accent),
-            )];
+        for (item, mut first) in items.iter().zip(markers) {
+            let gap = marker_w - width_of(&first);
+            if gap > 0 {
+                first.insert(0, Span::raw(" ".repeat(gap)));
+            }
             let inner = self.blocks(item, width.saturating_sub(marker_w), false);
-            out.append(inner, &first, &pad);
+            out.append(non_empty(inner), &first, &pad);
         }
         out
     }
@@ -378,6 +445,16 @@ impl Renderer<'_> {
     }
 }
 
+/// `out`, or a blank line when it has none, so a marker put in front of an
+/// empty list item or footnote still shows.
+fn non_empty(out: Out) -> Out {
+    if out.lines.is_empty() {
+        Out::from(vec![Line::default()])
+    } else {
+        out
+    }
+}
+
 /// `<Name ...>` but not `</Name>` or a self-closing `<Name />`.
 fn is_open_tag(label: &str) -> bool {
     label.starts_with('<') && !label.starts_with("</") && !label.ends_with("/>")
@@ -387,6 +464,57 @@ fn is_open_tag(label: &str) -> bool {
 mod tests {
     use super::*;
     use crate::doc::parse;
+
+    #[test]
+    fn callouts_take_their_colour_from_the_theme() {
+        let t = Theme::dark();
+        let src = "> [!NOTE]\n> a\n\n> [!TIP]\n> a\n\n> [!IMPORTANT]\n> a\n\n> [!WARNING]\n> a\n\n> [!CAUTION]\n> a\n";
+        let r = render(&parse(src), 40, &t);
+        let titles: Vec<_> = r
+            .lines
+            .iter()
+            .filter(|l| l.spans.len() == 2 && l.spans[0].content == "▌ ")
+            .filter(|l| !l.spans[1].content.starts_with('a'))
+            .map(|l| {
+                // The title's colour may sit on the line rather than the span.
+                let text = l.style.patch(l.spans[1].style);
+                (l.spans[1].content.to_string(), l.spans[0].style.fg, text)
+            })
+            .collect();
+        let expect = [
+            ("Note", t.link),
+            ("Tip", t.ok),
+            ("Important", t.accent),
+            ("Warning", t.warn),
+            ("Caution", t.err),
+        ];
+        assert_eq!(titles.len(), expect.len(), "{titles:?}");
+        for ((title, bar, text), (want, color)) in titles.iter().zip(expect) {
+            assert_eq!(title, want);
+            assert_eq!(*bar, Some(color), "{title} bar");
+            assert_eq!(text.fg, Some(color), "{title} title");
+            assert!(
+                text.add_modifier.contains(Modifier::BOLD),
+                "{title} not bold"
+            );
+        }
+    }
+
+    #[test]
+    fn empty_task_items_and_footnotes_keep_their_marker() {
+        let r = render(
+            &parse("- [ ]\n- [x] \n- c\n\nx[^a]\n\n[^a]:\n"),
+            40,
+            &Theme::dark(),
+        );
+        let lines: Vec<String> = r
+            .lines
+            .iter()
+            .map(|l| plain(l).trim_end().to_string())
+            .collect();
+        assert_eq!(lines[..3], ["☐", "☑", "• c"], "{lines:?}");
+        assert_eq!(lines.last().map(String::as_str), Some("[1]"), "{lines:?}");
+    }
 
     #[test]
     fn options_set_tab_width_and_picture_height() {

@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use bastian::doc::parse;
 use bastian::exec::Status;
-use bastian::reader::Reader;
+use bastian::reader::{Match, Reader};
 use bastian::render::theme::Theme;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -280,7 +280,7 @@ fn search_follows_a_running_timer() {
         assert!(r.tick());
         r.layout(80, 40);
     }
-    assert!(r.search.as_ref().unwrap().matches.is_empty());
+    assert_eq!(r.search.as_ref().unwrap().matches, Vec::<Match>::new());
     key(&mut r, KeyCode::Esc);
     key(&mut r, KeyCode::Char('x'));
     settle(&mut r);

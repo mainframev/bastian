@@ -11,6 +11,12 @@ categories = ["command-line-utilities"]
 # README images and repo tooling, not needed to build the crate.
 exclude = ["assets/", "demo/", ".github/", ".githooks/", "justfile", "cliff.toml"]
 
+# Prebuilt archives from the release workflow, for `cargo binstall bastian`.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-v{ version }-{ target }{ archive-suffix }"
+bin-dir = "{ name }-v{ version }-{ target }/{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
 [dependencies]
 anyhow = "1.0.104"
 clap = { version = "4.6.7", features = ["derive"] }

@@ -30,6 +30,10 @@ brew install mainframev/tap/bastian      # Homebrew, macOS or Linux
 cargo install --locked bastian
 ```
 
+```sh {norun}
+cargo binstall bastian                   # prebuilt binary, no compiling
+```
+
 Homebrew also installs the shell completions and the man page. With Cargo
 ([rustup](https://rustup.rs)), the latest unreleased version is
 `cargo install --locked --git https://github.com/mainframev/bastian`.

@@ -23,7 +23,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
-use crate::doc::{Block, Document, Inline, plain_text};
+use crate::doc::{Block, CalloutKind, Document, Inline, plain_text};
 use crate::exec::{BlockRun, Interpreters};
 use links::{is_link_style, locate_links};
 use theme::Theme;
@@ -284,6 +284,22 @@ impl Renderer<'_> {
                     &bar,
                     &bar,
                 );
+                out
+            }
+            Block::Callout { kind, blocks } => {
+                let color = match kind {
+                    CalloutKind::Note => t.link,
+                    CalloutKind::Tip => t.ok,
+                    CalloutKind::Important => t.accent,
+                    CalloutKind::Warning => t.warn,
+                    CalloutKind::Caution => t.err,
+                };
+                let style = Style::default().fg(color);
+                let mut inner = Out::from(vec![Line::styled(kind.title(), style.bold())]);
+                inner.append(self.blocks(blocks, width.saturating_sub(2), true), &[], &[]);
+                let bar = [Span::styled("▌ ", style)];
+                let mut out = Out::default();
+                out.append(inner, &bar, &bar);
                 out
             }
             Block::Code(c) => self.code(c, width),

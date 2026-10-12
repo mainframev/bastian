@@ -184,10 +184,12 @@ impl Mapper {
             | Node::MdxFlowExpression(_)
             | Node::Definition(_) => {}
             Node::FootnoteDefinition(f) => {
-                let blocks = self.blocks(&f.children);
-                let line = f.position.as_ref().map_or(0, |p| p.start.line - 1);
                 let label = f.label.clone().unwrap_or_else(|| f.identifier.clone());
-                self.footnotes.define(label, blocks, line);
+                if self.footnotes.claim(&label) {
+                    let blocks = self.blocks(&f.children);
+                    let line = f.position.as_ref().map_or(0, |p| p.start.line - 1);
+                    self.footnotes.define(label, blocks, line);
+                }
             }
             // Stray phrasing content at block level: wrap it in a paragraph.
             other => {

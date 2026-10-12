@@ -114,10 +114,16 @@ struct Builder {
     footnotes: Footnotes,
     /// Source line of the footnote definition being read.
     footnote_line: usize,
+    /// Inside a repeated footnote definition, which is skipped.
+    discarding: bool,
 }
 
 impl Builder {
     fn event(&mut self, event: Event) {
+        if self.discarding {
+            self.discarding = !matches!(event, Event::End(TagEnd::FootnoteDefinition));
+            return;
+        }
         match event {
             Event::Start(tag) => self.start(tag),
             Event::End(tag) => self.end(tag),
@@ -204,6 +210,10 @@ impl Builder {
             Tag::MetadataBlock(_) => self.metadata = true,
             Tag::FootnoteDefinition(label) => {
                 self.flush();
+                if !self.footnotes.claim(&label) {
+                    self.discarding = true;
+                    return;
+                }
                 self.stack.push(Frame::Footnote {
                     label: label.into_string(),
                     blocks: Vec::new(),
@@ -599,9 +609,47 @@ mod tests {
         refs.dedup();
         assert_eq!(refs.len(), 4, "{refs:?}");
 
-        // The first definition of a label wins.
-        let doc = parse("A[^a].\n\n[^a]: one\n\n[^A]: dup\n");
-        assert_eq!(doc.blocks.len(), 3);
+        // The first definition of a label wins, and a repeat counts for
+        // nothing: not its references, not its code.
+        for path in ["x.md", "x.mdx"] {
+            let doc = crate::doc::parse_for(
+                "A[^a].\n\n[^a]: one\n\n[^A]: dup[^b]\n\n    ```sh\n    no\n    ```\n\n[^b]: bee\n\nB[^b].\n",
+                Some(std::path::Path::new(path)),
+            );
+            let numbers: Vec<_> = doc
+                .blocks
+                .iter()
+                .filter_map(|b| match b {
+                    Block::Footnote {
+                        label,
+                        number,
+                        blocks,
+                    } => Some((label.as_str(), *number, blocks.len())),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(numbers, [("a", 1, 1), ("b", 2, 1)], "{path}");
+        }
+
+        // Code ids follow the order blocks are shown in, even when a note
+        // with code is defined before other code.
+        for path in ["x.md", "x.mdx"] {
+            let doc = crate::doc::parse_for(
+                "x[^n]\n\n[^n]: note\n\n    ```sh\n    in note\n    ```\n\n```sh\nafter\n```\n",
+                Some(std::path::Path::new(path)),
+            );
+            let mut codes = Vec::new();
+            crate::doc::visit(&doc.blocks, &mut |b| {
+                if let Block::Code(c) = b {
+                    codes.push((c.id, c.src.clone()));
+                }
+            });
+            assert_eq!(
+                codes,
+                [(0, "after\n".to_string()), (1, "in note\n".to_string())],
+                "{path}"
+            );
+        }
 
         // A definition inside a list keeps its own source line.
         let doc = parse("- item[^n]\n\n  [^n]: note\n");

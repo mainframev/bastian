@@ -270,11 +270,16 @@ impl Footnotes {
         }
     }
 
-    /// Record a definition; as in GitHub, the first one of a label wins.
+    /// Whether a definition of `label` should be read: as on GitHub, the
+    /// first one wins, and later ones are skipped whole, so nothing in them
+    /// (references, code blocks) counts.
+    fn claim(&mut self, label: &str) -> bool {
+        self.defined.insert(label.to_lowercase())
+    }
+
+    /// Record a definition `claim` allowed.
     fn define(&mut self, label: String, blocks: Vec<Block>, line: usize) {
-        if self.defined.insert(label.to_lowercase()) {
-            self.defs.push((label, blocks, line));
-        }
+        self.defs.push((label, blocks, line));
     }
 
     /// Append a rule and the notes to a document's top-level `blocks` (and
@@ -308,6 +313,30 @@ impl Footnotes {
                 blocks: inner,
             });
             lines.push(line);
+        }
+        // Code in notes was numbered where it was defined; ids follow the
+        // order blocks are shown in.
+        renumber_code(blocks, &mut 0);
+    }
+}
+
+/// Number code blocks in document order, as `visit` walks them.
+fn renumber_code(blocks: &mut [Block], next: &mut usize) {
+    for b in blocks {
+        match b {
+            Block::Code(c) => {
+                c.id = *next;
+                *next += 1;
+            }
+            Block::Quote(inner)
+            | Block::Callout { blocks: inner, .. }
+            | Block::Footnote { blocks: inner, .. } => renumber_code(inner, next),
+            Block::List { items, .. } => {
+                for item in items {
+                    renumber_code(item, next);
+                }
+            }
+            _ => {}
         }
     }
 }

@@ -1,9 +1,8 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
 
-use crate::doc::{self, Document};
-
 use super::{Reader, collect_code};
+use crate::doc::{self, Document};
 
 impl Reader {
     /// Watch `path` and reload the document when it changes on disk.

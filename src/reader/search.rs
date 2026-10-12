@@ -1,6 +1,5 @@
-use crate::render::Rendered;
-
 use super::Reader;
+use crate::render::Rendered;
 
 impl Reader {
     pub(super) fn set_query(&mut self, query: &str) {

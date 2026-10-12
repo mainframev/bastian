@@ -1,3 +1,12 @@
+mod follow;
+mod keys;
+mod reload;
+mod run;
+mod scroll;
+mod search;
+
+pub use search::{Match, Search};
+
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::time::{Instant, SystemTime};
@@ -10,17 +19,8 @@ use crate::outline::Outline;
 use crate::prompt::Prompt;
 use crate::render::theme::Theme;
 use crate::render::{self, Highlights, Rendered};
-
-mod follow;
-mod keys;
-mod reload;
-mod run;
-mod scroll;
-mod search;
-
 use run::collect_code;
 use search::find;
-pub use search::{Match, Search};
 
 pub enum Action {
     None,
@@ -213,16 +213,15 @@ impl Reader {
             self.request_images();
         }
         if width != self.width || self.dirty {
-            self.rendered = render::render_with_runs(
-                &self.doc,
-                width,
-                &self.theme,
-                &self.runs,
-                &self.interpreters,
-                &self.highlights,
-                &self.images.sizes(),
-                self.render_opts,
-            );
+            let images = self.images.sizes();
+            let cx = render::Context {
+                runs: &self.runs,
+                interpreters: &self.interpreters,
+                highlights: &self.highlights,
+                images: &images,
+                opts: self.render_opts,
+            };
+            self.rendered = render::render_with_runs(&self.doc, width, &self.theme, cx);
             self.width = width;
             self.dirty = false;
             if let Some(s) = &mut self.search {

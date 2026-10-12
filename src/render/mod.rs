@@ -1,24 +1,32 @@
 mod ansi;
 pub(crate) mod code;
+mod codeblock;
+mod image;
+mod links;
+mod plain;
+mod run;
+mod table;
 pub mod theme;
+mod wrap;
 
 pub use ansi::to_ansi;
 pub use code::known_extension;
-mod wrap;
+pub use plain::{plain, strip_controls, to_plain};
+pub use run::run_status;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Range;
-use std::time::Duration;
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
-use crate::doc::{Align, Block, CodeBlock, Document, Inline, plain_text};
-use crate::exec::{BlockRun, Interpreters, Status};
+use crate::doc::{Block, Document, Inline, plain_text};
+use crate::exec::{BlockRun, Interpreters};
+use links::{is_link_style, locate_links};
 use theme::Theme;
-use wrap::{hard_wrap, wrap};
+use wrap::wrap;
 
 /// A document laid out for a given width.
 #[derive(Debug, Default)]
@@ -103,16 +111,16 @@ pub fn render(doc: &Document, width: u16, theme: &Theme) -> Rendered {
 
 /// Render without run output or pictures, with `opts`.
 pub fn render_with(doc: &Document, width: u16, theme: &Theme, opts: Options) -> Rendered {
-    render_with_runs(
-        doc,
-        width,
-        theme,
-        &HashMap::new(),
-        &Interpreters::default(),
-        &Highlights::default(),
-        &ImageSizes::new(),
+    let (runs, interpreters) = (HashMap::new(), Interpreters::default());
+    let (highlights, images) = (Highlights::default(), ImageSizes::new());
+    let cx = Context {
+        runs: &runs,
+        interpreters: &interpreters,
+        highlights: &highlights,
+        images: &images,
         opts,
-    )
+    };
+    render_with_runs(doc, width, theme, cx)
 }
 
 /// Highlighted source lines per code block id. Highlighting doesn't depend
@@ -127,32 +135,27 @@ impl Highlights {
     }
 }
 
+/// The reader state a render draws on besides the document.
+#[derive(Clone, Copy)]
+pub struct Context<'a> {
+    /// Run status and output per code block id.
+    pub runs: &'a HashMap<usize, BlockRun>,
+    pub interpreters: &'a Interpreters,
+    pub highlights: &'a Highlights,
+    /// Sizes of the pictures loaded so far.
+    pub images: &'a ImageSizes,
+    pub opts: Options,
+}
+
 /// Render with each code block's run status and output drawn under it.
-#[allow(
-    clippy::implicit_hasher,
-    reason = "the reader's own maps; no need to be generic over hashers"
-)]
-#[allow(
-    clippy::too_many_arguments,
-    reason = "each is a separate piece of reader state"
-)]
-pub fn render_with_runs(
-    doc: &Document,
-    width: u16,
-    theme: &Theme,
-    runs: &HashMap<usize, BlockRun>,
-    interpreters: &Interpreters,
-    highlights: &Highlights,
-    images: &ImageSizes,
-    opts: Options,
-) -> Rendered {
+pub fn render_with_runs(doc: &Document, width: u16, theme: &Theme, cx: Context) -> Rendered {
     let r = Renderer {
         theme,
-        runs,
-        interpreters,
-        highlights,
-        images,
-        opts,
+        runs: cx.runs,
+        interpreters: cx.interpreters,
+        highlights: cx.highlights,
+        images: cx.images,
+        opts: cx.opts,
         link_runs: RefCell::default(),
     };
     let width = usize::from(width).max(10);
@@ -178,53 +181,6 @@ pub fn render_with_runs(
         code_blocks: out.codes,
         links,
     }
-}
-
-/// Spans drawn in the link style.
-fn is_link_style(style: Style, t: &Theme) -> bool {
-    style.fg == Some(t.link) && style.add_modifier.contains(Modifier::UNDERLINED)
-}
-
-/// Match link-styled spans, in order, to the link runs the renderer styled
-/// (`(url, non-space characters)`), and merge each run's spans on a line.
-/// Wrapping only drops whitespace, so counting the other characters ties
-/// every span back to its run, even across line breaks.
-fn locate_links(lines: &[Line], runs: &[(String, usize)], t: &Theme) -> Vec<LinkSpan> {
-    let mut out: Vec<LinkSpan> = Vec::new();
-    let mut run = 0;
-    let mut left = runs.first().map_or(0, |r| r.1);
-    for (i, line) in lines.iter().enumerate() {
-        let mut col = 0;
-        for span in &line.spans {
-            let w = span.width();
-            if is_link_style(span.style, t) {
-                let used = span.content.chars().filter(|c| !c.is_whitespace()).count();
-                // Move on once the current run's text is used up; spaces
-                // still belong to the run they follow.
-                while used > 0 && left == 0 && run + 1 < runs.len() {
-                    run += 1;
-                    left = runs[run].1;
-                }
-                let Some((url, _)) = runs.get(run) else {
-                    return out;
-                };
-                match out.last_mut() {
-                    Some(l) if l.line == i && l.col + l.width == col && l.url == *url => {
-                        l.width += w;
-                    }
-                    _ => out.push(LinkSpan {
-                        line: i,
-                        col,
-                        width: w,
-                        url: url.clone(),
-                    }),
-                }
-                left = left.saturating_sub(used);
-            }
-            col += w;
-        }
-    }
-    out
 }
 
 #[derive(Default)]
@@ -346,34 +302,6 @@ impl Renderer<'_> {
         }
     }
 
-    /// A picture: blank rows to draw it over, then its alt text as a
-    /// caption. Until it's loaded (or where it can't be shown), just the
-    /// alt text.
-    fn image(&self, alt: &str, url: &str, width: usize) -> Out {
-        let caption = Style::default().fg(self.theme.muted);
-        let Some(&(w, h)) = self.images.get(url) else {
-            return Out::from(wrap(
-                &[(crate::doc::image_placeholder(alt), caption)],
-                width,
-            ));
-        };
-        let (cols, rows) = fit_image(w, h, width as u16, self.opts.image_rows);
-        let mut lines = vec![Line::default(); usize::from(rows)];
-        if !alt.is_empty() {
-            lines.extend(wrap(&[(alt.to_string(), caption)], width));
-        }
-        Out {
-            images: vec![ImageSlot {
-                url: url.to_string(),
-                line: 0,
-                col: 0,
-                cols,
-                rows,
-            }],
-            ..Out::from(lines)
-        }
-    }
-
     fn heading(&self, level: u8, inlines: &[Inline], width: usize) -> Out {
         let t = self.theme;
         let lines = if level == 1 {
@@ -421,227 +349,6 @@ impl Renderer<'_> {
         out
     }
 
-    fn code(&self, c: &CodeBlock, width: usize) -> Out {
-        let t = self.theme;
-        let bg = Style::default().bg(t.surface);
-        let inner_w = width.saturating_sub(2).max(1);
-        // Background goes on every span, not the line, so prefixes added by
-        // enclosing lists and quotes stay unshaded.
-        let pad_line = |spans: Vec<Span<'static>>| {
-            let mut spans = spans;
-            spans.insert(0, Span::raw(" "));
-            let used: usize = spans.iter().map(Span::width).sum();
-            spans.push(Span::raw(" ".repeat(width.saturating_sub(used))));
-            Line::from(
-                spans
-                    .into_iter()
-                    .map(|s| {
-                        let style = bg.patch(s.style);
-                        s.style(style)
-                    })
-                    .collect::<Vec<_>>(),
-            )
-        };
-
-        let mut lines = Vec::new();
-        let label = match (&c.attrs.name, &c.lang) {
-            (Some(name), Some(lang)) => format!("{name} · {lang}"),
-            (Some(name), None) => name.clone(),
-            (None, lang) => lang.clone().unwrap_or_default(),
-        };
-        let label = if c
-            .lang
-            .as_deref()
-            .and_then(|l| self.interpreters.get(l))
-            .is_some()
-            && !c.attrs.norun
-        {
-            format!("▶ {label}")
-        } else {
-            label
-        };
-        lines.push(pad_line(vec![Span::styled(
-            format!("{label:>inner_w$}"),
-            Style::default().fg(t.muted),
-        )]));
-        for src_line in self.highlighted(c) {
-            for row in hard_wrap(src_line, inner_w) {
-                lines.push(pad_line(row));
-            }
-        }
-        lines.push(pad_line(Vec::new()));
-
-        let range = self.add_run_panel(c, &mut lines, width);
-        Out {
-            lines,
-            codes: vec![range],
-            ..Out::default()
-        }
-    }
-
-    fn highlighted(&self, c: &CodeBlock) -> Vec<Vec<Span<'static>>> {
-        self.highlights
-            .0
-            .borrow_mut()
-            .entry(c.id)
-            .or_insert_with(|| {
-                code::highlight(&c.src, c.lang.as_deref(), self.theme, self.opts.tab_width)
-            })
-            .clone()
-    }
-
-    /// Append `c`'s run panel, if it has run, under its `lines` and return
-    /// the range they cover.
-    fn add_run_panel(
-        &self,
-        c: &CodeBlock,
-        lines: &mut Vec<Line<'static>>,
-        width: usize,
-    ) -> CodeRange {
-        let len = lines.len();
-        if let Some(run) = self.runs.get(&c.id) {
-            lines.extend(self.run_panel(run, width));
-        }
-        CodeRange {
-            id: c.id,
-            lines: 0..len,
-            output_end: lines.len(),
-        }
-    }
-
-    /// A whole source file: highlighted lines with no box, each wrapped
-    /// segment mapped back to its source line.
-    fn code_file(&self, c: &CodeBlock, width: usize) -> Rendered {
-        let mut lines = Vec::new();
-        let mut src_line = Vec::new();
-        for (n, spans) in self.highlighted(c).into_iter().enumerate() {
-            for (i, row) in hard_wrap(spans, width).into_iter().enumerate() {
-                lines.push(Line::from(row));
-                src_line.push((i == 0).then_some(n));
-            }
-        }
-        let range = self.add_run_panel(c, &mut lines, width);
-        src_line.resize(lines.len(), None);
-        Rendered {
-            images: Vec::new(),
-            block_starts: Vec::new(),
-            links: Vec::new(),
-            code_blocks: vec![range],
-            anchors: src_line
-                .iter()
-                .enumerate()
-                .filter_map(|(i, s)| s.map(|s| (i, s)))
-                .collect(),
-            lines,
-            src_line,
-        }
-    }
-
-    /// Status line and output shown under a code block that has run.
-    fn run_panel(&self, run: &BlockRun, width: usize) -> Vec<Line<'static>> {
-        let t = self.theme;
-        let mut lines = vec![run_status(run, t)];
-        if !run.expanded {
-            return lines;
-        }
-
-        let bar = Span::styled(QUOTE_BAR, Style::default().fg(t.muted));
-        if run.dropped > 0 {
-            lines.push(Line::from(vec![
-                bar.clone(),
-                Span::styled(
-                    format!("… {} earlier lines", run.dropped),
-                    Style::default().fg(t.muted),
-                ),
-            ]));
-        }
-        for out in &run.output {
-            let style = Style::default().fg(if out.stderr { t.err } else { t.subtle });
-            for row in hard_wrap(
-                vec![Span::styled(out.text.clone(), style)],
-                width.saturating_sub(2),
-            ) {
-                let mut spans = vec![bar.clone()];
-                spans.extend(row);
-                lines.push(Line::from(spans));
-            }
-        }
-        lines
-    }
-
-    fn table(
-        &self,
-        align: &[Align],
-        header: &[Vec<Inline>],
-        rows: &[Vec<Vec<Inline>>],
-        width: usize,
-    ) -> Out {
-        let t = self.theme;
-        let cols = header
-            .len()
-            .max(rows.iter().map(Vec::len).max().unwrap_or(0));
-        if cols == 0 {
-            return Out::default();
-        }
-        let all = || std::iter::once(header).chain(rows.iter().map(Vec::as_slice));
-        let text =
-            |row: &[Vec<Inline>], i: usize| row.get(i).map(|c| plain_text(c)).unwrap_or_default();
-
-        let mut natural = vec![3usize; cols];
-        let mut min = vec![3usize; cols];
-        for row in all() {
-            for i in 0..cols {
-                let s = text(row, i);
-                let line = s.lines().map(UnicodeWidthStr::width).max().unwrap_or(0);
-                let word = s
-                    .split_whitespace()
-                    .map(UnicodeWidthStr::width)
-                    .max()
-                    .unwrap_or(0);
-                natural[i] = natural[i].max(line);
-                min[i] = min[i].max(word.min(MAX_MIN_COLUMN));
-            }
-        }
-        // One space of margin on each side plus " │ " between columns.
-        let budget = width.saturating_sub(2 + 3 * (cols - 1));
-        let widths = column_widths(&natural, &min, budget);
-
-        let sep = Style::default().fg(t.muted);
-        let row_lines = |row: &[Vec<Inline>], base: Style| -> Vec<Line<'static>> {
-            let cells: Vec<Vec<Line<'static>>> = widths
-                .iter()
-                .enumerate()
-                .map(|(i, &w)| {
-                    let inlines = row.get(i).map_or(&[][..], Vec::as_slice);
-                    wrap(&self.runs(inlines, base), w)
-                })
-                .collect();
-            let height = cells.iter().map(Vec::len).max().unwrap_or(1);
-            (0..height)
-                .map(|k| {
-                    let mut spans = vec![Span::raw(" ")];
-                    for (i, &w) in widths.iter().enumerate() {
-                        if i > 0 {
-                            spans.push(Span::styled(" │ ", sep));
-                        }
-                        let line = cells[i].get(k).cloned().unwrap_or_default();
-                        let a = align.get(i).copied().unwrap_or_default();
-                        spans.extend(aligned(line, w, a));
-                    }
-                    Line::from(spans)
-                })
-                .collect()
-        };
-
-        let mut lines = row_lines(header, Style::default().fg(t.heading).bold());
-        let rule: Vec<String> = widths.iter().map(|w| "─".repeat(*w)).collect();
-        lines.push(Line::styled(format!("─{}─", rule.join("─┼─")), sep));
-        for row in rows {
-            lines.extend(row_lines(row, Style::default().fg(t.text)));
-        }
-        Out::from(lines)
-    }
-
     fn runs(&self, inlines: &[Inline], base: Style) -> Vec<(String, Style)> {
         let t = self.theme;
         inlines
@@ -678,153 +385,6 @@ impl Renderer<'_> {
     }
 }
 
-/// First line of a run panel: status icon, text and elapsed time, plus a
-/// hidden-line count when the output is collapsed.
-pub fn run_status(run: &BlockRun, t: &Theme) -> Line<'static> {
-    let (icon, text, color) = match &run.status {
-        Status::Running(since) => ("●", format!("running {}", secs(since.elapsed())), t.warn),
-        Status::Ok(took) => ("✓", format!("done in {}", secs(*took)), t.ok),
-        Status::Failed {
-            code: Some(c),
-            took,
-        } => ("✗", format!("exit {c} after {}", secs(*took)), t.err),
-        Status::Failed { code: None, took } => (
-            "✗",
-            format!("killed by signal after {}", secs(*took)),
-            t.err,
-        ),
-        Status::Cancelled(took) => ("■", format!("cancelled after {}", secs(*took)), t.warn),
-        Status::TimedOut(took) => ("✗", format!("timed out after {}", secs(*took)), t.err),
-        Status::Error(e) => ("✗", format!("could not start: {e}"), t.err),
-    };
-    let mut status = vec![Span::styled(
-        format!("{icon} {text}"),
-        Style::default().fg(color).bold(),
-    )];
-    if !run.expanded && !run.output.is_empty() {
-        let n = run.output.len() + run.dropped;
-        status.push(Span::styled(
-            format!("  {n} line{} hidden", if n == 1 { "" } else { "s" }),
-            Style::default().fg(t.muted),
-        ));
-    }
-    Line::from(status)
-}
-
-/// Scale a `w`×`h` cell picture to at most `width` columns and
-/// `max_rows` rows, keeping its shape.
-fn fit_image(w: u16, h: u16, width: u16, max_rows: u16) -> (u16, u16) {
-    let (w, h) = (f32::from(w.max(1)), f32::from(h.max(1)));
-    let scale = (f32::from(width.max(1)) / w)
-        .min(f32::from(max_rows.max(1)) / h)
-        .min(1.0);
-    (
-        ((w * scale).round() as u16).max(1),
-        ((h * scale).round() as u16).max(1),
-    )
-}
-
-/// A column's minimum width never exceeds this, so one long word can't
-/// starve the other columns; longer words are split.
-const MAX_MIN_COLUMN: usize = 12;
-
-/// Fit columns with `natural` widths into `budget` columns. Columns that
-/// fit within an even share keep their natural width; the rest split what's
-/// left in proportion to their natural width, but not below `min` unless
-/// the table can't fit otherwise.
-fn column_widths(natural: &[usize], min: &[usize], budget: usize) -> Vec<usize> {
-    if natural.iter().sum::<usize>() <= budget {
-        return natural.to_vec();
-    }
-    let mut widths = vec![0; natural.len()];
-    let mut open: Vec<usize> = (0..natural.len()).collect();
-    let mut left = budget;
-    loop {
-        let share = left / open.len();
-        let (fixed, rest): (Vec<usize>, Vec<usize>) =
-            open.iter().partition(|&&i| natural[i] <= share);
-        if fixed.is_empty() {
-            break;
-        }
-        for i in fixed {
-            widths[i] = natural[i];
-            left -= natural[i];
-        }
-        open = rest;
-    }
-    let total: usize = open.iter().map(|&i| natural[i]).sum();
-    for &i in &open {
-        widths[i] = left * natural[i] / total;
-    }
-    // Hand out the rounding remainder, widest columns first.
-    let rem = left - open.iter().map(|&i| widths[i]).sum::<usize>();
-    open.sort_by_key(|&i| std::cmp::Reverse(natural[i]));
-    for &i in open.iter().cycle().take(rem) {
-        widths[i] += 1;
-    }
-    for (w, &m) in widths.iter_mut().zip(min) {
-        *w = (*w).max(m);
-    }
-    // Minimums may overshoot; take it back from the widest columns that
-    // are still above the floor of 3.
-    while widths.iter().sum::<usize>() > budget {
-        let Some((i, _)) = widths
-            .iter()
-            .enumerate()
-            .filter(|(_, w)| **w > 3)
-            .max_by_key(|(_, w)| **w)
-        else {
-            break;
-        };
-        widths[i] -= 1;
-    }
-    widths
-}
-
-/// Pad a wrapped cell line to `w` columns according to `align`.
-fn aligned(line: Line<'static>, w: usize, align: Align) -> Vec<Span<'static>> {
-    let pad = w.saturating_sub(line.width());
-    let (before, after) = match align {
-        Align::Right => (pad, 0),
-        Align::Center => (pad / 2, pad - pad / 2),
-        Align::None | Align::Left => (0, pad),
-    };
-    let mut spans = Vec::with_capacity(line.spans.len() + 2);
-    if before > 0 {
-        spans.push(Span::raw(" ".repeat(before)));
-    }
-    spans.extend(line.spans);
-    if after > 0 {
-        spans.push(Span::raw(" ".repeat(after)));
-    }
-    spans
-}
-
-/// `s` without control characters. Document text goes straight to the
-/// terminal in print and pager modes, and an ESC in it would run as an
-/// escape sequence there; ratatui drops them the same way in the TUI.
-pub fn strip_controls(s: &str) -> String {
-    s.chars().filter(|c| !c.is_control()).collect()
-}
-
-/// Text of one rendered line, without styling.
-pub fn plain(line: &Line) -> String {
-    line.spans.iter().map(|s| s.content.as_ref()).collect()
-}
-
-/// Plain text of rendered lines, for printing and snapshot tests.
-pub fn to_plain(lines: &[Line]) -> String {
-    lines
-        .iter()
-        .map(|l| strip_controls(plain(l).trim_end()))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn secs(d: Duration) -> String {
-    format!("{:.1}s", d.as_secs_f64())
-}
-
 /// `<Name ...>` but not `</Name>` or a self-closing `<Name />`.
 fn is_open_tag(label: &str) -> bool {
     label.starts_with('<') && !label.starts_with("</") && !label.ends_with("/>")
@@ -834,116 +394,6 @@ fn is_open_tag(label: &str) -> bool {
 mod tests {
     use super::*;
     use crate::doc::parse;
-
-    #[test]
-    fn widths_fit_unchanged() {
-        assert_eq!(column_widths(&[5, 10], &[3, 3], 20), [5, 10]);
-    }
-
-    #[test]
-    fn widths_shrink_only_long_column() {
-        // Short columns keep their width; the long one takes the rest.
-        assert_eq!(column_widths(&[4, 6, 80], &[3, 3, 5], 40), [4, 6, 30]);
-    }
-
-    #[test]
-    fn widths_split_long_columns_proportionally() {
-        assert_eq!(column_widths(&[3, 60, 30], &[3, 3, 3], 48), [3, 30, 15]);
-    }
-
-    #[test]
-    fn widths_respect_minimum_then_budget() {
-        let w = column_widths(&[20, 20], &[12, 12], 30);
-        assert_eq!(w, [15, 15]);
-        let w = column_widths(&[20, 20, 20], &[12, 12, 12], 24);
-        assert_eq!(w.iter().sum::<usize>(), 24);
-        assert!(w.iter().all(|&c| c >= 3));
-    }
-
-    fn table(src: &str, width: u16) -> Vec<Line<'static>> {
-        render(&parse(src), width, &Theme::dark()).lines
-    }
-
-    #[test]
-    fn table_aligns_columns() {
-        let lines = table("| left | right | mid |\n|:--|--:|:-:|\n| a | b | c |\n", 40);
-        assert_eq!(to_plain(&lines[2..3]), " a    │     b │  c");
-    }
-
-    #[test]
-    fn table_wraps_long_cells() {
-        let src = "| k | v |\n|---|---|\n| x | one two three four five six |\n";
-        let plain = to_plain(&table(src, 20));
-        assert_eq!(
-            plain,
-            " k   │ v\n─────┼──────────────\n x   │ one two\n     │ three four\n     │ five six"
-        );
-        assert!(!plain.contains('…'));
-    }
-
-    #[test]
-    fn table_keeps_inline_styles() {
-        let lines = table("| a | b |\n|---|---|\n| **bold** | `code` |\n", 40);
-        let spans = &lines[2].spans;
-        let bold = spans.iter().find(|s| s.content == "bold").unwrap();
-        assert!(bold.style.add_modifier.contains(Modifier::BOLD));
-        let code = spans.iter().find(|s| s.content == "code").unwrap();
-        assert_eq!(code.style.bg, Some(Theme::dark().surface));
-    }
-
-    #[test]
-    fn links_are_located_across_wraps_and_prefixes() {
-        let src = "# Top [x](https://h1.dev)\n\nsee [the long guide](docs/guide.md) and [b](https://b.dev)\n\n- item [c](#c)\n";
-        let r = render(&parse(src), 16, &Theme::dark());
-        let text = |l: &LinkSpan| -> String {
-            let line = plain(&r.lines[l.line]);
-            line.chars().skip(l.col).take(l.width).collect()
-        };
-        let found: Vec<(String, String)> =
-            r.links.iter().map(|l| (l.url.clone(), text(l))).collect();
-        assert_eq!(
-            found,
-            [
-                // The H1 band shows its text plainly, so only these count.
-                ("docs/guide.md".to_string(), "the long".to_string()),
-                ("docs/guide.md".to_string(), "guide".to_string()),
-                ("https://b.dev".to_string(), "b".to_string()),
-                ("#c".to_string(), "c".to_string()),
-            ],
-            "{:?}",
-            to_plain(&r.lines)
-        );
-    }
-
-    #[test]
-    fn images_reserve_rows_once_loaded() {
-        let doc = parse("- item\n\n  ![A cat](cat.png)\n");
-        let placeholder = render(&doc, 40, &Theme::dark());
-        assert!(placeholder.images.is_empty(), "{:?}", placeholder.images);
-        assert!(to_plain(&placeholder.lines).contains("[image: A cat]"));
-
-        let sizes = ImageSizes::from([("cat.png".to_string(), (60, 40))]);
-        let r = render_with_runs(
-            &doc,
-            40,
-            &Theme::dark(),
-            &HashMap::new(),
-            &Interpreters::default(),
-            &Highlights::default(),
-            &sizes,
-            Options::default(),
-        );
-        let [slot] = r.images.as_slice() else {
-            panic!("expected one slot: {:?}", r.images);
-        };
-        // Scaled to the 38 columns inside the list indent, keeping its shape.
-        assert_eq!((slot.col, slot.cols, slot.rows), (2, 36, 24));
-        assert_eq!(fit_image(60, 40, 38, 24), (36, 24));
-        assert_eq!(fit_image(10, 5, 38, 24), (10, 5));
-        assert_eq!(fit_image(60, 40, 38, 12), (18, 12));
-        let caption = plain(&r.lines[slot.line + usize::from(slot.rows)]);
-        assert_eq!(caption.trim(), "A cat");
-    }
 
     #[test]
     fn options_set_tab_width_and_picture_height() {
@@ -970,16 +420,15 @@ mod tests {
             image_rows: 10,
             ..Options::default()
         };
-        let r = render_with_runs(
-            &doc,
-            80,
-            &Theme::dark(),
-            &HashMap::new(),
-            &Interpreters::default(),
-            &Highlights::default(),
-            &sizes,
-            short,
-        );
+        let (runs, interpreters, highlights) = Default::default();
+        let cx = Context {
+            runs: &runs,
+            interpreters: &interpreters,
+            highlights: &highlights,
+            images: &sizes,
+            opts: short,
+        };
+        let r = render_with_runs(&doc, 80, &Theme::dark(), cx);
         assert_eq!(r.images[0].rows, 10);
     }
 }

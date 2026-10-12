@@ -2,11 +2,10 @@ use std::path::PathBuf;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
+use super::Reader;
 use crate::doc::{self, Block, CodeBlock};
 use crate::exec::{BlockRun, RunEvent, RunSpec, Status};
 use crate::render;
-
-use super::Reader;
 
 impl Reader {
     pub fn code(&self, id: usize) -> Option<&CodeBlock> {

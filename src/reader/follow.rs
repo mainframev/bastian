@@ -1,11 +1,10 @@
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
+use super::{Action, Reader};
 use crate::doc::{self, Block};
 use crate::links::{self, Target};
 use crate::nav::{self, Motion};
 use crate::render;
-
-use super::{Action, Reader};
 
 impl Reader {
     /// Absolute target for a link written as `url`, for terminal hyperlinks:

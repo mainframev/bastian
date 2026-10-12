@@ -7,15 +7,16 @@
 [![Build status](https://github.com/mainframev/bastian/actions/workflows/ci.yml/badge.svg)](https://github.com/mainframev/bastian/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+> [!WARNING]
+> bastian is pre-1.0 and still changing: settings, flags and keys may change
+> between minor releases. Check the release notes when you update.
+
 **Make documentation a pleasure to read, right in your terminal.**
 
-bastian lists the Markdown in a local folder and its subfolders, newest first
-and ready to filter, then lays it out for the terminal: fitted tables,
-highlighted code, clickable links, images, an outline, search and live reload.
-
-It also opens single documents from stdin, a URL or a GitHub/GitLab repo's
-README, handles MDX, comes with themes, and can even run a runbook's shell,
-Python or Node blocks in place.
+bastian finds the Markdown in a folder and lays it out for the terminal:
+fitted tables, highlighted code, clickable links, images, an outline, search
+and live reload. It also reads single documents from a file, stdin, a URL or
+a GitHub/GitLab repository, and can run a runbook's code blocks in place.
 
 Named after Bastian Balthazar Bux, who reads _The NeverEnding Story_ until he
 ends up inside it.
@@ -24,212 +25,83 @@ ends up inside it.
 
 ## Install
 
-With [Homebrew](https://brew.sh) on macOS or Linux, which also installs the
-shell completions and the man page:
-
 ```sh {norun}
-brew install mainframev/tap/bastian
+brew install mainframev/tap/bastian      # Homebrew, macOS or Linux
 ```
-
-Or build it with Cargo; get it with [rustup](https://rustup.rs) if you
-don't have it. Then install it from crates.io:
 
 ```sh {name=install}
 cargo install --locked bastian
 ```
 
-For the latest unreleased changes, install from GitHub instead:
+Homebrew also installs the shell completions and the man page. With Cargo
+([rustup](https://rustup.rs)), the latest unreleased version is
+`cargo install --locked --git https://github.com/mainframev/bastian`.
 
-```sh {norun}
-cargo install --locked --git https://github.com/mainframev/bastian
-```
+## The TUI
 
-Either puts `bastian` in `~/.cargo/bin`, which rustup adds to your `PATH`.
-Run the same command again to update.
+Run `bastian` in a folder (or `bastian docs/`) to see its Markdown files,
+newest first:
 
-## Usage
+- `j/k` to move, `/` to filter by path or title, `Enter` to open, `e` to edit;
+- hidden and gitignored files are skipped unless you pass `-a`;
+- choose how the list looks and sorts: a compact one-row layout, several
+  selection styles, sorting by modified or created date or by name.
 
-```sh {norun}
-bastian                 # browse Markdown files under the current directory
-bastian docs/           # browse another directory
-bastian -a              # also list hidden and gitignored files
-bastian README.md       # read a file
-bastian github.com/owner/repo         # a repository's README (GitLab too)
-bastian https://example.com/doc.md    # any Markdown URL
-bastian https://github.com/o/r/blob/main/docs/guide.md  # file pages are read raw
-bastian -p README.md    # print instead of opening the TUI
-bastian --pager README.md  # page it through $PAGER (default less -R)
-bastian --color always README.md | less -R
-bastian -y runbook.md   # run blocks without confirming each one
-bastian -n README.md    # show line numbers
-bastian -t kanagawa README.md  # use another theme
-```
+In a document:
 
-## Keys
-
-| Key                                 | Reader                                                                                   |
-| ----------------------------------- | ---------------------------------------------------------------------------------------- |
-| `j/k`, `ctrl-d/u`, `space/b`, `g/G` | scroll                                                                                   |
-| `/`, `n/N`                          | search, next/previous match                                                              |
-| `Tab`, `Shift-Tab`                  | focus next/previous code block                                                           |
-| `Enter`, `r`                        | run focused block                                                                        |
-| `R`                                 | run all runnable blocks from the focused one, stop at first failure                      |
-| `x`                                 | stop running blocks                                                                      |
-| `o`                                 | show/hide a block's output                                                               |
-| `y`                                 | copy focused block (OSC 52)                                                              |
-| `c`                                 | copy the whole document                                                                  |
-| `L`                                 | list links; follow one with `Enter`                                                      |
-| `O`                                 | outline of the headings; `Enter` jumps to one                                            |
-| `e`                                 | edit the file in your `editor`, `$VISUAL`, `$EDITOR` or `vi`, at the line you're reading |
-| `ctrl-z`                            | suspend; resume with `fg`                                                                |
-| `#`                                 | toggle line numbers                                                                      |
-| `i`                                 | show/hide images                                                                         |
-| `T`                                 | pick a theme (also in the file list)                                                     |
-| `?`                                 | key help                                                                                 |
-| `Esc`, `h`                          | back to the previous document or the file list                                           |
-| `q`                                 | quit                                                                                     |
+- `/` searches, `n/N` jump between matches;
+- `O` opens an outline of the headings to jump through;
+- `L` lists the links to follow, and links are clickable in terminals that
+  support it;
+- images are drawn as pictures where the terminal can; `i` toggles them;
+- `#` shows line numbers, `y`/`c` copy a code block or the whole document;
+- `e` opens your editor at the line you're reading, and the document reloads
+  when the file changes;
+- `T` switches the theme;
+- `?` shows every key, `Esc` goes back, `q` quits.
 
 ![Switching themes with T while reading](demo/reader-themes.gif)
 
-In the file list: `j/k` to move, `h/l` (or `←/→`) for the previous/next page,
-`ctrl-d/u` and `ctrl-f/b` to page, `/` to filter,
-`Enter` to open, `e` to edit, `r` to rescan for new or deleted files, `?` for
-all keys, `q` to quit.
+More in [the file list](docs/file-list.md) and [the reader](docs/reader.md).
 
-The search and filter input edits like a shell prompt: `←/→`, `Home/End`
-(or `ctrl-a/e`), `alt-b/f` by word, `ctrl-w` and `ctrl-u` to delete. While
-filtering, `↑/↓`, `PageUp/PageDown` and `ctrl-j/k` leave the input and move
-through the results.
+## The CLI
 
-Links are also clickable in terminals that support hyperlinks (OSC 8: iTerm2,
-kitty, WezTerm, Ghostty, Windows Terminal, recent tmux with `hyperlinks` in
-`terminal-features`, …): web links open as they are, relative links as files
-next to the document (or against the URL of a remote document).
+bastian also reads documents from anywhere, and prints them for pipes and
+pagers:
 
-An image on a line of its own is shown as a picture in the reader (kitty
-graphics in kitty and Ghostty, iTerm2's in iTerm2 and WezTerm, colored
-half-blocks elsewhere and inside tmux), from a file next to the document or a URL. Images in
-running text, SVGs (such as most badges), GIFs and printed output keep their
-alt text.
+```sh {norun}
+bastian README.md                    # read a file in the TUI
+bastian -                            # read stdin
+bastian https://example.com/doc.md   # a Markdown URL
+bastian github.com/owner/repo        # a repository's README (GitLab too)
+bastian -p README.md                 # print it instead
+bastian -p -w 80 README.md           # at most 80 columns wide
+bastian --pager README.md            # page it through $PAGER
+bastian --color always README.md | less -R
+```
 
-The open document reloads when the file changes on disk.
-
-Remote documents (URLs, `github.com/owner/repo`, `gitlab.com/group/project`)
-resolve relative links against their URL, so `L` can follow them to other
-remote Markdown files. Their code blocks run in the current directory and
-always ask first, even with `--yes`. Set `GITHUB_TOKEN` to avoid GitHub's
-anonymous rate limit.
-
-`.mdx` files are parsed as MDX: front matter, `import`/`export` and
-`{/* comments */}` are hidden, components show as muted tag lines around their
-rendered content, and code blocks inside components can still be run. Front
-matter is hidden in plain `.md` files too.
+MDX files are supported, and source files are shown highlighted. Every input
+form, option and command is in [the command line](docs/cli.md).
 
 ## Running code blocks
 
-Fenced code blocks in `sh`, `bash`, `zsh`, `fish`, `python` or `node` can be
-run from the reader, with their output streamed underneath. Try it on this
-file: open it with `bastian README.md`, press `Tab` to focus the block below
-and `Enter` to run it.
+Shell, Python and Node blocks can run right in the reader, with their output
+underneath. Try it here: open this file with `bastian README.md`, press `Tab`
+to focus the block below and `Enter` to run it.
 
 ```sh {name=hello}
 echo "hello from $(basename "$PWD")"
 uname -sm
 ```
 
-Put attributes in braces after the language:
-
-````markdown
-```sh {name=deploy cwd=./infra env=STAGE=prod timeout=5m confirm}
-./deploy.sh
-```
-````
-
-| Attribute       | Effect                                                            |
-| --------------- | ----------------------------------------------------------------- |
-| `name=...`      | label shown on the block and in prompts; quote values with spaces |
-| `cwd=...`       | working directory, relative to the document's directory           |
-| `env=KEY=VALUE` | environment variable; repeat for more                             |
-| `timeout=30s`   | stop the block after `ms`, `s`, `m` or `h`                        |
-| `confirm`       | always ask before running, even with `--yes`                      |
-| `norun`         | never run this block                                              |
-
-Blocks run in the document's directory with no terminal attached, so
-interactive programs (editors, ssh, password prompts) don't work. Each block
-runs in its own process group; stopping it or quitting bastian stops everything
-it started.
-
-## Configuration
-
-`~/.config/bastian/config.toml` (or `$XDG_CONFIG_HOME/bastian/config.toml`).
-Command-line flags take precedence.
-
-```toml
-theme = "auto"        # match the terminal background, "dark", "light" or a theme name
-dark_theme = "rose-pine"        # used by "auto" on dark backgrounds, and "dark"
-light_theme = "rose-pine-dawn"  # used by "auto" on light backgrounds, and "light"
-width = 100           # maximum document width
-confirm = "always"    # "never" behaves like --yes
-color = "auto"        # printed output: "auto", "always" or "never"
-pager = false         # true: show documents in $PAGER instead of the TUI
-all = false           # true: also list hidden and gitignored files
-mouse = false         # true: scroll with the mouse wheel
-logo = true           # false: no logo at the top of the file list (--no-logo)
-images = true         # false: show images as their alt text (--no-images);
-                      # `i` toggles them in the reader
-selector = "bar"      # how the file list marks the selected file: "bar",
-                      # "thick", "block", "arrow" or "highlight" (--selector)
-list_layout = "cards"  # "compact" lists one file per row (--list-layout)
-sort = "modified"     # file list order: "modified", "created" or "name" (--sort)
-dates = true          # false: no file dates in the file list
-date_format = "%d %b %Y %H:%M %Z"  # strftime format of those dates
-extensions = ["md", "markdown", "mdx", "mdown", "mkdn", "mkd"]  # files listed
-ignore = []           # gitignore-style globs to leave out, e.g. ["drafts/"]
-image_height = 24     # rows a picture takes up at most
-tab_width = 4         # columns per tab in code
-hyperlinks = true     # false: plain links, for terminals that show OSC 8 codes
-scrollbar = true      # false: no scrollbars
-# editor = "nvim"     # for `e`, before $VISUAL and $EDITOR
-line_numbers = false  # true behaves like --line-numbers
-
-[interpreters]
-# The block source is appended as the last argument.
-ruby = ["ruby", "-e"]
-python = ["uv", "run", "python", "-c"]
-fish = []             # an empty list stops a language from running
-```
-
-Printed output is colored when it goes to a terminal; `NO_COLOR` turns that
-off and `CLICOLOR_FORCE=1` turns it on for pipes. Without `-w` it uses the
-terminal width (up to 120 columns), or 80 when there's no terminal.
-
-Use another file with `--config <path>` or `BASTIAN_CONFIG` (`~` and `$VAR` are
-expanded). `bastian config` opens the file in your editor, creating it from a
-commented template first, and `bastian --print-config` shows the effective
-settings and where each one came from. To read a file literally named
-`config`, write `./config`.
-
-Each setting can also come from the environment: `BASTIAN_THEME`,
-`BASTIAN_DARK_THEME`, `BASTIAN_LIGHT_THEME`, `BASTIAN_WIDTH`, `BASTIAN_CONFIRM`, `BASTIAN_LINE_NUMBERS`, `BASTIAN_COLOR`,
-`BASTIAN_PAGER`, `BASTIAN_ALL`, `BASTIAN_MOUSE`, `BASTIAN_LOGO` and
-`BASTIAN_IMAGES`. Precedence is
-defaults < config file < environment < command-line flags.
+Attributes like `{cwd=./infra timeout=5m confirm}` control how a block runs;
+see [code blocks](docs/code-blocks.md).
 
 ## Themes
 
-Built-in themes, which also color code blocks:
-
-| Family      | Themes                                                                                             |
-| ----------- | -------------------------------------------------------------------------------------------------- |
-| Tokyo Night | `tokyonight-night` (`tokyonight`), `tokyonight-storm`, `tokyonight-moon`, `tokyonight-day`         |
-| Rosé Pine   | `rose-pine`, `rose-pine-moon`, `rose-pine-dawn`                                                    |
-| Kanagawa    | `kanagawa-wave` (`kanagawa`), `kanagawa-dragon`, `kanagawa-lotus`                                  |
-| Catppuccin  | `catppuccin-mocha` (`catppuccin`), `catppuccin-macchiato`, `catppuccin-frappe`, `catppuccin-latte` |
-| Gruvbox     | `gruvbox-dark` (`gruvbox`), `gruvbox-light`                                                        |
-| Nord        | `nord`                                                                                             |
-| Dracula     | `dracula`                                                                                          |
-| Everforest  | `everforest-dark` (`everforest`), `everforest-light`                                               |
-| Solarized   | `solarized-dark` (`solarized`), `solarized-light`                                                  |
+Built in: Tokyo Night, Rosé Pine, Kanagawa, Catppuccin, Gruvbox, Nord,
+Dracula, Everforest and Solarized, each with its variants. By default bastian
+follows your terminal's light or dark background.
 
 ```sh {norun}
 bastian themes               # pick one with a live preview; Enter saves it
@@ -238,34 +110,35 @@ bastian -t nord README.md    # use a theme just this once
 
 ![The theme picker previewing themes on a sample document](demo/themes.gif)
 
-Or set it in the config file. The default, `auto`, follows the terminal's
-background:
+You can also write your own, or tweak a built-in one; see [themes](docs/themes.md).
+
+## Configuration
+
+`bastian config` opens `~/.config/bastian/config.toml` in your editor, starting
+from a commented template:
 
 ```toml
-theme = "auto"                  # or "dark", "light", or a theme name
-dark_theme = "rose-pine"
-light_theme = "rose-pine-dawn"
+theme = "auto"
+width = 100
+list_layout = "compact"
+line_numbers = true
+editor = "nvim"
 ```
 
-Press `T` while reading or browsing to open the same picker.
+Every setting can also come from a `BASTIAN_*` environment variable or a flag,
+and `bastian --print-config` shows where each one came from. See
+[configuration](docs/configuration.md) for all of them.
 
-### Your own themes
+## Documentation
 
-Put `<name>.toml` in `~/.config/bastian/themes/` (the `themes` directory next
-to the config file) and select it by name. A theme can start from another and
-change only some colors:
-
-```toml
-# ~/.config/bastian/themes/midnight.toml
-extends = "tokyonight-night"
-
-[ui]
-accent = "#ff9e64"
-h1_bg = "#ff9e64"
-
-[syntax]
-comment = "#7a88cf"
-```
+- [The file list](docs/file-list.md): navigating, filtering and shaping the list
+- [The reader](docs/reader.md): keys, search, outline, links, images, editing,
+  remote documents and MDX
+- [The command line](docs/cli.md): inputs, printing, options and commands
+- [Running code blocks](docs/code-blocks.md): keys, attributes and interpreters
+- [Themes](docs/themes.md): built-in themes, the picker and your own
+- [Configuration](docs/configuration.md): every setting, environment variables
+  and precedence
 
 ## License
 

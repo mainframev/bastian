@@ -35,7 +35,8 @@ pub fn default_store() -> Option<PathBuf> {
 
 /// The line `file` was last read at, if remembered.
 pub fn load(store: &Path, file: &Path) -> Option<usize> {
-    read(store).get(&key(file)?).map(|e| e.line)
+    let entry = *read(store).get(&key(file)?)?;
+    (now().saturating_sub(entry.at) <= MAX_AGE_SECS).then_some(entry.line)
 }
 
 /// Remember `line` for `file`; `None` forgets it (back at the top).
@@ -75,7 +76,42 @@ fn prune(entries: &mut HashMap<String, Entry>, now: u64) {
 
 /// Files are keyed by their canonical path, so `./a.md` and `a.md` match.
 fn key(file: &Path) -> Option<String> {
-    Some(file.canonicalize().ok()?.to_string_lossy().into_owned())
+    Some(encode(&file.canonicalize().ok()?))
+}
+
+/// A path as a store key, losing nothing: the path itself when it's valid
+/// Unicode, else its raw bytes (or UTF-16 units on Windows) in hex. Keys
+/// are absolute paths, so the `bytes:`/`wide:` prefixes can't collide
+/// with a real one.
+fn encode(path: &Path) -> String {
+    if let Some(s) = path.to_str() {
+        return s.to_string();
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let hex: String = path
+            .as_os_str()
+            .as_bytes()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        format!("bytes:{hex}")
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        let hex: String = path
+            .as_os_str()
+            .encode_wide()
+            .map(|u| format!("{u:04x}"))
+            .collect();
+        format!("wide:{hex}")
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        path.to_string_lossy().into_owned()
+    }
 }
 
 fn read(store: &Path) -> HashMap<String, Entry> {
@@ -126,6 +162,28 @@ mod tests {
         assert_eq!(load(&store, &other), Some(42));
         save(&store, &file, None);
         assert_eq!(load(&store, &file), None);
+    }
+
+    #[test]
+    fn expired_positions_are_not_restored() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("positions.json");
+        let file = dir.path().join("a.md");
+        std::fs::write(&file, "").unwrap();
+        let old = HashMap::from([(key(&file).unwrap(), Entry { line: 9, at: 0 })]);
+        write(&store, &old);
+        assert_eq!(load(&store, &file), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_unicode_paths_get_distinct_keys() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+        let a = Path::new(OsStr::from_bytes(b"/x/\xff.md"));
+        let b = Path::new(OsStr::from_bytes(b"/x/\xfe.md"));
+        assert_ne!(encode(a), encode(b));
+        assert_eq!(encode(Path::new("/x/é.md")), "/x/é.md");
     }
 
     #[test]

@@ -117,16 +117,14 @@ impl Reader {
             self.follow = Some(id);
         }
         let mut run = BlockRun::started();
-        match self.spec(id).and_then(|spec| {
+        let started = self.spec(id).and_then(|spec| {
             self.runner
                 .start(id, &spec)
                 .map_err(|e| format!("{}: {e}", spec.program))
-        }) {
-            Ok(()) => {}
-            Err(e) => {
-                run.status = Status::Error(e);
-                self.queue.clear();
-            }
+        });
+        if let Err(e) = started {
+            run.status = Status::Error(e);
+            self.queue.clear();
         }
         self.runs.insert(id, run);
         self.dirty = true;
@@ -248,7 +246,7 @@ impl Reader {
                 } else {
                     Status::Failed { code, took }
                 };
-                let ok = status == Status::Ok(took);
+                let ok = matches!(status, Status::Ok(_));
                 if let Some(run) = self.runs.get_mut(&id) {
                     run.status = status;
                 }

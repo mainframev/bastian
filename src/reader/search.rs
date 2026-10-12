@@ -72,13 +72,10 @@ pub fn find(rendered: &Rendered, query: &str) -> Vec<Match> {
     }
 
     let mut out = Vec::new();
+    let mut hay = Vec::new();
     for (i, line) in rendered.lines.iter().enumerate() {
-        let hay: Vec<char> = line
-            .spans
-            .iter()
-            .flat_map(|s| s.content.chars())
-            .map(fold)
-            .collect();
+        hay.clear();
+        hay.extend(line.spans.iter().flat_map(|s| s.content.chars()).map(fold));
         let mut start = 0;
         while start + needle.len() <= hay.len() {
             if hay[start..start + needle.len()] == needle[..] {

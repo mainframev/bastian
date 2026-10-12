@@ -241,3 +241,33 @@ fn running_timer_updates_in_place() {
     key(&mut r, KeyCode::Char('x'));
     settle(&mut r);
 }
+
+#[test]
+fn search_follows_a_running_timer() {
+    let mut r = reader("```sh\nsleep 2\n```\n");
+    key(&mut r, KeyCode::Tab);
+    key(&mut r, KeyCode::Enter);
+    key(&mut r, KeyCode::Char('y'));
+    key(&mut r, KeyCode::Char('/'));
+    for c in "running".chars() {
+        key(&mut r, KeyCode::Char(c));
+    }
+    key(&mut r, KeyCode::Enter);
+    r.tick();
+    r.layout(80, 40);
+    thread::sleep(Duration::from_millis(250));
+    assert!(r.tick());
+    r.layout(80, 40);
+    let matches = r.search.as_ref().unwrap().matches.clone();
+    let patched = bastian::render::to_plain(&r.rendered.lines);
+    assert!(patched.contains("● running"), "{patched}");
+    assert_eq!(matches.len(), 1, "{patched}");
+
+    // A full re-render finds the same match in the same place.
+    let doc = r.doc.clone();
+    r.replace_doc(doc);
+    r.layout(80, 40);
+    assert_eq!(r.search.as_ref().unwrap().matches, matches);
+    key(&mut r, KeyCode::Char('x'));
+    settle(&mut r);
+}

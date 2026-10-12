@@ -114,7 +114,7 @@ pub struct Reader {
     pub positions: Option<PathBuf>,
     /// Source line to scroll to, kept until the user moves so it survives
     /// re-renders (e.g. pictures loading).
-    pub restore: Option<usize>,
+    pub restore: Option<crate::positions::Position>,
     /// Where the last restore left the view; any other scroll position
     /// means the user moved, which ends the restore.
     restored_at: Option<usize>,
@@ -246,9 +246,9 @@ impl Reader {
             }
         }
         self.height = usize::from(height);
-        if let Some(line) = self.restore {
+        if let Some(position) = self.restore {
             if self.restored_at.is_none_or(|at| at == self.scroll) {
-                self.scroll_to_source_line(line);
+                self.scroll_to_position(position);
                 // Near the end the view can't reach the block's top; note
                 // where it really is, or the clamp below looks like a move.
                 self.scroll = self.scroll.min(self.max_scroll());

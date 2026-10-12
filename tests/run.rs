@@ -244,30 +244,44 @@ fn running_timer_updates_in_place() {
 
 #[test]
 fn search_follows_a_running_timer() {
-    let mut r = reader("```sh\nsleep 2\n```\n");
+    let mut r = reader("```sh\nsleep 3\n```\n");
     key(&mut r, KeyCode::Tab);
     key(&mut r, KeyCode::Enter);
     key(&mut r, KeyCode::Char('y'));
+    r.tick();
+    r.layout(80, 40);
+    thread::sleep(Duration::from_millis(200));
+    assert!(r.tick());
+    r.layout(80, 40);
+    let timer = |r: &Reader| -> String {
+        let text = bastian::render::to_plain(&r.rendered.lines);
+        let at = text.find("running ").expect("running status line");
+        text[at..]
+            .split_whitespace()
+            .take(2)
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+
+    // Search for the elapsed time as it reads now, e.g. "running 0.2s".
+    let shown = timer(&r);
     key(&mut r, KeyCode::Char('/'));
-    for c in "running".chars() {
+    for c in shown.chars() {
         key(&mut r, KeyCode::Char(c));
     }
     key(&mut r, KeyCode::Enter);
-    r.tick();
-    r.layout(80, 40);
-    thread::sleep(Duration::from_millis(250));
-    assert!(r.tick());
-    r.layout(80, 40);
-    let matches = r.search.as_ref().unwrap().matches.clone();
-    let patched = bastian::render::to_plain(&r.rendered.lines);
-    assert!(patched.contains("● running"), "{patched}");
-    assert_eq!(matches.len(), 1, "{patched}");
+    assert_eq!(r.search.as_ref().unwrap().matches.len(), 1);
 
-    // A full re-render finds the same match in the same place.
-    let doc = r.doc.clone();
-    r.replace_doc(doc);
-    r.layout(80, 40);
-    assert_eq!(r.search.as_ref().unwrap().matches, matches);
+    // Ticks patch the timer in place; the match has to go with the old text.
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while timer(&r) == shown {
+        assert!(Instant::now() < deadline, "timer did not advance");
+        thread::sleep(Duration::from_millis(50));
+        assert!(r.tick());
+        r.layout(80, 40);
+    }
+    assert!(r.search.as_ref().unwrap().matches.is_empty());
+    key(&mut r, KeyCode::Esc);
     key(&mut r, KeyCode::Char('x'));
     settle(&mut r);
 }

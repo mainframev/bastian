@@ -119,6 +119,8 @@ pub enum Block {
         /// Starting number for ordered lists, `None` for bullet lists.
         start: Option<u64>,
         items: Vec<Vec<Block>>,
+        /// Per item, parallel to `items`: `Some(done)` for task items.
+        tasks: Vec<Option<bool>>,
     },
     Quote(Vec<Block>),
     /// A GitHub alert: `> [!NOTE]` and friends.

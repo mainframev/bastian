@@ -275,7 +275,11 @@ impl Renderer<'_> {
                 &self.runs(inlines, Style::default().fg(t.text)),
                 width,
             )),
-            Block::List { start, items } => self.list(*start, items, width),
+            Block::List {
+                start,
+                items,
+                tasks,
+            } => self.list(*start, items, tasks, width),
             Block::Quote(inner) => {
                 let mut out = Out::default();
                 let bar = [Span::styled(QUOTE_BAR, Style::default().fg(t.muted))];
@@ -355,23 +359,58 @@ impl Renderer<'_> {
         Out::from(lines)
     }
 
-    fn list(&self, start: Option<u64>, items: &[Vec<Block>], width: usize) -> Out {
+    fn list(
+        &self,
+        start: Option<u64>,
+        items: &[Vec<Block>],
+        tasks: &[Option<bool>],
+        width: usize,
+    ) -> Out {
         let t = self.theme;
-        let markers: Vec<String> = match start {
+        let numbers: Vec<String> = match start {
             Some(n) => (0..items.len() as u64)
                 .map(|i| format!("{}. ", n + i))
                 .collect(),
-            None => vec!["• ".to_string(); items.len()],
+            None => vec![String::new(); items.len()],
         };
-        let marker_w = markers.iter().map(|m| m.width()).max().unwrap_or(2);
+        let num_w = numbers.iter().map(|m| m.width()).max().unwrap_or(0);
+        let has_tasks = tasks.iter().any(Option::is_some);
+        // Bullets give way to checkboxes; numbers keep theirs in front.
+        let markers: Vec<Vec<Span<'static>>> = numbers
+            .into_iter()
+            .enumerate()
+            .map(|(i, number)| {
+                let number = format!("{number:>num_w$}");
+                let task = match tasks.get(i).copied().flatten() {
+                    Some(true) => Some(Span::styled("☑ ", Style::default().fg(t.ok))),
+                    Some(false) => Some(Span::styled("☐ ", Style::default().fg(t.muted))),
+                    None if has_tasks && start.is_some() => Some(Span::raw("  ")),
+                    None => None,
+                };
+                let mut spans = Vec::new();
+                if start.is_some() {
+                    spans.push(Span::styled(number, Style::default().fg(t.accent)));
+                }
+                match task {
+                    Some(task) => spans.push(task),
+                    None if start.is_none() => {
+                        spans.push(Span::styled("• ", Style::default().fg(t.accent)));
+                    }
+                    None => {}
+                }
+                spans
+            })
+            .collect();
+        let width_of = |m: &[Span]| m.iter().map(Span::width).sum::<usize>();
+        let marker_w = markers.iter().map(|m| width_of(m)).max().unwrap_or(2);
         let pad = [Span::raw(" ".repeat(marker_w))];
 
         let mut out = Out::default();
-        for (item, marker) in items.iter().zip(markers) {
-            let first = [Span::styled(
-                format!("{marker:>marker_w$}"),
-                Style::default().fg(t.accent),
-            )];
+        for (item, mut first) in items.iter().zip(markers) {
+            let gap = marker_w - width_of(&first);
+            if gap > 0 {
+                first.insert(0, Span::raw(" ".repeat(gap)));
+            }
             let inner = self.blocks(item, width.saturating_sub(marker_w), false);
             out.append(inner, &first, &pad);
         }

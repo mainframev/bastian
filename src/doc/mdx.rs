@@ -87,6 +87,14 @@ impl Mapper {
             Node::List(l) => out.push(Block::List {
                 start: l.ordered.then(|| u64::from(l.start.unwrap_or(1))),
                 items: l.children.iter().map(|item| self.list_item(item)).collect(),
+                tasks: l
+                    .children
+                    .iter()
+                    .map(|item| match item {
+                        Node::ListItem(i) => i.checked,
+                        _ => None,
+                    })
+                    .collect(),
             }),
             Node::Code(c) => {
                 let info = match (&c.lang, &c.meta) {
@@ -161,21 +169,10 @@ impl Mapper {
     }
 
     fn list_item(&mut self, node: &Node) -> Vec<Block> {
-        let Node::ListItem(item) = node else {
-            return self.blocks(std::slice::from_ref(node));
-        };
-        let mut blocks = self.blocks(&item.children);
-        if let Some(done) = item.checked {
-            let mark = Inline {
-                text: if done { "[x] " } else { "[ ] " }.into(),
-                style: InlineStyle::default(),
-            };
-            match blocks.first_mut() {
-                Some(Block::Paragraph(inl)) => inl.insert(0, mark),
-                _ => blocks.insert(0, Block::Paragraph(vec![mark])),
-            }
+        match node {
+            Node::ListItem(item) => self.blocks(&item.children),
+            _ => self.blocks(std::slice::from_ref(node)),
         }
-        blocks
     }
 
     fn inlines(&mut self, nodes: &[Node]) -> Vec<Inline> {

@@ -77,14 +77,14 @@ bastian -t kanagawa README.md  # use another theme
 | `ctrl-z`                            | suspend; resume with `fg`                                                                |
 | `#`                                 | toggle line numbers                                                                      |
 | `i`                                 | show/hide images                                                                         |
-| `T`                                 | pick a theme (also in the browser)                                                       |
+| `T`                                 | pick a theme (also in the file list)                                                     |
 | `?`                                 | key help                                                                                 |
-| `Esc`, `h`                          | back to the previous document or the browser                                             |
+| `Esc`, `h`                          | back to the previous document or the file list                                           |
 | `q`                                 | quit                                                                                     |
 
 ![Switching themes with T while reading](demo/reader-themes.gif)
 
-In the browser: `j/k` to move, `h/l` (or `←/→`) for the previous/next page,
+In the file list: `j/k` to move, `h/l` (or `←/→`) for the previous/next page,
 `ctrl-d/u` and `ctrl-f/b` to page, `/` to filter,
 `Enter` to open, `e` to edit, `r` to rescan for new or deleted files, `?` for
 all keys, `q` to quit.
@@ -167,14 +167,14 @@ color = "auto"        # printed output: "auto", "always" or "never"
 pager = false         # true: show documents in $PAGER instead of the TUI
 all = false           # true: also list hidden and gitignored files
 mouse = false         # true: scroll with the mouse wheel
-logo = true           # false: no logo at the top of the file browser (--no-logo)
+logo = true           # false: no logo at the top of the file list (--no-logo)
 images = true         # false: show images as their alt text (--no-images);
                       # `i` toggles them in the reader
-selector = "bar"      # how the browser marks the selected file: "bar",
+selector = "bar"      # how the file list marks the selected file: "bar",
                       # "thick", "block", "arrow" or "highlight" (--selector)
 browser_layout = "cards"  # "compact" lists one file per row (--browser-layout)
-sort = "modified"     # browser order: "modified", "created" or "name" (--sort)
-dates = true          # false: no file dates in the browser
+sort = "modified"     # file list order: "modified", "created" or "name" (--sort)
+dates = true          # false: no file dates in the file list
 date_format = "%d %b %Y %H:%M %Z"  # strftime format of those dates
 extensions = ["md", "markdown", "mdx", "mdown", "mkdn", "mkd"]  # files listed
 ignore = []           # gitignore-style globs to leave out, e.g. ["drafts/"]

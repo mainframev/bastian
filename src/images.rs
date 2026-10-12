@@ -18,6 +18,10 @@ use crate::render::ImageSizes;
 
 /// Largest image file read or downloaded.
 const MAX_BYTES: u64 = 20 * 1024 * 1024;
+/// Widest or tallest picture decoded, in pixels.
+const MAX_SIDE: u32 = 16 * 1024;
+/// Most memory one decode may allocate.
+const MAX_DECODED: u64 = 256 * 1024 * 1024;
 
 /// Where an image comes from.
 #[derive(Debug, Clone, PartialEq)]
@@ -186,16 +190,41 @@ fn drawable(url: &str) -> bool {
 
 fn load(source: &Source) -> Result<DynamicImage> {
     let bytes = match source {
-        Source::File(path) => {
-            let len = std::fs::metadata(path)
-                .with_context(|| format!("reading {}", path.display()))?
-                .len();
-            anyhow::ensure!(len <= MAX_BYTES, "{} is too large", path.display());
-            std::fs::read(path).with_context(|| format!("reading {}", path.display()))?
-        }
+        Source::File(path) => read_file(path)?,
         Source::Url(url) => crate::remote::fetch_bytes(url, MAX_BYTES)?,
     };
-    Ok(image::load_from_memory(&bytes)?)
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format()?;
+    // A small file can claim a huge canvas; cap what decoding allocates.
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_SIDE);
+    limits.max_image_height = Some(MAX_SIDE);
+    limits.max_alloc = Some(MAX_DECODED);
+    reader.limits(limits);
+    Ok(reader.decode()?)
+}
+
+/// Read a local image, refusing anything but a regular file: a link to
+/// `/dev/zero` or a FIFO would otherwise read forever.
+fn read_file(path: &std::path::Path) -> Result<Vec<u8>> {
+    use std::io::Read;
+    let context = || format!("reading {}", path.display());
+    // Checked before opening: opening a FIFO blocks until a writer comes.
+    anyhow::ensure!(
+        std::fs::metadata(path).with_context(context)?.is_file(),
+        "{} is not a file",
+        path.display()
+    );
+    let file = std::fs::File::open(path).with_context(context)?;
+    let mut bytes = Vec::new();
+    file.take(MAX_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .with_context(context)?;
+    anyhow::ensure!(
+        bytes.len() as u64 <= MAX_BYTES,
+        "{} is too large",
+        path.display()
+    );
+    Ok(bytes)
 }
 
 /// The best protocol the terminal answered for: kitty graphics, then
@@ -310,6 +339,10 @@ mod tests {
                 .contains_key("https://x.dev/badge.svg?style=flat")
         );
         assert!(drawable("photo.JPG?raw=true") && !drawable("demo/usage.GIF#x"));
+
+        // Only regular files are read.
+        let err = load(&Source::File("/dev/zero".into())).unwrap_err();
+        assert!(err.to_string().contains("not a file"), "{err}");
 
         // Off: nothing is loaded.
         let mut off = Images::default();

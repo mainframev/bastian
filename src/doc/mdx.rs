@@ -305,22 +305,43 @@ impl Mapper {
     }
 }
 
-/// Whether a line's container prefix (the leading quote and list markers
-/// and indentation) is longer than `MAX_NODE_DEPTH` columns. Each quote or
-/// list level takes at least a column there, so this rejects deep quotes
-/// and lists before markdown-rs spends long on them.
+/// Whether a line's container prefix (its leading quote and list markers
+/// and their indentation) opens more than `MAX_NODE_DEPTH` levels, or is
+/// indented past `4 * MAX_NODE_DEPTH` columns, as deeply nested lists are.
+/// This rejects deep quotes and lists before markdown-rs spends long on
+/// them; text after the prefix, like a long `---` rule, isn't counted.
 fn long_prefix(src: &str) -> bool {
+    // A list marker is followed by a space or tab, or ends the line.
+    let ends_marker = |b: Option<&u8>| matches!(b, None | Some(b' ' | b'\t'));
     src.lines().any(|line| {
-        line.bytes()
-            .take_while(|b| {
-                matches!(
-                    b,
-                    b' ' | b'\t' | b'>' | b'-' | b'*' | b'+' | b'.' | b')' | b'0'..=b'9'
-                )
-            })
-            .map(|b| if b == b'\t' { 4 } else { 1 })
-            .sum::<usize>()
-            > MAX_NODE_DEPTH
+        let b = line.as_bytes();
+        let (mut i, mut levels, mut columns) = (0, 0, 0);
+        loop {
+            match b.get(i) {
+                Some(b' ') => columns += 1,
+                Some(b'\t') => columns += 4,
+                Some(b'>') => levels += 1,
+                Some(b'-' | b'*' | b'+') if ends_marker(b.get(i + 1)) => levels += 1,
+                Some(b'0'..=b'9') => {
+                    // An ordered marker: 1-9 digits, then `.` or `)`.
+                    let digits = b[i..].iter().take(10).take_while(|b| b.is_ascii_digit());
+                    let n = digits.count();
+                    if n > 9
+                        || !matches!(b.get(i + n), Some(b'.' | b')'))
+                        || !ends_marker(b.get(i + n + 1))
+                    {
+                        return false;
+                    }
+                    levels += 1;
+                    i += n;
+                }
+                _ => return false,
+            }
+            if levels > MAX_NODE_DEPTH || columns > 4 * MAX_NODE_DEPTH {
+                return true;
+            }
+            i += 1;
+        }
     })
 }
 
@@ -582,6 +603,21 @@ Use <Badge>new</Badge> for the inline API and {props.version} too.
         assert!(parse(&format!("{}x\n", "- ".repeat(10_000))).is_none());
         let doc = crate::doc::parse_for(&jsx(1_000), Some(std::path::Path::new("a.mdx")));
         assert!(!doc.blocks.is_empty(), "no blocks parsed");
+    }
+
+    #[test]
+    fn long_lines_that_open_no_containers_still_parse() {
+        // Long rules and numbers aren't container prefixes.
+        for line in ["-".repeat(300), "*".repeat(300), "1".repeat(300)] {
+            let src = format!("<Note>\n\ntext\n\n{line}\n\n</Note>\n");
+            assert!(parse(&src).is_some(), "{line}");
+        }
+        // Deeply indented nested lists still fall back, without parsing.
+        let list: String = (0..5_000)
+            .map(|n| format!("{}- x\n", "  ".repeat(n)))
+            .collect();
+        assert!(parse(&list).is_none());
+        assert!(parse(&format!("{}x\n", "> 1. ".repeat(5_000))).is_none());
     }
 
     #[test]

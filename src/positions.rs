@@ -62,13 +62,11 @@ pub fn save(store: &Path, file: &Path, line: Option<usize>) {
 fn prune(entries: &mut HashMap<String, Entry>, now: u64) {
     entries.retain(|_, e| now.saturating_sub(e.at) <= MAX_AGE_SECS);
     if entries.len() > MAX_ENTRIES {
-        let mut ages: Vec<u64> = entries.values().map(|e| e.at).collect();
-        ages.sort_unstable_by(|a, b| b.cmp(a));
-        let cutoff = ages[MAX_ENTRIES - 1];
-        entries.retain(|_, e| e.at >= cutoff);
-        // Ties at the cutoff can leave a few extra; drop them arbitrarily.
-        let extra: Vec<String> = entries.keys().skip(MAX_ENTRIES).cloned().collect();
-        for k in extra {
+        // Newest first (ties by path, to be deterministic); drop the rest.
+        let mut by_age: Vec<(u64, String)> =
+            entries.iter().map(|(k, e)| (e.at, k.clone())).collect();
+        by_age.sort_unstable_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+        for (_, k) in by_age.into_iter().skip(MAX_ENTRIES) {
             entries.remove(&k);
         }
     }
@@ -196,6 +194,20 @@ mod tests {
         assert_eq!(load(&store, &file), None);
         save(&store, &file, Some(3));
         assert_eq!(load(&store, &file), Some(3));
+    }
+
+    #[test]
+    fn pruning_never_drops_newer_entries_for_ties() {
+        // Many entries share the oldest time; the newer ones all stay.
+        let mut entries: HashMap<String, Entry> = (0..MAX_ENTRIES)
+            .map(|i| (format!("old{i}"), Entry { line: 1, at: 10 }))
+            .collect();
+        for i in 0..5 {
+            entries.insert(format!("new{i}"), Entry { line: 1, at: 20 });
+        }
+        prune(&mut entries, 20);
+        assert_eq!(entries.len(), MAX_ENTRIES);
+        assert!((0..5).all(|i| entries.contains_key(&format!("new{i}"))));
     }
 
     #[test]

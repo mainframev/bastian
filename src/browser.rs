@@ -9,6 +9,7 @@ use nucleo_matcher::{Config, Matcher, Utf32Str, Utf32String};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use crate::config::SortBy;
+use crate::nav;
 use crate::prompt::{self, Prompt, PromptEvent};
 
 /// Which files the browser lists, and in what order.
@@ -305,6 +306,10 @@ impl Browser {
             return Action::None;
         }
 
+        if let Some(motion) = nav::list_motion(&key) {
+            self.selected = nav::step(self.selected, self.visible.len(), motion);
+            return Action::None;
+        }
         let page = self.height.max(1) as isize;
         let ctrl = prompt::ctrl(&key);
         match key.code {
@@ -318,12 +323,6 @@ impl Browser {
             }
             KeyCode::Char('q') | KeyCode::Esc => return Action::Quit,
             KeyCode::Char('/') => self.prompt = Some(Prompt::new(&self.filter)),
-            KeyCode::Char('j' | 'n') if ctrl => self.move_by(1),
-            KeyCode::Char('k' | 'p') if ctrl => self.move_by(-1),
-            KeyCode::Char('j') | KeyCode::Down => self.move_by(1),
-            KeyCode::Char('k') | KeyCode::Up => self.move_by(-1),
-            KeyCode::Char('g') | KeyCode::Home => self.selected = 0,
-            KeyCode::Char('G') | KeyCode::End => self.move_by(isize::MAX),
             KeyCode::Char('l') | KeyCode::Right | KeyCode::PageDown => self.move_by(page),
             KeyCode::Char('h') | KeyCode::Left | KeyCode::PageUp => self.move_by(-page),
             KeyCode::Enter => {

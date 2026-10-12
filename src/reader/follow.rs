@@ -60,7 +60,7 @@ impl Reader {
         {
             return match crate::remote::resolve_link(base, url) {
                 Some(target) if crate::remote::is_document(&target) => Action::OpenRemote(target),
-                Some(target) => Action::OpenExternal(target.to_string()),
+                Some(target) => self.open_external(target.to_string()),
                 None => {
                     self.message = Some(format!("can't resolve link {url}"));
                     Action::None
@@ -69,7 +69,7 @@ impl Reader {
         }
         match links::resolve(url, &self.base_dir) {
             Target::Document(path) => Action::OpenDocument(path),
-            Target::External(target) => Action::OpenExternal(target),
+            Target::External(target) => self.open_external(target),
             Target::Anchor(anchor) => {
                 match self.heading_line(&anchor) {
                     Some(line) => self.jump_to(line),
@@ -82,6 +82,30 @@ impl Reader {
                 Action::None
             }
         }
+    }
+
+    /// Web and mail links open right away; anything else could launch an
+    /// app or run a script, so it waits for a yes/no.
+    fn open_external(&mut self, target: String) -> Action {
+        if links::is_web(&target) {
+            Action::OpenExternal(target)
+        } else {
+            self.confirm_open = Some(target);
+            Action::None
+        }
+    }
+
+    pub(super) fn on_open_confirm_key(&mut self, key: KeyEvent) -> Action {
+        match key.code {
+            KeyCode::Char('y' | 'Y') | KeyCode::Enter => {
+                if let Some(target) = self.confirm_open.take() {
+                    return Action::OpenExternal(target);
+                }
+            }
+            KeyCode::Char('n' | 'N' | 'q') | KeyCode::Esc => self.confirm_open = None,
+            _ => {}
+        }
+        Action::None
     }
 
     /// Rendered line of the heading whose GitHub-style slug is `anchor`.

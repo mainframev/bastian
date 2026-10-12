@@ -64,6 +64,8 @@ pub struct Reader {
     pub runs: HashMap<usize, BlockRun>,
     /// Blocks waiting for a yes/no before they run.
     pub confirm: Option<Vec<usize>>,
+    /// Link target waiting for a yes/no before the system opener gets it.
+    pub confirm_open: Option<String>,
     /// One-shot status bar message, cleared on the next key.
     pub message: Option<String>,
     /// Directory that block `cwd`s are relative to.
@@ -137,6 +139,7 @@ impl Reader {
             focus: None,
             runs: HashMap::new(),
             confirm: None,
+            confirm_open: None,
             message: None,
             base_dir: PathBuf::from("."),
             assume_yes: false,

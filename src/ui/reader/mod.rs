@@ -12,7 +12,7 @@ use super::status;
 use super::text::highlight;
 use crate::reader::Reader;
 use media::{draw_hyperlinks, draw_images};
-use overlays::{draw_confirm, draw_links, draw_outline};
+use overlays::{draw_confirm, draw_links, draw_open_confirm, draw_outline};
 
 pub fn draw(frame: &mut Frame, r: &mut Reader) {
     // A blank row above the document (the `Find:` line takes it while
@@ -150,6 +150,8 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
 
     if let Some(ids) = &r.confirm {
         draw_confirm(frame, r, ids);
+    } else if let Some(target) = &r.confirm_open {
+        draw_open_confirm(frame, r, target);
     } else if let Some(picker) = &r.link_picker {
         draw_links(frame, r, picker);
     } else if r.outline.is_some() {

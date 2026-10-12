@@ -58,6 +58,8 @@ press `Enter` to jump to a heading, `Esc` to close it.
 - `#anchor` links scroll to their heading;
 - links to Markdown files open in bastian (`Esc` comes back);
 - anything else goes to your system's opener (a browser for web links).
+  Only `http`, `https` and `mailto` links open straight away; other schemes,
+  `file:` URLs and local files show the full target and wait for `y`/`n`.
 
 Links are also clickable in terminals that support hyperlinks (OSC 8: iTerm2,
 kitty, WezTerm, Ghostty, Windows Terminal, recent tmux with `hyperlinks` in

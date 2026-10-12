@@ -61,13 +61,14 @@ pub fn discover(root: &Path, opts: &Scan) -> Vec<Entry> {
 /// in path order.
 pub(super) fn sort(entries: &mut [Entry], by: SortBy) {
     match by {
-        SortBy::Modified => {
-            entries.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| a.rel.cmp(&b.rel)));
+        SortBy::Name => entries.sort_by(|a, b| {
+            a.sort_name
+                .cmp(&b.sort_name)
+                .then_with(|| a.rel.cmp(&b.rel))
+        }),
+        SortBy::Modified | SortBy::Created => {
+            entries.sort_by(|a, b| b.date(by).cmp(&a.date(by)).then_with(|| a.rel.cmp(&b.rel)));
         }
-        SortBy::Created => {
-            entries.sort_by(|a, b| b.created.cmp(&a.created).then_with(|| a.rel.cmp(&b.rel)));
-        }
-        SortBy::Name => entries.sort_by_cached_key(|e| (e.name().to_lowercase(), e.rel.clone())),
     }
 }
 

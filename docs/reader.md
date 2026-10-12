@@ -63,8 +63,10 @@ press `Enter` to jump to a heading, `Esc` to close it.
 
 Links are also clickable in terminals that support hyperlinks (OSC 8: iTerm2,
 kitty, WezTerm, Ghostty, Windows Terminal, recent tmux with `hyperlinks` in
-`terminal-features`, …). Set `hyperlinks = false` if your terminal prints
-the escape codes instead.
+`terminal-features`, …). Since a click skips the prompt, only web and mail
+links and links to local Markdown files are made clickable; follow the rest
+with `L`. Set `hyperlinks = false` if your terminal prints the escape codes
+instead.
 
 ## Images
 

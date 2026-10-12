@@ -502,7 +502,11 @@ fn links_are_terminal_hyperlinks() {
         Theme::dark(),
         80,
     );
-    r.base_dir = std::path::PathBuf::from("/tmp/proj");
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("guide.md"), "# Guide\n").unwrap();
+    r.base_dir = dir.path().to_path_buf();
+    let mut guide = url::Url::from_file_path(dir.path().join("guide.md")).unwrap();
+    guide.set_fragment(Some("setup"));
     let mut terminal = Terminal::new(TestBackend::new(80, 6)).unwrap();
     // The frame as drawn; the test backend can't measure OSC 8 cells.
     let frame = terminal.draw(|f| draw(f, &mut r)).unwrap();
@@ -516,9 +520,7 @@ fn links_are_terminal_hyperlinks() {
         "{symbols:?}"
     );
     assert!(
-        symbols
-            .iter()
-            .any(|s| s.starts_with(&osc("file:///tmp/proj/guide.md#setup"))),
+        symbols.iter().any(|s| s.starts_with(&osc(guide.as_str()))),
         "{symbols:?}"
     );
     // The link cell declares its real width, so the diff doesn't skip the
@@ -534,6 +536,57 @@ fn links_are_terminal_hyperlinks() {
         2
     );
     assert_eq!(r.hyperlink_target("#top"), None);
+}
+
+#[test]
+fn only_links_that_open_without_asking_are_clickable() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    std::fs::write(d.join("guide.md"), "# Guide\n").unwrap();
+    std::fs::write(d.join("setup.command"), "").unwrap();
+    std::fs::create_dir(d.join("X.app")).unwrap();
+    std::fs::create_dir(d.join("dir.md")).unwrap();
+    let mut r = Reader::new("t.md".into(), parse("x\n"), Theme::dark(), 80);
+    r.base_dir = d.to_path_buf();
+    let file = |name: &str| url::Url::from_file_path(d.join(name)).unwrap().to_string();
+
+    assert_eq!(
+        r.hyperlink_target("https://x.dev/a"),
+        Some("https://x.dev/a".into())
+    );
+    assert_eq!(
+        r.hyperlink_target("mailto:a@b.c"),
+        Some("mailto:a@b.c".into())
+    );
+    assert_eq!(r.hyperlink_target("guide.md"), Some(file("guide.md")));
+    assert_eq!(
+        r.hyperlink_target(&file("guide.md")),
+        Some(file("guide.md"))
+    );
+    for url in [
+        "setup.command".to_string(),
+        file("setup.command"),
+        "X.app".into(),
+        file("X.app"),
+        "file:///Applications/X.app".into(),
+        "vscode://file/etc/hosts".into(),
+        "vscode://file/tmp/a.md".into(),
+        "javascript:alert(1)".into(),
+        "tel:+15551234".into(),
+        "dir.md".into(),
+        "missing.md".into(),
+    ] {
+        assert_eq!(r.hyperlink_target(&url), None, "{url}");
+    }
+
+    // In a remote document, only web targets.
+    r.remote_base = Some(url::Url::parse("https://example.com/repo/README.md").unwrap());
+    assert_eq!(
+        r.hyperlink_target("docs/guide.md"),
+        Some("https://example.com/repo/docs/guide.md".into())
+    );
+    assert_eq!(r.hyperlink_target("vscode://file/etc/hosts"), None);
+    assert_eq!(r.hyperlink_target(&file("guide.md")), None);
 }
 
 #[test]

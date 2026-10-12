@@ -7,23 +7,40 @@ use crate::nav::{self, Motion};
 use crate::render;
 
 impl Reader {
-    /// Absolute target for a link written as `url`, for terminal hyperlinks:
-    /// URLs as they are, relative links against the remote document's URL
-    /// or as `file://` paths. In-document `#anchors` have none.
+    /// Absolute target for a link written as `url`, for terminal hyperlinks.
+    /// A click there opens without asking, so only links bastian would open
+    /// without asking get one: web and mail URLs, and existing local
+    /// Markdown files as `file://` URLs. In a remote document, links resolve
+    /// against its URL and only web targets qualify. In-document `#anchors`,
+    /// other schemes and other local files have none; the link picker still
+    /// follows them, behind a prompt.
     pub fn hyperlink_target(&self, url: &str) -> Option<String> {
         if url.starts_with('#') {
             return None;
         }
-        if let Ok(abs) = url::Url::parse(url) {
-            return Some(abs.to_string());
-        }
         if let Some(base) = &self.remote_base {
-            return crate::remote::resolve_link(base, url).map(|u| u.to_string());
+            return crate::remote::resolve_link(base, url)
+                .map(|u| u.to_string())
+                .filter(|u| links::is_web(u));
+        }
+        if let Ok(abs) = url::Url::parse(url) {
+            if links::is_web(abs.as_str()) {
+                return Some(abs.to_string());
+            }
+            // `to_file_path` doesn't check the scheme itself.
+            if abs.scheme() != "file" {
+                return None;
+            }
+            let path = abs.to_file_path().ok()?;
+            return is_markdown_file(&path).then(|| abs.to_string());
         }
         let (path, fragment) = url
             .split_once('#')
             .map_or((url, None), |(p, f)| (p, Some(f)));
         let abs = std::path::absolute(self.base_dir.join(path)).ok()?;
+        if !is_markdown_file(&abs) {
+            return None;
+        }
         let mut file = url::Url::from_file_path(abs).ok()?;
         file.set_fragment(fragment);
         Some(file.to_string())
@@ -139,6 +156,14 @@ impl Reader {
             !plain.is_empty() && text.starts_with(plain)
         })
     }
+}
+
+/// Whether `path` is an existing file with a Markdown extension.
+fn is_markdown_file(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(doc::is_markdown_ext)
+        && path.is_file()
 }
 
 /// `(anchor text, shown text)` of every heading.

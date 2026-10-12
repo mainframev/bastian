@@ -1,0 +1,14 @@
+---
+source: tests/render.rs
+expression: to_plain(&rendered.lines)
+---
+ Tasks
+
+☑ write the parser
+☐ render the checkboxes, wrapping long
+  task text under its own text
+• a plain item in the same list
+
+1. ☑ first step
+2. ☐ second step
+3.   plain step

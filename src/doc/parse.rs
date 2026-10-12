@@ -42,8 +42,10 @@ enum Frame {
     List {
         start: Option<u64>,
         items: Vec<Vec<Block>>,
+        tasks: Vec<Option<bool>>,
     },
-    Item(Vec<Block>),
+    /// A list item's blocks and, for a task item, whether it's done.
+    Item(Vec<Block>, Option<bool>),
     Footnote {
         label: String,
         blocks: Vec<Block>,
@@ -132,7 +134,11 @@ impl Builder {
                 self.flush();
                 self.push_block(Block::Rule);
             }
-            Event::TaskListMarker(done) => self.push_text(if done { "[x] " } else { "[ ] " }),
+            Event::TaskListMarker(done) => {
+                if let Some(Frame::Item(_, task)) = self.stack.last_mut() {
+                    *task = Some(done);
+                }
+            }
             Event::FootnoteReference(label) => self.footnote_ref(&label),
             Event::InlineMath(_) | Event::DisplayMath(_) => {}
         }
@@ -155,9 +161,10 @@ impl Builder {
                 self.stack.push(Frame::List {
                     start,
                     items: Vec::new(),
+                    tasks: Vec::new(),
                 });
             }
-            Tag::Item => self.stack.push(Frame::Item(Vec::new())),
+            Tag::Item => self.stack.push(Frame::Item(Vec::new(), None)),
             Tag::CodeBlock(kind) => {
                 self.flush();
                 let info = match kind {
@@ -220,16 +227,26 @@ impl Builder {
                 }
             }
             TagEnd::List(_) => {
-                if let Some(Frame::List { start, items }) = self.stack.pop() {
-                    self.push_block(Block::List { start, items });
+                if let Some(Frame::List {
+                    start,
+                    items,
+                    tasks,
+                }) = self.stack.pop()
+                {
+                    self.push_block(Block::List {
+                        start,
+                        items,
+                        tasks,
+                    });
                 }
             }
             TagEnd::Item => {
                 self.flush();
-                if let Some(Frame::Item(blocks)) = self.stack.pop()
-                    && let Some(Frame::List { items, .. }) = self.stack.last_mut()
+                if let Some(Frame::Item(blocks, task)) = self.stack.pop()
+                    && let Some(Frame::List { items, tasks, .. }) = self.stack.last_mut()
                 {
                     items.push(blocks);
+                    tasks.push(task);
                 }
             }
             TagEnd::CodeBlock => {
@@ -332,7 +349,7 @@ impl Builder {
     fn push_block(&mut self, block: Block) {
         match self.stack.last_mut() {
             Some(
-                Frame::Quote(_, blocks) | Frame::Item(blocks) | Frame::Footnote { blocks, .. },
+                Frame::Quote(_, blocks) | Frame::Item(blocks, _) | Frame::Footnote { blocks, .. },
             ) => blocks.push(block),
             // Blocks never appear directly inside a list, only inside items.
             Some(Frame::List { .. }) | None => {
@@ -418,7 +435,7 @@ mod tests {
     #[test]
     fn tight_and_nested_lists() {
         let doc = parse("- one\n- two\n  - nested\n");
-        let Block::List { start, items } = &doc.blocks[0] else {
+        let Block::List { start, items, .. } = &doc.blocks[0] else {
             panic!("expected list");
         };
         assert_eq!(*start, None);
@@ -428,9 +445,26 @@ mod tests {
     }
 
     #[test]
+    fn task_items_carry_their_state() {
+        let doc = parse("- [x] done\n- [ ] todo\n- plain\n");
+        let Block::List { items, tasks, .. } = &doc.blocks[0] else {
+            panic!("expected list");
+        };
+        assert_eq!(tasks, &[Some(true), Some(false), None]);
+        assert!(matches!(&items[0][0], Block::Paragraph(i) if plain_text(i) == "done"));
+        let mdx =
+            crate::doc::parse_for("- [x] done\n- plain\n", Some(std::path::Path::new("x.mdx")));
+        let Block::List { items, tasks, .. } = &mdx.blocks[0] else {
+            panic!("expected list");
+        };
+        assert_eq!(tasks, &[Some(true), None]);
+        assert!(matches!(&items[0][0], Block::Paragraph(i) if plain_text(i) == "done"));
+    }
+
+    #[test]
     fn code_inside_list_item() {
         let doc = parse("1. run:\n\n   ```sh\n   ls\n   ```\n");
-        let Block::List { start, items } = &doc.blocks[0] else {
+        let Block::List { start, items, .. } = &doc.blocks[0] else {
             panic!("expected list");
         };
         assert_eq!(*start, Some(1));

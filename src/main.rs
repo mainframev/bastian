@@ -127,6 +127,7 @@ fn main() -> Result<()> {
         let reader = settings.reader(
             "theme preview".into(),
             doc::parse(bastian::picker::SAMPLE),
+            String::new(),
             PathBuf::from("."),
         );
         let mut app = app::App::read(reader, settings);
@@ -168,8 +169,7 @@ fn main() -> Result<()> {
         if !tui {
             return out.print(&doc, &settings.theme, settings.render);
         }
-        let mut reader = settings.reader("stdin".into(), doc, PathBuf::from("."));
-        reader.text = src;
+        let reader = settings.reader("stdin".into(), doc, src, PathBuf::from("."));
         app::App::read(reader, settings)
     } else {
         if !tui {

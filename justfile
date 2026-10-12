@@ -27,5 +27,6 @@ install-hooks:
 # Re-record the README's GIFs with this checkout's build (needs vhs).
 demo:
     cargo build --release
+    PATH="$PWD/target/release:$PATH" vhs demo/usage.tape
     PATH="$PWD/target/release:$PATH" vhs demo/themes.tape
     PATH="$PWD/target/release:$PATH" vhs demo/reader-themes.tape

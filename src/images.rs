@@ -234,9 +234,8 @@ fn read_file(path: &std::path::Path) -> Result<Vec<u8>> {
 fn picker_for(g: crate::term::Graphics) -> Picker {
     let cell = g
         .cell
-        .map(|(w, h)| FontSize::new(w, h))
-        .or_else(cell_size)
-        .unwrap_or(FontSize::new(10, 20));
+        .or_else(crate::term::cell_pixels)
+        .map_or(FontSize::new(10, 20), |(w, h)| FontSize::new(w, h));
     // Also detects tmux and iTerm2-compatible terminals from the environment.
     #[allow(deprecated, reason = "the only constructor that doesn't read stdin")]
     let mut picker = Picker::from_fontsize(cell);
@@ -250,24 +249,6 @@ fn picker_for(g: crate::term::Graphics) -> Picker {
         picker.set_protocol_type(ProtocolType::Sixel);
     }
     picker
-}
-
-/// Pixel size of one character cell, from the terminal's window size.
-fn cell_size() -> Option<FontSize> {
-    #[cfg(unix)]
-    {
-        use std::os::fd::AsRawFd;
-        let tty = std::fs::File::open("/dev/tty").ok()?;
-        // SAFETY: TIOCGWINSZ fills a winsize struct we own, on an open fd.
-        let mut ws: libc::winsize = unsafe { std::mem::zeroed() };
-        if unsafe { libc::ioctl(tty.as_raw_fd(), libc::TIOCGWINSZ, &raw mut ws) } != 0 {
-            return None;
-        }
-        (ws.ws_xpixel > 0 && ws.ws_ypixel > 0 && ws.ws_col > 0 && ws.ws_row > 0)
-            .then(|| FontSize::new(ws.ws_xpixel / ws.ws_col, ws.ws_ypixel / ws.ws_row))
-    }
-    #[cfg(not(unix))]
-    None
 }
 
 #[cfg(test)]

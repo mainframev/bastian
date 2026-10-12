@@ -22,6 +22,11 @@ pub fn parse_for(src: &str, path: Option<&Path>) -> Document {
     }
 }
 
+/// Deepest nesting of quotes and list items kept. Containers past it are
+/// flattened into their parent, so recursion over the document (rendering,
+/// `visit`, drop) stays shallow however the source nests.
+pub(crate) const MAX_DEPTH: usize = 16;
+
 /// Start of the text standing in for an image: `[image: alt]`.
 pub(crate) const IMAGE_PREFIX: &str = "[image: ";
 

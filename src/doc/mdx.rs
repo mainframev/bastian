@@ -8,7 +8,7 @@ use markdown::{Constructs, MdxSignal, ParseOptions};
 
 use super::{
     Align, Attrs, Block, CalloutKind, CodeBlock, Document, Footnotes, Inline, InlineStyle,
-    push_inline,
+    MAX_DEPTH, push_inline,
 };
 
 /// A quote's blocks as a GitHub alert when its first line is just a
@@ -41,9 +41,18 @@ fn alert(mut blocks: Vec<Block>) -> Block {
     Block::Callout { kind, blocks }
 }
 
-/// Parse MDX, or `None` when the source isn't valid MDX (e.g. broken JSX),
-/// so the caller can fall back to the plain Markdown parser.
+/// Deepest mdast nesting mapped. Deeper input, only ever pathological, is
+/// left to the plain Markdown parser, which flattens it: markdown-rs slows
+/// down quadratically with depth, and mapping recurses once per level.
+const MAX_NODE_DEPTH: usize = 256;
+
+/// Parse MDX, or `None` when the source isn't valid MDX (e.g. broken JSX)
+/// or nests too deeply, so the caller can fall back to the plain Markdown
+/// parser.
 pub fn parse(src: &str) -> Option<Document> {
+    if long_prefix(src) {
+        return None;
+    }
     let options = ParseOptions {
         constructs: Constructs {
             frontmatter: true,
@@ -61,12 +70,15 @@ pub fn parse(src: &str) -> Option<Document> {
         ..ParseOptions::mdx()
     };
     let root = markdown::to_mdast(src, &options).ok()?;
+    if too_deep(&root) {
+        return None;
+    }
     let mut m = Mapper::default();
     let mut blocks = Vec::new();
     let mut lines = Vec::new();
     for node in root.children()? {
         let before = blocks.len();
-        m.block(node, &mut blocks);
+        m.block(node, &mut blocks, 0);
         // mdast lines are 1-based.
         let line = node
             .position()
@@ -93,15 +105,16 @@ impl Mapper {
         self.next_code_id - 1
     }
 
-    fn blocks(&mut self, nodes: &[Node]) -> Vec<Block> {
+    /// Map `nodes`, which sit inside `depth` quotes and list items.
+    fn blocks(&mut self, nodes: &[Node], depth: usize) -> Vec<Block> {
         let mut out = Vec::new();
         for node in nodes {
-            self.block(node, &mut out);
+            self.block(node, &mut out, depth);
         }
         out
     }
 
-    fn block(&mut self, node: &Node, out: &mut Vec<Block>) {
+    fn block(&mut self, node: &Node, out: &mut Vec<Block>, depth: usize) {
         match node {
             Node::Heading(h) => out.push(Block::Heading {
                 level: h.depth,
@@ -114,10 +127,24 @@ impl Mapper {
                 }),
                 children => out.push(Block::Paragraph(self.inlines(children))),
             },
-            Node::Blockquote(q) => out.push(alert(self.blocks(&q.children))),
+            // Past `MAX_DEPTH`, quotes and lists are flattened into their
+            // parent, as the plain Markdown parser does.
+            Node::Blockquote(q) if depth >= MAX_DEPTH => {
+                out.extend(self.blocks(&q.children, depth));
+            }
+            Node::Blockquote(q) => out.push(alert(self.blocks(&q.children, depth + 1))),
+            Node::List(l) if depth >= MAX_DEPTH => {
+                for item in &l.children {
+                    out.extend(self.list_item(item, depth));
+                }
+            }
             Node::List(l) => out.push(Block::List {
                 start: l.ordered.then(|| u64::from(l.start.unwrap_or(1))),
-                items: l.children.iter().map(|item| self.list_item(item)).collect(),
+                items: l
+                    .children
+                    .iter()
+                    .map(|item| self.list_item(item, depth + 1))
+                    .collect(),
                 tasks: l
                     .children
                     .iter()
@@ -169,7 +196,7 @@ impl Mapper {
                 let tag = open_tag(el.name.as_deref(), &el.attributes, el.children.is_empty());
                 out.push(Block::Label(tag));
                 if !el.children.is_empty() {
-                    out.extend(self.blocks(&el.children));
+                    out.extend(self.blocks(&el.children, depth));
                     out.push(Block::Label(close_tag(el.name.as_deref())));
                 }
             }
@@ -186,7 +213,7 @@ impl Mapper {
             Node::FootnoteDefinition(f) => {
                 let label = f.label.clone().unwrap_or_else(|| f.identifier.clone());
                 if self.footnotes.claim(&label) {
-                    let blocks = self.blocks(&f.children);
+                    let blocks = self.blocks(&f.children, depth);
                     let line = f.position.as_ref().map_or(0, |p| p.start.line - 1);
                     self.footnotes.define(label, blocks, line);
                 }
@@ -201,10 +228,11 @@ impl Mapper {
         }
     }
 
-    fn list_item(&mut self, node: &Node) -> Vec<Block> {
+    /// An item's blocks, at the `depth` of the item itself.
+    fn list_item(&mut self, node: &Node, depth: usize) -> Vec<Block> {
         match node {
-            Node::ListItem(item) => self.blocks(&item.children),
-            _ => self.blocks(std::slice::from_ref(node)),
+            Node::ListItem(item) => self.blocks(&item.children, depth),
+            _ => self.blocks(std::slice::from_ref(node), depth),
         }
     }
 
@@ -274,6 +302,40 @@ impl Mapper {
             }
         }
     }
+}
+
+/// Whether a line's container prefix (the leading quote and list markers
+/// and indentation) is longer than `MAX_NODE_DEPTH` columns. Each quote or
+/// list level takes at least a column there, so this rejects deep quotes
+/// and lists before markdown-rs spends long on them.
+fn long_prefix(src: &str) -> bool {
+    src.lines().any(|line| {
+        line.bytes()
+            .take_while(|b| {
+                matches!(
+                    b,
+                    b' ' | b'\t' | b'>' | b'-' | b'*' | b'+' | b'.' | b')' | b'0'..=b'9'
+                )
+            })
+            .map(|b| if b == b'\t' { 4 } else { 1 })
+            .sum::<usize>()
+            > MAX_NODE_DEPTH
+    })
+}
+
+/// Whether the tree nests deeper than `MAX_NODE_DEPTH`, walked without
+/// recursion so any depth is safe to check.
+fn too_deep(root: &Node) -> bool {
+    let mut stack = vec![(root, 0)];
+    while let Some((node, depth)) = stack.pop() {
+        if depth > MAX_NODE_DEPTH {
+            return true;
+        }
+        if let Some(children) = node.children() {
+            stack.extend(children.iter().map(|c| (c, depth + 1)));
+        }
+    }
+    false
 }
 
 /// `{/* ... */}` holds only a comment.
@@ -473,6 +535,41 @@ Use <Badge>new</Badge> for the inline API and {props.version} too.
         assert!(parse("<Callout>\n\ntext\n").is_none());
         // parse_for then falls back to plain Markdown instead of failing.
         let doc = crate::doc::parse_for("<Callout>\n\ntext\n", Some(std::path::Path::new("a.mdx")));
+        assert!(!doc.blocks.is_empty(), "no blocks parsed");
+    }
+
+    #[test]
+    fn deep_quotes_and_lists_are_flattened() {
+        for src in [
+            format!("{}x\n", "> ".repeat(40)),
+            format!("{}x\n", "- ".repeat(40)),
+        ] {
+            let doc = parse(&src).unwrap();
+            let mut levels = 0;
+            let mut blocks = &doc.blocks[..];
+            loop {
+                match blocks {
+                    [Block::Quote(inner)] => blocks = inner,
+                    [Block::List { items, .. }] if items.len() == 1 => blocks = &items[0],
+                    _ => break,
+                }
+                levels += 1;
+            }
+            assert_eq!(levels, MAX_DEPTH, "{src}");
+            assert!(matches!(blocks, [Block::Paragraph(i)] if plain_text(i) == "x"));
+        }
+    }
+
+    #[test]
+    fn too_deep_returns_none() {
+        // JSX nesting near the limit still maps.
+        let jsx = |n| format!("{}x\n{}", "<a>\n".repeat(n), "</a>\n".repeat(n));
+        assert!(parse(&jsx(MAX_NODE_DEPTH - 2)).is_some());
+        // Past it, and for deep quotes and lists, the caller falls back.
+        assert!(parse(&jsx(1_000)).is_none());
+        assert!(parse(&format!("{}x\n", "> ".repeat(10_000))).is_none());
+        assert!(parse(&format!("{}x\n", "- ".repeat(10_000))).is_none());
+        let doc = crate::doc::parse_for(&jsx(1_000), Some(std::path::Path::new("a.mdx")));
         assert!(!doc.blocks.is_empty(), "no blocks parsed");
     }
 

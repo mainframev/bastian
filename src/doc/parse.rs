@@ -4,7 +4,7 @@ use pulldown_cmark::{
 
 use super::{
     Align, Attrs, Block, CalloutKind, CodeBlock, Document, Footnotes, Inline, InlineStyle,
-    push_inline,
+    MAX_DEPTH, push_inline,
 };
 
 pub fn parse(src: &str) -> Document {
@@ -116,6 +116,9 @@ struct Builder {
     footnote_line: usize,
     /// Inside a repeated footnote definition, which is skipped.
     discarding: bool,
+    /// Open quotes, lists and items past `MAX_DEPTH`, which get no frame:
+    /// their content lands in the deepest frame.
+    flattened: u32,
 }
 
 impl Builder {
@@ -148,7 +151,9 @@ impl Builder {
                 self.push_block(Block::Rule);
             }
             Event::TaskListMarker(done) => {
-                if let Some(Frame::Item(_, task)) = self.stack.last_mut() {
+                if self.flattened == 0
+                    && let Some(Frame::Item(_, task)) = self.stack.last_mut()
+                {
                     *task = Some(done);
                 }
             }
@@ -158,6 +163,11 @@ impl Builder {
     }
 
     fn start(&mut self, tag: Tag) {
+        if matches!(tag, Tag::BlockQuote(_) | Tag::List(_) | Tag::Item) && self.too_deep() {
+            self.flush();
+            self.flattened += 1;
+            return;
+        }
         match tag {
             Tag::Paragraph => self.flush(),
             Tag::Heading { level, .. } => {
@@ -225,6 +235,13 @@ impl Builder {
     }
 
     fn end(&mut self, tag: TagEnd) {
+        if matches!(tag, TagEnd::BlockQuote(_) | TagEnd::List(_) | TagEnd::Item)
+            && self.flattened > 0
+        {
+            self.flush();
+            self.flattened -= 1;
+            return;
+        }
         match tag {
             TagEnd::Paragraph => self.flush(),
             TagEnd::Heading(_) => {
@@ -323,6 +340,19 @@ impl Builder {
             }
             _ => {}
         }
+    }
+
+    /// Whether a new quote, list or item would nest past `MAX_DEPTH`. Lists
+    /// don't count, so the deepest frame is always a quote or an item,
+    /// never a list that would send flattened blocks to the root.
+    fn too_deep(&self) -> bool {
+        self.flattened > 0
+            || self
+                .stack
+                .iter()
+                .filter(|f| matches!(f, Frame::Quote(..) | Frame::Item(..)))
+                .count()
+                >= MAX_DEPTH
     }
 
     fn set_count(&mut self, field: fn(&mut Self) -> &mut u32, delta: i32) {
@@ -662,6 +692,56 @@ mod tests {
         };
         assert_eq!(crate::doc::anchor_text(inlines), "Setup");
         assert_eq!(plain_text(inlines), "Setup[1]");
+    }
+
+    /// Levels of quotes and lists down to the deepest block.
+    fn depth(blocks: &[Block]) -> usize {
+        blocks
+            .iter()
+            .map(|b| match b {
+                Block::Quote(inner)
+                | Block::Callout { blocks: inner, .. }
+                | Block::Footnote { blocks: inner, .. } => 1 + depth(inner),
+                Block::List { items, .. } => 1 + items.iter().map(|i| depth(i)).max().unwrap_or(0),
+                _ => 0,
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn deep_nesting_is_flattened() {
+        let theme = crate::render::theme::Theme::dark();
+        for path in ["x.md", "x.mdx"] {
+            let path = Some(std::path::Path::new(path));
+            // Up to the cap, nesting is kept as written.
+            for n in [MAX_DEPTH, MAX_DEPTH + 1] {
+                let doc = crate::doc::parse_for(&format!("{}x\n", "> ".repeat(n)), path);
+                assert_eq!(depth(&doc.blocks), MAX_DEPTH, "{path:?} {n}");
+            }
+            for src in [
+                format!("{}x\n", "> ".repeat(10_000)),
+                format!("{}x\n", "- ".repeat(10_000)),
+                format!("{}x\n", "> 1. ".repeat(5_000)),
+            ] {
+                let doc = crate::doc::parse_for(&src, path);
+                assert_eq!(depth(&doc.blocks), MAX_DEPTH, "{path:?}");
+                let mut texts = Vec::new();
+                crate::doc::visit(&doc.blocks, &mut |b| {
+                    if let Block::Paragraph(i) = b {
+                        texts.push(plain_text(i));
+                    }
+                });
+                assert_eq!(texts, ["x"], "{path:?}");
+                let r = crate::render::render(&doc, 80, &theme);
+                assert!(
+                    r.lines
+                        .iter()
+                        .any(|l| crate::render::plain(l).trim_end().ends_with('x')),
+                    "{path:?}"
+                );
+            }
+        }
     }
 
     #[test]

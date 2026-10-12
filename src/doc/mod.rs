@@ -29,12 +29,14 @@ pub(crate) fn image_placeholder(alt: &str) -> String {
     format!("{IMAGE_PREFIX}{alt}]")
 }
 
-/// Extensions treated as Markdown.
+/// File extensions of Markdown documents, in lowercase.
+pub const MARKDOWN_EXTENSIONS: &[&str] = &["md", "markdown", "mdx", "mdown", "mkdn", "mkd"];
+
+/// Extensions treated as Markdown, in any case.
 pub fn is_markdown_ext(ext: &str) -> bool {
-    matches!(
-        ext.to_ascii_lowercase().as_str(),
-        "md" | "markdown" | "mdx" | "mdown" | "mkdn" | "mkd"
-    )
+    MARKDOWN_EXTENSIONS
+        .iter()
+        .any(|m| m.eq_ignore_ascii_case(ext))
 }
 
 /// A source file shown as one highlighted code block with source line

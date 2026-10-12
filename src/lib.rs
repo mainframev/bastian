@@ -12,6 +12,7 @@ pub mod outline;
 pub mod output;
 pub mod paths;
 pub mod picker;
+pub mod positions;
 pub mod prompt;
 pub mod reader;
 pub mod remote;

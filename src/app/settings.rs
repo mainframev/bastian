@@ -47,6 +47,8 @@ pub struct Settings {
     pub selector: config::Selector,
     /// How the file list lays out each file.
     pub list_layout: config::ListLayout,
+    /// Where reading positions are remembered; `None` doesn't.
+    pub positions: Option<PathBuf>,
 }
 
 impl Settings {
@@ -94,6 +96,11 @@ impl Settings {
             show_images: r.images.value,
             selector: r.selector.value,
             list_layout: r.list_layout.value,
+            positions: r
+                .remember_position
+                .value
+                .then(crate::positions::default_store)
+                .flatten(),
             interpreters: Interpreters::new(r.interpreters),
         };
         Ok((settings, name))
@@ -140,6 +147,10 @@ impl Settings {
         // Source files always show their line numbers.
         r.line_numbers |= code_file;
         r.watch(path.to_path_buf());
+        if let Some(store) = self.positions.as_ref().filter(|_| !code_file) {
+            r.restore = crate::positions::load(store, path);
+            r.positions = Some(store.clone());
+        }
         Ok(r)
     }
 }

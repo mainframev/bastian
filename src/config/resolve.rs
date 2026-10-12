@@ -63,6 +63,7 @@ pub struct Resolved {
     pub tab_width: Setting<u16>,
     pub hyperlinks: Setting<bool>,
     pub scrollbar: Setting<bool>,
+    pub remember_position: Setting<bool>,
     /// Empty when not set.
     pub editor: Setting<String>,
     pub interpreters: HashMap<String, Vec<String>>,
@@ -138,6 +139,13 @@ pub fn resolve(file: Config, env: &EnvMap, cli: Config) -> Result<Resolved> {
         tab_width: setting("tab_width", 4, file.tab_width, cli.tab_width, env)?,
         hyperlinks: setting("hyperlinks", true, file.hyperlinks, cli.hyperlinks, env)?,
         scrollbar: setting("scrollbar", true, file.scrollbar, cli.scrollbar, env)?,
+        remember_position: setting(
+            "remember_position",
+            true,
+            file.remember_position,
+            cli.remember_position,
+            env,
+        )?,
         editor: setting("editor", String::new(), file.editor, cli.editor, env)?,
         interpreters: file.interpreters,
     })

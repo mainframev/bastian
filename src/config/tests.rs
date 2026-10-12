@@ -222,6 +222,7 @@ fn parses_all_fields() {
             tab_width = 2
             hyperlinks = false
             scrollbar = false
+            remember_position = false
             editor = "nvim -p"
             [interpreters]
             ruby = ["ruby", "-e"]
@@ -247,6 +248,7 @@ fn parses_all_fields() {
     assert_eq!(c.tab_width, Some(2));
     assert_eq!(c.hyperlinks, Some(false));
     assert_eq!(c.scrollbar, Some(false));
+    assert_eq!(c.remember_position, Some(false));
     assert_eq!(c.editor.as_deref(), Some("nvim -p"));
     assert_eq!(c.interpreters["ruby"], ["ruby", "-e"]);
     let fish = &c.interpreters["fish"];

@@ -262,13 +262,11 @@ fn c_copies_the_whole_document() {
     assert_eq!(r.message.as_deref(), Some("copied document (3 lines)"));
 }
 
-#[test]
-fn remote_documents_resolve_links_and_always_confirm() {
-    // Built the way the app builds fetched documents, with --yes on.
-    let settings = Settings {
+fn settings(assume_yes: bool, positions: Option<std::path::PathBuf>) -> Settings {
+    Settings {
         theme: Theme::dark(),
         max_width: 80,
-        assume_yes: true,
+        assume_yes,
         interpreters: Interpreters::default(),
         line_numbers: false,
         scan: bastian::browser::Scan::default(),
@@ -283,7 +281,66 @@ fn remote_documents_resolve_links_and_always_confirm() {
         show_images: false,
         selector: bastian::config::Selector::Bar,
         list_layout: bastian::config::ListLayout::Cards,
-    };
+        positions,
+    }
+}
+
+#[test]
+fn reopening_a_file_returns_to_where_it_was_left() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = dir.path().join("state/positions.json");
+    let file = dir.path().join("long.md");
+    let src: String = (0..60)
+        .map(|i| format!("## Part {i}\n\ntext {i}\n\n"))
+        .collect();
+    std::fs::write(&file, src).unwrap();
+    let s = settings(false, Some(store.clone()));
+
+    let mut r = s.open(&file, "long.md".into()).unwrap();
+    r.layout(80, 10);
+    assert_eq!(r.scroll, 0);
+    for _ in 0..40 {
+        key(&mut r, KeyCode::Char('j'));
+    }
+    let left_at = r.source_line();
+    assert!(left_at > Some(1));
+    r.remember_position();
+
+    // A narrower window still opens at the same block.
+    let mut again = s.open(&file, "long.md".into()).unwrap();
+    again.layout(60, 10);
+    assert!(again.scroll > 0);
+    assert_eq!(again.source_line(), left_at);
+
+    // Keys that don't move the view keep the restore going; moving ends it.
+    key(&mut again, KeyCode::Char('#'));
+    again.layout(60, 10);
+    assert_eq!(again.source_line(), left_at);
+    assert!(again.restore.is_some());
+    key(&mut again, KeyCode::Char('j'));
+    again.layout(60, 10);
+    assert_eq!(again.restore, None);
+
+    // Back at the top, the position is forgotten.
+    key(&mut again, KeyCode::Char('g'));
+    again.remember_position();
+    let mut third = s.open(&file, "long.md".into()).unwrap();
+    third.layout(80, 10);
+    assert_eq!(third.scroll, 0);
+
+    // Turned off: nothing is restored or saved.
+    let off = settings(false, None);
+    let mut r = off.open(&file, "long.md".into()).unwrap();
+    r.layout(80, 10);
+    key(&mut r, KeyCode::Char('G'));
+    r.remember_position();
+    assert_eq!(bastian::positions::load(&store, &file), None);
+}
+
+#[test]
+fn remote_documents_resolve_links_and_always_confirm() {
+    // Built the way the app builds fetched documents, with --yes on.
+    let settings = settings(true, None);
     let mut r = settings.remote(RemoteDoc {
         name: "README.md".into(),
         base: url::Url::parse("https://example.com/repo/README.md").unwrap(),

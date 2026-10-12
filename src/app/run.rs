@@ -58,6 +58,9 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<Option<String
             let event = event::read()?;
             let ignored = is_ignored(&event);
             if !app.on_event(&event) {
+                if let Some(r) = &app.reader {
+                    r.remember_position();
+                }
                 return Ok(app.exit_note.take());
             }
             if let Some((path, line)) = app.edit.take() {
@@ -65,6 +68,10 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<Option<String
                 redraw = true;
             }
             if std::mem::take(&mut app.suspend) {
+                // In case the suspended job is never resumed.
+                if let Some(r) = &app.reader {
+                    r.remember_position();
+                }
                 suspend(terminal, app.settings.mouse)?;
                 redraw = true;
             }

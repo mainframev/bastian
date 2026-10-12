@@ -109,6 +109,15 @@ pub struct Reader {
     pub hyperlinks: bool,
     /// Show a scrollbar when the document overflows.
     pub scrollbar: bool,
+    /// Where reading positions are remembered; `None` doesn't remember
+    /// this document's.
+    pub positions: Option<PathBuf>,
+    /// Source line to scroll to, kept until the user moves so it survives
+    /// re-renders (e.g. pictures loading).
+    pub restore: Option<crate::positions::Position>,
+    /// Where the last restore left the view; any other scroll position
+    /// means the user moved, which ends the restore.
+    restored_at: Option<usize>,
     width: u16,
     height: usize,
 }
@@ -154,6 +163,9 @@ impl Reader {
             render_opts: render::Options::default(),
             hyperlinks: true,
             scrollbar: true,
+            positions: None,
+            restore: None,
+            restored_at: None,
             width: 0,
             height: 0,
         }
@@ -231,6 +243,17 @@ impl Reader {
             self.refind();
         }
         self.height = usize::from(height);
+        if let Some(position) = self.restore {
+            if self.restored_at.is_none_or(|at| at == self.scroll) {
+                self.scroll_to_position(position);
+                // Near the end the view can't reach the block's top; note
+                // where it really is, or the clamp below looks like a move.
+                self.scroll = self.scroll.min(self.max_scroll());
+                self.restored_at = Some(self.scroll);
+            } else {
+                self.restore = None;
+            }
+        }
         self.follow_output();
         self.scroll = self.scroll.min(self.max_scroll());
     }

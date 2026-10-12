@@ -68,6 +68,8 @@ pub struct Config {
     pub hyperlinks: Option<bool>,
     /// Show scrollbars.
     pub scrollbar: Option<bool>,
+    /// Reopen files where they were last read.
+    pub remember_position: Option<bool>,
     /// Editor command line, used before `$VISUAL` and `$EDITOR`.
     pub editor: Option<String>,
     /// Language → command line; the block source is appended as the last

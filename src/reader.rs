@@ -10,7 +10,7 @@ use crate::images::{Images, Source as ImageSource};
 use crate::links::{self, Link, Target};
 use crate::nav::{self, Motion};
 use crate::outline::{self, Outline};
-use crate::prompt::{self, Prompt, PromptEvent};
+use crate::prompt::{self, Edited, Prompt};
 use crate::render::theme::Theme;
 use crate::render::{self, Highlights, Rendered};
 
@@ -799,18 +799,11 @@ impl Reader {
             self.on_confirm_key(key);
             return Action::None;
         }
-        if let Some(prompt) = &mut self.prompt {
-            match prompt.on_key(key) {
-                PromptEvent::Changed => {
-                    let q = prompt.text().to_string();
-                    self.set_query(&q);
-                }
-                PromptEvent::Submit => self.prompt = None,
-                PromptEvent::Cancel => {
-                    self.prompt = None;
-                    self.search = None;
-                }
-                PromptEvent::None => {}
+        if self.prompt.is_some() {
+            match prompt::drive(&mut self.prompt, key) {
+                Some(Edited::Text(q)) => self.set_query(&q),
+                Some(Edited::Cancelled) => self.search = None,
+                None => {}
             }
             return Action::None;
         }

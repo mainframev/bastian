@@ -10,7 +10,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use crate::config::SortBy;
 use crate::nav;
-use crate::prompt::{self, Prompt, PromptEvent};
+use crate::prompt::{self, Edited, Prompt};
 
 /// Which files the browser lists, and in what order.
 #[derive(Debug, Clone, Default)]
@@ -284,20 +284,13 @@ impl Browser {
         if self.prompt.is_some() && is_navigation(&key) {
             self.prompt = None;
         }
-        if let Some(prompt) = &mut self.prompt {
-            match prompt.on_key(key) {
-                PromptEvent::Changed => {
-                    self.filter = prompt.text().to_string();
-                    self.refilter();
-                }
-                PromptEvent::Submit => self.prompt = None,
-                PromptEvent::Cancel => {
-                    self.prompt = None;
-                    self.filter.clear();
-                    self.refilter();
-                }
-                PromptEvent::None => {}
+        if self.prompt.is_some() {
+            match prompt::drive(&mut self.prompt, key) {
+                Some(Edited::Text(text)) => self.filter = text,
+                Some(Edited::Cancelled) => self.filter.clear(),
+                None => return Action::None,
             }
+            self.refilter();
             return Action::None;
         }
 

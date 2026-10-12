@@ -17,6 +17,9 @@ const MAX_LINE_BYTES: usize = 64 * 1024;
 /// a block that writes faster than the UI drains.
 const CHANNEL_CAPACITY: usize = 4096;
 
+/// How long a cancelled block gets to exit after SIGTERM before SIGKILL.
+const KILL_GRACE: Duration = Duration::from_secs(2);
+
 /// Built-in command lines that run a block's source for a fence language.
 /// The source is passed as the final argument.
 fn builtin(lang: &str) -> Option<&'static [&'static str]> {
@@ -132,6 +135,8 @@ pub struct Runner {
     rx: Receiver<RunEvent>,
     pids: HashMap<usize, u32>,
     cancelled: HashSet<usize>,
+    /// When SIGTERM went to each cancelled block still awaiting SIGKILL.
+    term_sent: HashMap<usize, Instant>,
 }
 
 impl Default for Runner {
@@ -142,6 +147,7 @@ impl Default for Runner {
             rx,
             pids: HashMap::new(),
             cancelled: HashSet::new(),
+            term_sent: HashMap::new(),
         }
     }
 }
@@ -163,6 +169,7 @@ impl Runner {
         let mut child = cmd.spawn()?;
         self.pids.insert(id, child.id());
         self.cancelled.remove(&id);
+        self.term_sent.remove(&id);
 
         let readers = [
             child.stdout.take().map(|s| self.pipe(id, s, false)),
@@ -215,8 +222,25 @@ impl Runner {
     pub fn cancel(&mut self, id: usize) {
         if let Some(&pid) = self.pids.get(&id) {
             self.cancelled.insert(id);
-            kill_group(pid);
+            self.term_sent.entry(id).or_insert_with(Instant::now);
+            kill_group(pid, Signal::Term);
         }
+    }
+
+    /// SIGKILL cancelled blocks still running `KILL_GRACE` after SIGTERM,
+    /// once per block.
+    pub fn escalate(&mut self) {
+        let pids = &self.pids;
+        self.term_sent.retain(|id, sent| {
+            let Some(&pid) = pids.get(id) else {
+                return false;
+            };
+            if sent.elapsed() < KILL_GRACE {
+                return true;
+            }
+            kill_group(pid, Signal::Kill);
+            false
+        });
     }
 
     pub fn is_running(&self, id: usize) -> bool {
@@ -229,6 +253,7 @@ impl Runner {
         for e in &mut events {
             if let RunEvent::Exit { id, cancelled, .. } = e {
                 self.pids.remove(id);
+                self.term_sent.remove(id);
                 *cancelled = self.cancelled.remove(id);
             }
         }
@@ -238,23 +263,41 @@ impl Runner {
 
 impl Drop for Runner {
     fn drop(&mut self) {
+        if self.pids.is_empty() {
+            return;
+        }
         for &pid in self.pids.values() {
-            kill_group(pid);
+            kill_group(pid, Signal::Term);
+        }
+        // A short grace period to clean up, then stop whatever ignored it.
+        thread::sleep(Duration::from_millis(100));
+        for &pid in self.pids.values() {
+            kill_group(pid, Signal::Kill);
         }
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum Signal {
+    Term,
+    Kill,
+}
+
 #[cfg(unix)]
-fn kill_group(pid: u32) {
+fn kill_group(pid: u32, sig: Signal) {
+    let sig = match sig {
+        Signal::Term => libc::SIGTERM,
+        Signal::Kill => libc::SIGKILL,
+    };
     // SAFETY: kill(2) has no memory-safety preconditions. A negative pid
     // targets the process group created for the block in `start`.
     unsafe {
-        libc::kill(-(pid as libc::pid_t), libc::SIGTERM);
+        libc::kill(-(pid as libc::pid_t), sig);
     }
 }
 
 #[cfg(not(unix))]
-fn kill_group(_pid: u32) {}
+fn kill_group(_pid: u32, _sig: Signal) {}
 
 #[cfg(test)]
 mod tests {
@@ -318,6 +361,52 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn escalate_kills_blocks_that_ignore_sigterm() {
+        let mut r = Runner::default();
+        r.start(0, &spec("trap '' TERM; sleep 30")).unwrap();
+        thread::sleep(Duration::from_millis(100));
+        r.cancel(0);
+        let started = Instant::now();
+        let deadline = started + Duration::from_secs(4);
+        let exit = 'wait: loop {
+            assert!(Instant::now() < deadline, "block survived SIGKILL");
+            r.escalate();
+            for e in r.drain() {
+                if let exit @ RunEvent::Exit { .. } = e {
+                    break 'wait exit;
+                }
+            }
+            thread::sleep(Duration::from_millis(10));
+        };
+        assert!(started.elapsed() >= KILL_GRACE);
+        assert!(started.elapsed() < KILL_GRACE + Duration::from_secs(1));
+        assert!(matches!(
+            exit,
+            RunEvent::Exit {
+                cancelled: true,
+                ..
+            }
+        ));
+        assert!(!r.is_running(0));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn drop_kills_blocks_that_ignore_sigterm() {
+        let mut r = Runner::default();
+        r.start(0, &spec("trap '' TERM; sleep 30")).unwrap();
+        thread::sleep(Duration::from_millis(100));
+        let pid = r.pids[&0] as libc::pid_t;
+        drop(r);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        // SAFETY: kill(2) with signal 0 only checks that the group exists.
+        while unsafe { libc::kill(-pid, 0) } == 0 {
+            assert!(Instant::now() < deadline, "block survived drop");
+            thread::sleep(Duration::from_millis(10));
+        }
     }
 
     #[test]

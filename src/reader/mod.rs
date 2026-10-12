@@ -289,6 +289,7 @@ impl Reader {
             self.on_run_event(event);
         }
         self.cancel_expired();
+        self.runner.escalate();
 
         // Without new events, only running blocks' timers move: patch
         // those lines instead of laying out the whole document again, and

@@ -10,13 +10,13 @@ impl Renderer<'_> {
     /// alt text.
     pub(super) fn image(&self, alt: &str, url: &str, width: usize) -> Out {
         let caption = Style::default().fg(self.theme.muted);
-        let Some(&(w, h)) = self.images.get(url) else {
+        let Some(&(w, h)) = self.cx.images.get(url) else {
             return Out::from(wrap(
                 &[(crate::doc::image_placeholder(alt), caption)],
                 width,
             ));
         };
-        let (cols, rows) = fit_image(w, h, width as u16, self.opts.image_rows);
+        let (cols, rows) = fit_image(w, h, width as u16, self.cx.opts.image_rows);
         let mut lines = vec![Line::default(); usize::from(rows)];
         if !alt.is_empty() {
             lines.extend(wrap(&[(alt.to_string(), caption)], width));

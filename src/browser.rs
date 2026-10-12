@@ -10,6 +10,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use crate::config::SortBy;
 use crate::nav;
+use crate::paths;
 use crate::prompt::{self, Edited, Prompt};
 
 /// Which files the browser lists, and in what order.
@@ -150,7 +151,9 @@ impl Browser {
     /// `tick` to pick them up.
     pub fn new(root: PathBuf, scan: Scan) -> Self {
         let mut b = Self {
-            root_label: display_root(&root),
+            root_label: paths::tilde(
+                &std::fs::canonicalize(&root).unwrap_or_else(|_| root.clone()),
+            ),
             root,
             scan,
             visible: Vec::new(),
@@ -359,16 +362,6 @@ pub fn discover(root: &Path, opts: &Scan) -> Vec<Entry> {
     let mut entries: Vec<Entry> = rx.into_iter().collect();
     sort(&mut entries, opts.sort);
     entries
-}
-
-/// Absolute path with the home directory shortened to `~`.
-fn display_root(root: &Path) -> String {
-    let abs = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
-    match std::env::var_os("HOME").and_then(|h| abs.strip_prefix(h).ok().map(Path::to_path_buf)) {
-        Some(rel) if rel.as_os_str().is_empty() => "~".to_string(),
-        Some(rel) => format!("~/{}", rel.display()),
-        None => abs.display().to_string(),
-    }
 }
 
 /// Newest first by `modified` or `created` time, or by name A to Z; ties

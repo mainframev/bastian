@@ -9,7 +9,7 @@ use bastian::config::{self, ColorMode, Confirm};
 use bastian::exec::Interpreters;
 
 use bastian::term::{self, Background};
-use bastian::{browser, doc, images, output, remote, render, text, themes};
+use bastian::{browser, doc, images, output, paths, remote, render, text, themes};
 
 /// Read Markdown in the terminal: browse, search and follow your docs.
 #[derive(Parser)]
@@ -342,11 +342,7 @@ fn run_tui(app: app::App) -> Result<()> {
 /// missing.
 fn edit_config(path: &std::path::Path) -> Result<()> {
     if !path.exists() {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
-        }
-        std::fs::write(path, config::TEMPLATE)
-            .with_context(|| format!("writing {}", path.display()))?;
+        paths::write_creating_parent(path, config::TEMPLATE)?;
         eprintln!("created {}", path.display());
     }
     // The `editor` setting, when the file still parses (it may be open to
@@ -431,16 +427,9 @@ fn theme_list(r: &config::Resolved, dir: Option<&std::path::Path>, color: bool) 
         .filter(|(_, v)| themes::canonical(v) == l.name)
         .map(|(k, _)| k)
         .collect();
-        // Paths under the home directory as `~/…`.
-        let shown = |p: &std::path::Path| match std::env::var_os("HOME") {
-            Some(home) if p.starts_with(&home) => {
-                format!("~/{}", p.strip_prefix(&home).unwrap_or(p).display())
-            }
-            _ => p.display().to_string(),
-        };
         let origin = match (&l.path, l.overrides) {
-            (Some(p), true) => format!("{} (overrides built-in)", shown(p)),
-            (Some(p), false) => shown(p),
+            (Some(p), true) => format!("{} (overrides built-in)", paths::tilde(p)),
+            (Some(p), false) => paths::tilde(p),
             (None, _) => "built-in".to_string(),
         };
         let (appearance, colors) = match &l.theme {

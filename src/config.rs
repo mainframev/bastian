@@ -5,6 +5,8 @@ use anyhow::{Context, Result, anyhow};
 use clap::ValueEnum;
 use serde::Deserialize;
 
+use crate::paths;
+
 /// `~/.config/bastian/config.toml`, or under `$XDG_CONFIG_HOME` when set.
 #[derive(Debug, Default, Clone, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
@@ -138,7 +140,7 @@ pub fn locate(
     lookup: &dyn Fn(&str) -> Option<String>,
 ) -> Option<(PathBuf, bool)> {
     match flag.or(env_path.filter(|p| !p.is_empty())) {
-        Some(p) => Some((expand(p, lookup), true)),
+        Some(p) => Some((paths::expand(p, lookup), true)),
         None => path().map(|p| (p, false)),
     }
 }
@@ -153,47 +155,6 @@ pub fn load_at(path: &Path, explicit: bool) -> Result<Config> {
     } else {
         Ok(Config::default())
     }
-}
-
-/// Expand a leading `~` (home directory) and `$VAR` / `${VAR}` references.
-/// Unknown variables expand to nothing, as in a shell.
-pub fn expand(input: &str, lookup: &dyn Fn(&str) -> Option<String>) -> PathBuf {
-    let mut s = input.to_string();
-    if (s == "~" || s.starts_with("~/"))
-        && let Some(home) = lookup("HOME")
-    {
-        s.replace_range(..1, &home);
-    }
-    let mut out = String::new();
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c != '$' {
-            out.push(c);
-            continue;
-        }
-        let braced = chars.peek() == Some(&'{');
-        if braced {
-            chars.next();
-        }
-        let mut name = String::new();
-        while let Some(&n) = chars.peek() {
-            if n.is_ascii_alphanumeric() || n == '_' {
-                name.push(n);
-                chars.next();
-            } else {
-                break;
-            }
-        }
-        if braced && chars.peek() == Some(&'}') {
-            chars.next();
-        }
-        if name.is_empty() {
-            out.push('$');
-        } else {
-            out.push_str(&lookup(&name).unwrap_or_default());
-        }
-    }
-    PathBuf::from(out)
 }
 
 /// Commented starting point written by `bastian config`.
@@ -485,10 +446,7 @@ pub fn save_theme(path: &Path, name: &str) -> Result<()> {
     // Never write something that no longer parses.
     toml::from_str::<Config>(&updated)
         .with_context(|| format!("updating {} would break it", path.display()))?;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
-    }
-    std::fs::write(path, updated).with_context(|| format!("writing {}", path.display()))
+    paths::write_creating_parent(path, updated)
 }
 
 /// `text` with its top-level `theme` set to `name`.
@@ -740,26 +698,6 @@ mod tests {
         );
         assert_eq!(r.confirm.value, Confirm::Never);
         assert!(r.line_numbers.value);
-    }
-
-    #[test]
-    fn expands_home_and_variables() {
-        let lookup = |k: &str| match k {
-            "HOME" => Some("/home/me".to_string()),
-            "XDG" => Some("/xdg".to_string()),
-            _ => None,
-        };
-        assert_eq!(
-            expand("~/b.toml", &lookup),
-            PathBuf::from("/home/me/b.toml")
-        );
-        assert_eq!(
-            expand("$XDG/b/c.toml", &lookup),
-            PathBuf::from("/xdg/b/c.toml")
-        );
-        assert_eq!(expand("${XDG}x", &lookup), PathBuf::from("/xdgx"));
-        assert_eq!(expand("$NOPE/a", &lookup), PathBuf::from("/a"));
-        assert_eq!(expand("a~b$", &lookup), PathBuf::from("a~b$"));
     }
 
     #[test]

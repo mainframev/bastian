@@ -15,6 +15,7 @@ use crate::doc::{self, Document};
 use crate::editor;
 use crate::exec::Interpreters;
 use crate::links;
+use crate::paths;
 use crate::picker::{self, ThemePicker};
 use crate::prompt;
 use crate::reader::{self, Reader};
@@ -94,7 +95,7 @@ impl Settings {
         let src = crate::text::read_text(path)?;
         let doc = doc::parse_for(&src, Some(path));
         let code_file = doc.code_file;
-        let mut r = self.reader(name, doc, base_dir(path));
+        let mut r = self.reader(name, doc, paths::base_dir(path));
         // Source files always show their line numbers.
         r.line_numbers |= code_file;
         r.text = src;
@@ -325,7 +326,7 @@ impl App {
                 return self.reader.is_some() || self.browser.is_some();
             }
             reader::Action::OpenDocument(path) => {
-                let next = self.settings.open(&path, display_name(&path));
+                let next = self.settings.open(&path, paths::display_name(&path));
                 self.push_reader(next);
             }
             reader::Action::OpenRemote(url) => {
@@ -386,24 +387,6 @@ impl App {
             Err(err) => self.set_message(format!("could not run {cmd}: {err}")),
         }
         Ok(())
-    }
-}
-
-/// Path relative to the current directory when possible, for the status bar.
-fn display_name(path: &Path) -> String {
-    std::env::current_dir()
-        .ok()
-        .and_then(|cwd| path.strip_prefix(cwd).ok().map(Path::to_path_buf))
-        .unwrap_or_else(|| path.to_path_buf())
-        .display()
-        .to_string()
-}
-
-/// Directory a document's blocks run in: the one containing the file.
-pub fn base_dir(path: &Path) -> PathBuf {
-    match path.parent() {
-        Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
-        _ => PathBuf::from("."),
     }
 }
 

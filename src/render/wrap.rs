@@ -104,20 +104,65 @@ impl Wrapper {
     }
 }
 
-/// Alternating runs of whitespace and non-whitespace.
+/// Words of `s` as `wrap` sees them: runs of non-whitespace, with CJK text
+/// split further so lines can break between its characters.
+pub fn words(s: &str) -> impl Iterator<Item = &str> {
+    tokens(s).filter(|t| !t.starts_with(char::is_whitespace))
+}
+
+/// Alternating runs of whitespace and non-whitespace, the latter split
+/// wherever a CJK line break is allowed.
 fn tokens(s: &str) -> impl Iterator<Item = &str> {
     let mut rest = s;
     std::iter::from_fn(move || {
         let first = rest.chars().next()?;
         let ws = first.is_whitespace();
+        let mut prev = first;
         let end = rest
             .char_indices()
-            .find(|(_, c)| c.is_whitespace() != ws)
+            .skip(1)
+            .find(|&(_, c)| {
+                let split = c.is_whitespace() != ws || (!ws && cjk_break(prev, c));
+                prev = c;
+                split
+            })
             .map_or(rest.len(), |(i, _)| i);
         let (tok, tail) = rest.split_at(end);
         rest = tail;
         Some(tok)
     })
+}
+
+/// Whether a line may break between `prev` and `next` inside a word: next
+/// to a Chinese or Japanese character, but not before closing punctuation
+/// or after opening punctuation. Korean is left alone, as it spaces words.
+fn cjk_break(prev: char, next: char) -> bool {
+    (is_cjk(prev) || is_cjk(next)) && !no_break_before(next) && !no_break_after(prev)
+}
+
+fn is_cjk(c: char) -> bool {
+    matches!(c,
+        '\u{3000}'..='\u{303F}'   // CJK symbols and punctuation
+        | '\u{3040}'..='\u{30FF}' // Hiragana, Katakana
+        | '\u{31F0}'..='\u{31FF}' // Katakana phonetic extensions
+        | '\u{3400}'..='\u{4DBF}' // CJK extension A
+        | '\u{4E00}'..='\u{9FFF}' // CJK unified ideographs
+        | '\u{F900}'..='\u{FAFF}' // CJK compatibility ideographs
+        | '\u{FF00}'..='\u{FF60}' // Fullwidth forms
+        | '\u{FFE0}'..='\u{FFE6}'
+        | '\u{20000}'..='\u{3FFFF}' // CJK extensions B and later
+    )
+}
+
+/// Characters a line must not start with.
+fn no_break_before(c: char) -> bool {
+    "、。，．：；！？）］｝」』】〕〉》〙〗〟’”ー々ゝゞヽヾぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ・…‥,.:;!?)]}%"
+        .contains(c)
+}
+
+/// Characters a line must not end with.
+fn no_break_after(c: char) -> bool {
+    "（［｛「『【〔〈《〘〖〝‘“([{".contains(c)
 }
 
 #[cfg(test)]
@@ -162,6 +207,44 @@ mod tests {
     #[test]
     fn empty_input_is_one_empty_line() {
         assert_eq!(text(&wrap(&run(""), 10)), [""]);
+    }
+
+    #[test]
+    fn breaks_between_cjk_characters() {
+        let lines = wrap(&run("日本語の文章を折り返す"), 8);
+        assert_eq!(text(&lines), ["日本語の", "文章を折", "り返す"]);
+    }
+
+    #[test]
+    fn cjk_punctuation_stays_attached() {
+        // "。" can't start a line and "「" can't end one.
+        let lines = wrap(&run("これは「本」です。"), 8);
+        assert_eq!(text(&lines), ["これは", "「本」で", "す。"]);
+        let lines = wrap(&run("中文中文。"), 8);
+        assert_eq!(text(&lines), ["中文中", "文。"]);
+    }
+
+    #[test]
+    fn cjk_fills_the_line_before_breaking() {
+        // A short CJK run continues the line instead of moving down whole.
+        let lines = wrap(&run("ab 中文中文"), 8);
+        assert_eq!(text(&lines), ["ab 中文", "中文"]);
+    }
+
+    #[test]
+    fn latin_words_inside_cjk_stay_whole() {
+        let lines = wrap(&run("这是一个很长的Rust句子"), 16);
+        assert_eq!(text(&lines), ["这是一个很长的", "Rust句子"]);
+    }
+
+    #[test]
+    fn cjk_mixed_with_latin() {
+        let lines = wrap(&run("使用Rust编写的工具"), 10);
+        assert_eq!(text(&lines), ["使用Rust编", "写的工具"]);
+        assert_eq!(
+            words("用Rust写, ok 한국어").collect::<Vec<_>>(),
+            ["用", "Rust", "写,", "ok", "한국어"]
+        );
     }
 
     #[test]

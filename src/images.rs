@@ -97,9 +97,10 @@ impl Images {
         self.support = support;
     }
 
-    /// Start loading `key` from `source`, unless it's already known.
+    /// Start loading `key` from `source`, unless it's already known or a
+    /// format that can't be drawn.
     pub fn request(&mut self, key: &str, source: Source) {
-        if !self.enabled() || self.entries.contains_key(key) {
+        if !self.enabled() || self.entries.contains_key(key) || !drawable(key) {
             return;
         }
         self.entries.insert(key.to_string(), Entry::Loading);
@@ -172,6 +173,15 @@ impl Images {
         });
         Some(protocol)
     }
+}
+
+/// Whether an image written as `url` could be drawn. GIFs are animations
+/// (their first frame is often blank, as in screen recordings) and SVGs
+/// aren't pixels, so neither is fetched; their alt text stays.
+fn drawable(url: &str) -> bool {
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+    let ext = path.rsplit_once('.').map_or("", |(_, ext)| ext);
+    !ext.eq_ignore_ascii_case("gif") && !ext.eq_ignore_ascii_case("svg")
 }
 
 fn load(source: &Source) -> Result<DynamicImage> {
@@ -281,6 +291,25 @@ mod tests {
         assert!(sizes.contains_key("dot.png"));
         assert!(!sizes.contains_key("logo.svg"));
         assert!(images.protocol("dot.png", 4, 2).is_some());
+
+        // GIFs and SVGs aren't even fetched.
+        let gif = dir.path().join("demo.gif");
+        image::RgbImage::from_pixel(4, 4, image::Rgb([0, 0, 0]))
+            .save(dir.path().join("demo.png"))
+            .unwrap();
+        std::fs::copy(dir.path().join("demo.png"), &gif).unwrap();
+        images.request("demo.gif", Source::File(gif));
+        images.request(
+            "https://x.dev/badge.svg?style=flat",
+            Source::Url("unused".into()),
+        );
+        assert!(!images.entries.contains_key("demo.gif"));
+        assert!(
+            !images
+                .entries
+                .contains_key("https://x.dev/badge.svg?style=flat")
+        );
+        assert!(drawable("photo.JPG?raw=true") && !drawable("demo/usage.GIF#x"));
 
         // Off: nothing is loaded.
         let mut off = Images::default();

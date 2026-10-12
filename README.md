@@ -108,8 +108,8 @@ next to the document (or against the URL of a remote document).
 An image on a line of its own is shown as a picture in the reader (kitty
 graphics in kitty and Ghostty, iTerm2's in iTerm2 and WezTerm, colored
 half-blocks elsewhere and inside tmux), from a file next to the document or a URL. Images in
-running text, SVGs (such as most badges) and printed output keep their alt
-text.
+running text, SVGs (such as most badges), GIFs and printed output keep their
+alt text.
 
 The open document reloads when the file changes on disk.
 

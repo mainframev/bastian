@@ -62,7 +62,7 @@ pub fn resolve(url: &str, base_dir: &Path) -> Target {
     if let Some(anchor) = url.strip_prefix('#') {
         return Target::Anchor(anchor.to_string());
     }
-    if url.contains("://") || url.starts_with("mailto:") {
+    if url.contains("://") || has_scheme(url) {
         return Target::External(url.to_string());
     }
     let path_part = url.split('#').next().unwrap_or(url);
@@ -79,6 +79,18 @@ pub fn resolve(url: &str, base_dir: &Path) -> Target {
     } else {
         Target::External(path.display().to_string())
     }
+}
+
+/// Whether `url` starts with a URI scheme (`mailto:`, `tel:`, `javascript:`,
+/// …). One-letter schemes are left out: those are Windows drive letters.
+fn has_scheme(url: &str) -> bool {
+    url::Url::parse(url).is_ok_and(|u| u.scheme().len() >= 2)
+}
+
+/// Whether `target` is a web or mail link, safe to open without asking.
+/// Other schemes and local files can launch apps or run scripts.
+pub fn is_web(target: &str) -> bool {
+    url::Url::parse(target).is_ok_and(|u| matches!(u.scheme(), "http" | "https" | "mailto"))
 }
 
 /// GitHub-style heading anchor: lowercase, spaces to dashes, punctuation dropped.
@@ -156,12 +168,55 @@ mod tests {
     }
 
     #[test]
+    fn any_uri_scheme_is_external() {
+        let d = Path::new("/nowhere");
+        for url in [
+            "mailto:a@b.c",
+            "MAILTO:a@b.c",
+            "tel:+15551234",
+            "sms:+15551234",
+            "javascript:alert(1)",
+            "vscode://file/etc/hosts",
+            "file:///Applications/X.app",
+        ] {
+            assert_eq!(resolve(url, d), Target::External(url.into()), "{url}");
+        }
+        assert!(is_web("MAILTO:a@b.c"));
+        // Drive letters and plain paths stay local.
+        for url in ["C:/docs/a.md", "c:\\docs\\a.md", "docs/a.md", "a.md#x"] {
+            assert!(matches!(resolve(url, d), Target::Missing(_)), "{url}");
+        }
+    }
+
+    #[test]
     fn every_markdown_extension_opens_in_bastian() {
         let dir = tempfile::tempdir().unwrap();
         let d = dir.path();
         for name in ["a.mkd", "b.mdown", "c.mkdn", "d.MD"] {
             std::fs::write(d.join(name), "# Doc\n").unwrap();
             assert_eq!(resolve(name, d), Target::Document(d.join(name)), "{name}");
+        }
+    }
+
+    #[test]
+    fn only_web_and_mail_links_are_web() {
+        for t in [
+            "https://x.dev",
+            "http://x.dev/a?b#c",
+            "HTTPS://X.DEV",
+            "mailto:a@b.c",
+        ] {
+            assert!(is_web(t), "{t}");
+        }
+        for t in [
+            "file:///Applications/X.app",
+            "vscode://file/etc/passwd",
+            "javascript:alert(1)",
+            "/tmp/setup.command",
+            "setup.command",
+            "",
+        ] {
+            assert!(!is_web(t), "{t}");
         }
     }
 

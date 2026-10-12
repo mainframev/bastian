@@ -60,6 +60,9 @@ press `Enter` to jump to a heading, `Esc` to close it.
 - `#anchor` links scroll to their heading;
 - links to Markdown files open in bastian (`Esc` comes back);
 - anything else goes to your system's opener (a browser for web links).
+  Only `http`, `https` and `mailto` links open straight away; other schemes,
+  `file:` URLs and local files show the target and wait for `y`/`n`. A
+  target too long for the screen keeps its start and end, with `…` between.
 
 `s` and `S` step through the links in place instead, starting from the ones
 in view. The status bar shows where the focused link leads before you follow
@@ -68,8 +71,10 @@ title or the URL. `Enter` follows it and `Esc` lets go.
 
 Links are also clickable in terminals that support hyperlinks (OSC 8: iTerm2,
 kitty, WezTerm, Ghostty, Windows Terminal, recent tmux with `hyperlinks` in
-`terminal-features`, …). Set `hyperlinks = false` if your terminal prints
-the escape codes instead.
+`terminal-features`, …). Since a click skips the prompt, only web and mail
+links and links to local Markdown files are made clickable; follow the rest
+with `L`. Set `hyperlinks = false` if your terminal prints the escape codes
+instead.
 
 ## Images
 

@@ -542,6 +542,120 @@ fn reopening_a_file_returns_to_where_it_was_left() {
     assert_eq!(bastian::positions::load(&store, &file), None);
 }
 
+/// A reader over one link to `url`, its picker open.
+fn picking(url: &str, base_dir: &std::path::Path) -> Reader {
+    let mut r = reader(&format!("[x]({url})\n"));
+    r.base_dir = base_dir.to_path_buf();
+    key(&mut r, KeyCode::Char('L'));
+    r
+}
+
+#[test]
+fn web_links_open_without_asking() {
+    for url in ["https://x.dev/a", "mailto:a@b.c"] {
+        let mut r = picking(url, std::path::Path::new("."));
+        assert!(
+            matches!(key(&mut r, KeyCode::Enter), Action::OpenExternal(t) if t == url),
+            "{url}"
+        );
+        assert_eq!(r.confirm_open, None);
+    }
+}
+
+#[test]
+fn other_links_ask_before_opening() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("setup.command"), "").unwrap();
+    let local = dir.path().join("setup.command").display().to_string();
+    for (url, target) in [
+        ("file:///Applications/X.app", "file:///Applications/X.app"),
+        ("vscode://file/etc/hosts", "vscode://file/etc/hosts"),
+        ("tel:+15551234", "tel:+15551234"),
+        ("javascript:alert(1)", "javascript:alert(1)"),
+        ("setup.command", local.as_str()),
+    ] {
+        let mut r = picking(url, dir.path());
+        assert!(matches!(key(&mut r, KeyCode::Enter), Action::None), "{url}");
+        assert_eq!(r.confirm_open.as_deref(), Some(target));
+        assert!(
+            matches!(key(&mut r, KeyCode::Char('y')), Action::OpenExternal(t) if t == target),
+            "{url}"
+        );
+        assert_eq!(r.confirm_open, None);
+
+        let mut r = picking(url, dir.path());
+        key(&mut r, KeyCode::Enter);
+        assert!(
+            matches!(key(&mut r, KeyCode::Char('n')), Action::None),
+            "{url}"
+        );
+        assert_eq!(r.confirm_open, None);
+    }
+}
+
+#[test]
+fn open_prompt_shows_the_whole_target() {
+    use bastian::ui::reader::draw;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let target = format!("vscode://file/{}/end", "x".repeat(60));
+    let mut r = picking(&target, std::path::Path::new("."));
+    key(&mut r, KeyCode::Enter);
+    let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let buf = terminal.backend().buffer();
+    let screen: String = (0..12)
+        .flat_map(|y| (0..40).map(move |x| (x, y)))
+        .map(|(x, y)| buf[(x, y)].symbol().to_string())
+        .collect();
+    // Wrapped across rows, with no cell lost to the box edge.
+    let shown: String = screen.chars().filter(|c| !"│ ".contains(*c)).collect();
+    assert!(shown.contains(&target), "{screen}");
+}
+
+#[test]
+fn open_prompt_elides_the_middle_of_a_long_target() {
+    use bastian::ui::reader::draw;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    // About 15 rows at 36 columns, where 7 fit.
+    let target = format!("vscode://host/{}/tail/setup.command", "x".repeat(500));
+    let mut r = picking(&target, std::path::Path::new("."));
+    key(&mut r, KeyCode::Enter);
+    assert_eq!(r.confirm_open.as_deref(), Some(target.as_str()));
+    let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let buf = terminal.backend().buffer();
+    let rows: Vec<String> = (0..12)
+        .map(|y| (0..40).map(|x| buf[(x, y)].symbol()).collect())
+        .collect();
+    let screen = rows.join("\n");
+    let shown: String = screen.chars().filter(|c| !"│ \n".contains(*c)).collect();
+    assert!(shown.contains("vscode://host/xxx"), "{screen}");
+    assert!(shown.contains("xxx/tail/setup.command"), "{screen}");
+    assert!(
+        rows.iter().any(|row| row.trim_matches(['│', ' ']) == "…"),
+        "{screen}"
+    );
+    assert!(
+        rows.iter()
+            .any(|row| row.contains("y open") && row.contains("n cancel")),
+        "{screen}"
+    );
+
+    // Even a screen too short for the question keeps the keys.
+    for height in 3..8 {
+        let mut terminal = Terminal::new(TestBackend::new(40, height)).unwrap();
+        terminal.draw(|f| draw(f, &mut r)).unwrap();
+        let buf = terminal.backend().buffer();
+        let has_keys = (0..height).any(|y| {
+            let row: String = (0..40).map(|x| buf[(x, y)].symbol()).collect();
+            row.contains("y open")
+        });
+        assert!(has_keys, "height {height}");
+    }
+}
+
 #[test]
 fn remote_documents_resolve_links_and_always_confirm() {
     // Built the way the app builds fetched documents, with --yes on.
@@ -573,6 +687,31 @@ fn remote_documents_resolve_links_and_always_confirm() {
 }
 
 #[test]
+fn remote_markdown_links_with_other_schemes_ask() {
+    let settings = settings(false, None);
+    for target in [
+        "file:///tmp/a.md",
+        "vscode://file/a.md",
+        "mailto:user@example.md",
+    ] {
+        let mut r = settings.remote(RemoteDoc {
+            name: "README.md".into(),
+            base: url::Url::parse("https://example.com/repo/README.md").unwrap(),
+            text: format!("[x]({target})\n"),
+        });
+        r.layout(80, 10);
+        key(&mut r, KeyCode::Char('L'));
+        let action = key(&mut r, KeyCode::Enter);
+        if target.starts_with("mailto:") {
+            assert!(matches!(action, Action::OpenExternal(t) if t == target));
+        } else {
+            assert!(matches!(action, Action::None), "{target}");
+            assert_eq!(r.confirm_open.as_deref(), Some(target));
+        }
+    }
+}
+
+#[test]
 fn reload_with_changed_code_drops_pending_confirmation() {
     let mut r = reader("```sh\necho one\n```\n");
     key(&mut r, KeyCode::Tab);
@@ -585,6 +724,18 @@ fn reload_with_changed_code_drops_pending_confirmation() {
 
     r.replace_doc(parse("```sh\nrm -rf ~\n```\n\n```sh\necho one\n```\n"));
     assert_eq!(r.confirm, None);
+}
+
+#[test]
+fn reload_drops_pending_open_prompt() {
+    let mut r = picking("vscode://file/etc/hosts", std::path::Path::new("."));
+    key(&mut r, KeyCode::Enter);
+    assert_eq!(r.confirm_open.as_deref(), Some("vscode://file/etc/hosts"));
+
+    // Even an unchanged link may now sit elsewhere; ask again after a reload.
+    r.replace_doc(parse("[x](vscode://file/etc/hosts)\n"));
+    assert_eq!(r.confirm_open, None);
+    assert!(matches!(key(&mut r, KeyCode::Char('y')), Action::None));
 }
 
 #[test]
@@ -638,7 +789,11 @@ fn links_are_terminal_hyperlinks() {
         Theme::dark(),
         80,
     );
-    r.base_dir = std::path::PathBuf::from("/tmp/proj");
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("guide.md"), "# Guide\n").unwrap();
+    r.base_dir = dir.path().to_path_buf();
+    let mut guide = url::Url::from_file_path(dir.path().join("guide.md")).unwrap();
+    guide.set_fragment(Some("setup"));
     let mut terminal = Terminal::new(TestBackend::new(80, 6)).unwrap();
     // The frame as drawn; the test backend can't measure OSC 8 cells.
     let frame = terminal.draw(|f| draw(f, &mut r)).unwrap();
@@ -652,9 +807,7 @@ fn links_are_terminal_hyperlinks() {
         "{symbols:?}"
     );
     assert!(
-        symbols
-            .iter()
-            .any(|s| s.starts_with(&osc("file:///tmp/proj/guide.md#setup"))),
+        symbols.iter().any(|s| s.starts_with(&osc(guide.as_str()))),
         "{symbols:?}"
     );
     // The link cell declares its real width, so the diff doesn't skip the
@@ -670,6 +823,57 @@ fn links_are_terminal_hyperlinks() {
         2
     );
     assert_eq!(r.hyperlink_target("#top"), None);
+}
+
+#[test]
+fn only_links_that_open_without_asking_are_clickable() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    std::fs::write(d.join("guide.md"), "# Guide\n").unwrap();
+    std::fs::write(d.join("setup.command"), "").unwrap();
+    std::fs::create_dir(d.join("X.app")).unwrap();
+    std::fs::create_dir(d.join("dir.md")).unwrap();
+    let mut r = Reader::new("t.md".into(), parse("x\n"), Theme::dark(), 80);
+    r.base_dir = d.to_path_buf();
+    let file = |name: &str| url::Url::from_file_path(d.join(name)).unwrap().to_string();
+
+    assert_eq!(
+        r.hyperlink_target("https://x.dev/a"),
+        Some("https://x.dev/a".into())
+    );
+    assert_eq!(
+        r.hyperlink_target("mailto:a@b.c"),
+        Some("mailto:a@b.c".into())
+    );
+    assert_eq!(r.hyperlink_target("guide.md"), Some(file("guide.md")));
+    assert_eq!(
+        r.hyperlink_target(&file("guide.md")),
+        Some(file("guide.md"))
+    );
+    for url in [
+        "setup.command".to_string(),
+        file("setup.command"),
+        "X.app".into(),
+        file("X.app"),
+        "file:///Applications/X.app".into(),
+        "vscode://file/etc/hosts".into(),
+        "vscode://file/tmp/a.md".into(),
+        "javascript:alert(1)".into(),
+        "tel:+15551234".into(),
+        "dir.md".into(),
+        "missing.md".into(),
+    ] {
+        assert_eq!(r.hyperlink_target(&url), None, "{url}");
+    }
+
+    // In a remote document, only web targets.
+    r.remote_base = Some(url::Url::parse("https://example.com/repo/README.md").unwrap());
+    assert_eq!(
+        r.hyperlink_target("docs/guide.md"),
+        Some("https://example.com/repo/docs/guide.md".into())
+    );
+    assert_eq!(r.hyperlink_target("vscode://file/etc/hosts"), None);
+    assert_eq!(r.hyperlink_target(&file("guide.md")), None);
 }
 
 #[test]

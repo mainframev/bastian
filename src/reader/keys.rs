@@ -30,6 +30,9 @@ impl Reader {
             self.on_confirm_key(key);
             return Action::None;
         }
+        if self.confirm_open.is_some() {
+            return self.on_open_confirm_key(key);
+        }
         if self.prompt.is_some() {
             match prompt::drive(&mut self.prompt, key) {
                 Some(Edited::Text(q)) => self.set_query(&q),

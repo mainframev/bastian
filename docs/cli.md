@@ -51,7 +51,7 @@ instead of opening the TUI.
 | `-a`, `--all`              | also list hidden and gitignored files                                |
 | `-y`, `--yes`              | run code blocks without asking ([code blocks](code-blocks.md))       |
 | `--mouse`                  | scroll with the mouse wheel                                          |
-| `--images`, `--no-images`  | draw pictures, or keep alt text                                      |
+| `--images <on\|off>`       | draw pictures, or keep alt text                                      |
 | `--no-logo`                | hide the logo above the file list                                    |
 | `--selector <STYLE>`       | how the file list marks the selected file                            |
 | `--list-layout <LAYOUT>`   | `cards` or `compact` file list                                       |
@@ -67,7 +67,6 @@ instead of opening the TUI.
 bastian themes                    # pick a theme with a live preview and save it
 bastian config                    # open the config file in your editor
 bastian completions zsh > ~/.zfunc/_bastian   # also bash, fish, elvish, powershell
-bastian man > bastian.1 && man ./bastian.1    # the man page
 ```
 
 `bastian themes` prints the theme list instead when its output isn't a

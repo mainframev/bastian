@@ -302,6 +302,18 @@ impl Renderer<'_> {
                 out.append(inner, &bar, &bar);
                 out
             }
+            Block::Footnote { number, blocks, .. } => {
+                let marker = format!("[{number}] ");
+                let pad = [Span::raw(" ".repeat(marker.width()))];
+                let first = [Span::styled(marker, Style::default().fg(t.muted))];
+                let mut out = Out::default();
+                out.append(
+                    self.blocks(blocks, width.saturating_sub(pad[0].width()), true),
+                    &first,
+                    &pad,
+                );
+                out
+            }
             Block::Code(c) => self.code(c, width),
             Block::Label(text) => {
                 Out::from(wrap(&[(text.clone(), Style::default().fg(t.muted))], width))

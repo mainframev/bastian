@@ -6,7 +6,9 @@
 use markdown::mdast::{AlignKind, AttributeContent, AttributeValue, Node};
 use markdown::{Constructs, MdxSignal, ParseOptions};
 
-use super::{Align, Attrs, Block, CodeBlock, Document, Inline, InlineStyle, push_inline};
+use super::{
+    Align, Attrs, Block, CodeBlock, Document, Footnotes, Inline, InlineStyle, push_inline,
+};
 
 /// Parse MDX, or `None` when the source isn't valid MDX (e.g. broken JSX),
 /// so the caller can fall back to the plain Markdown parser.
@@ -18,6 +20,8 @@ pub fn parse(src: &str) -> Option<Document> {
             gfm_strikethrough: true,
             gfm_task_list_item: true,
             gfm_autolink_literal: true,
+            gfm_footnote_definition: true,
+            gfm_label_start_footnote: true,
             ..Constructs::mdx()
         },
         // ESM is only recognized with a parser; accept every import/export
@@ -38,6 +42,7 @@ pub fn parse(src: &str) -> Option<Document> {
             .map_or(0, |p| p.start.line.saturating_sub(1));
         lines.extend(std::iter::repeat_n(line, blocks.len() - before));
     }
+    m.footnotes.append_to(&mut blocks, &mut lines);
     Some(Document {
         blocks,
         lines,
@@ -48,6 +53,7 @@ pub fn parse(src: &str) -> Option<Document> {
 #[derive(Default)]
 struct Mapper {
     next_code_id: usize,
+    footnotes: Footnotes,
 }
 
 impl Mapper {
@@ -137,8 +143,13 @@ impl Mapper {
             | Node::Toml(_)
             | Node::MdxjsEsm(_)
             | Node::MdxFlowExpression(_)
-            | Node::Definition(_)
-            | Node::FootnoteDefinition(_) => {}
+            | Node::Definition(_) => {}
+            Node::FootnoteDefinition(f) => {
+                let blocks = self.blocks(&f.children);
+                let line = f.position.as_ref().map_or(0, |p| p.start.line - 1);
+                let label = f.label.clone().unwrap_or_else(|| f.identifier.clone());
+                self.footnotes.define(label, blocks, line);
+            }
             // Stray phrasing content at block level: wrap it in a paragraph.
             other => {
                 let inlines = self.inlines(std::slice::from_ref(other));
@@ -226,7 +237,11 @@ impl Mapper {
             Node::MdxTextExpression(e) if !is_comment(&e.value) => {
                 push(out, format!("{{{}}}", e.value), with(&|s| s.muted = true));
             }
-            Node::MdxTextExpression(_) | Node::FootnoteReference(_) => {}
+            Node::FootnoteReference(f) => {
+                let label = f.label.as_deref().unwrap_or(&f.identifier);
+                out.push(self.footnotes.reference(label, style));
+            }
+            Node::MdxTextExpression(_) => {}
             // Containers that can't appear inline: render their text.
             other => {
                 if let Some(nodes) = other.children() {

@@ -3,7 +3,8 @@ use pulldown_cmark::{
 };
 
 use super::{
-    Align, Attrs, Block, CalloutKind, CodeBlock, Document, Inline, InlineStyle, push_inline,
+    Align, Attrs, Block, CalloutKind, CodeBlock, Document, Footnotes, Inline, InlineStyle,
+    push_inline,
 };
 
 pub fn parse(src: &str) -> Document {
@@ -12,7 +13,8 @@ pub fn parse(src: &str) -> Document {
         | Options::ENABLE_TASKLISTS
         | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
         | Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS
-        | Options::ENABLE_GFM;
+        | Options::ENABLE_GFM
+        | Options::ENABLE_FOOTNOTES;
     let newlines: Vec<usize> = src.match_indices('\n').map(|(i, _)| i).collect();
     let line_of = |offset: usize| newlines.partition_point(|&n| n < offset);
     let mut b = Builder::default();
@@ -42,6 +44,12 @@ enum Frame {
         items: Vec<Vec<Block>>,
     },
     Item(Vec<Block>),
+    Footnote {
+        label: String,
+        blocks: Vec<Block>,
+        /// Source line of the definition.
+        line: usize,
+    },
 }
 
 impl From<BlockQuoteKind> for CalloutKind {
@@ -96,6 +104,7 @@ struct Builder {
     metadata: bool,
     table: Option<TableState>,
     next_code_id: usize,
+    footnotes: Footnotes,
 }
 
 impl Builder {
@@ -124,7 +133,8 @@ impl Builder {
                 self.push_block(Block::Rule);
             }
             Event::TaskListMarker(done) => self.push_text(if done { "[x] " } else { "[ ] " }),
-            Event::FootnoteReference(_) | Event::InlineMath(_) | Event::DisplayMath(_) => {}
+            Event::FootnoteReference(label) => self.footnote_ref(&label),
+            Event::InlineMath(_) | Event::DisplayMath(_) => {}
         }
     }
 
@@ -178,6 +188,14 @@ impl Builder {
                 self.push_text(super::IMAGE_PREFIX);
             }
             Tag::MetadataBlock(_) => self.metadata = true,
+            Tag::FootnoteDefinition(label) => {
+                self.flush();
+                self.stack.push(Frame::Footnote {
+                    label: label.into_string(),
+                    blocks: Vec::new(),
+                    line: self.block_start,
+                });
+            }
             _ => {}
         }
     }
@@ -258,6 +276,17 @@ impl Builder {
             TagEnd::Link => self.style.link = None,
             TagEnd::Image => self.push_text("]"),
             TagEnd::MetadataBlock(_) => self.metadata = false,
+            TagEnd::FootnoteDefinition => {
+                self.flush();
+                if let Some(Frame::Footnote {
+                    label,
+                    blocks,
+                    line,
+                }) = self.stack.pop()
+                {
+                    self.footnotes.define(label, blocks, line);
+                }
+            }
             _ => {}
         }
     }
@@ -272,6 +301,12 @@ impl Builder {
 
     fn push_text(&mut self, text: &str) {
         push_inline(&mut self.inlines, text, &self.style);
+    }
+
+    /// A footnote reference: `[n]`, linking to the footnote's anchor.
+    fn footnote_ref(&mut self, label: &str) {
+        let r = self.footnotes.reference(label, &self.style);
+        push_inline(&mut self.inlines, &r.text, &r.style);
     }
 
     fn next_id(&mut self) -> usize {
@@ -296,7 +331,9 @@ impl Builder {
 
     fn push_block(&mut self, block: Block) {
         match self.stack.last_mut() {
-            Some(Frame::Quote(_, blocks) | Frame::Item(blocks)) => blocks.push(block),
+            Some(
+                Frame::Quote(_, blocks) | Frame::Item(blocks) | Frame::Footnote { blocks, .. },
+            ) => blocks.push(block),
             // Blocks never appear directly inside a list, only inside items.
             Some(Frame::List { .. }) | None => {
                 self.root.push(block);
@@ -307,6 +344,7 @@ impl Builder {
 
     fn finish(mut self) -> Document {
         self.flush();
+        std::mem::take(&mut self.footnotes).append_to(&mut self.root, &mut self.lines);
         Document {
             blocks: self.root,
             lines: self.lines,
@@ -457,6 +495,43 @@ mod tests {
         assert_eq!(*kind, CalloutKind::Warning);
         assert!(matches!(&blocks[..], [Block::Paragraph(i)] if plain_text(i) == "Mind the gap."));
         assert!(matches!(&doc.blocks[1], Block::Quote(_)));
+    }
+
+    #[test]
+    fn footnotes_are_numbered_and_listed_last() {
+        let doc = parse(
+            "[^b]: Bee.\n\nSee[^a] and[^B] again[^a].\n\n[^a]: Ay *one*.\n\n[^z]: Unused.\n\n# After\n",
+        );
+        let Block::Paragraph(inl) = &doc.blocks[0] else {
+            panic!("expected paragraph, got {:?}", doc.blocks[0]);
+        };
+        assert_eq!(plain_text(inl), "See[1] and[2] again[1].");
+        let refs: Vec<_> = inl.iter().filter_map(|i| i.style.link.as_deref()).collect();
+        assert_eq!(refs, ["#fn-a", "#fn-b", "#fn-a"]);
+        assert!(matches!(&doc.blocks[1], Block::Heading { .. }));
+        assert_eq!(doc.blocks[2], Block::Rule);
+        let notes: Vec<_> = doc.blocks[3..]
+            .iter()
+            .map(|b| match b {
+                Block::Footnote {
+                    label,
+                    number,
+                    blocks,
+                } => (label.as_str(), *number, blocks.len()),
+                other => panic!("expected footnote, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(notes, [("a", 1, 1), ("b", 2, 1), ("z", 3, 1)]);
+        assert_eq!(doc.lines.len(), doc.blocks.len());
+        assert_eq!(doc.lines[3], 4);
+
+        let mdx = crate::doc::parse_for(
+            "See[^a].\n\n[^a]: Ay.\n",
+            Some(std::path::Path::new("x.mdx")),
+        );
+        assert!(matches!(&mdx.blocks[0], Block::Paragraph(i) if plain_text(i) == "See[1]."));
+        assert!(matches!(&mdx.blocks[2], Block::Footnote { number: 1, .. }));
+        assert_eq!(mdx.lines, [0, 2, 2]);
     }
 
     #[test]

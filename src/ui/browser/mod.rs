@@ -222,12 +222,7 @@ mod tests {
             std::fs::write(dir.path().join(format!("n{i}.md")), "x\n").unwrap();
         }
         let mut b = Browser::new(dir.path().to_path_buf(), crate::browser::Scan::default());
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while b.is_scanning() {
-            b.tick();
-            assert!(std::time::Instant::now() < deadline);
-            std::thread::sleep(Duration::from_millis(5));
-        }
+        crate::browser::tests::wait_for_scan(&mut b);
         let mut terminal = Terminal::new(TestBackend::new(50, h)).unwrap();
         let t = Theme::dark();
         terminal.draw(|f| draw(f, &mut b, &t, look)).unwrap();

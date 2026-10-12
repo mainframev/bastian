@@ -63,7 +63,7 @@ impl Browser {
             filter: String::new(),
             prompt: None,
             message: None,
-            height: 0,
+            height: 1,
             incoming: None,
             started: std::time::Instant::now(),
             help: false,
@@ -170,24 +170,24 @@ impl Browser {
 
     /// Index of the first entry on the current page.
     pub fn offset(&self) -> usize {
-        let per = self.height.max(1);
+        let per = self.height;
         self.selected / per * per
     }
 
     /// Current page and page count, both 1-based.
     pub fn page(&self) -> (usize, usize) {
-        let per = self.height.max(1);
+        let per = self.height;
         let pages = self.visible.len().div_ceil(per).max(1);
         (self.selected / per + 1, pages)
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::time::SystemTime;
 
-    pub(super) fn wait_for_scan(b: &mut Browser) {
+    pub(crate) fn wait_for_scan(b: &mut Browser) {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while b.is_scanning() {
             assert!(std::time::Instant::now() < deadline, "scan did not finish");

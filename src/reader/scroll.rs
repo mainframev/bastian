@@ -76,6 +76,21 @@ mod tests {
     use crate::render::theme::Theme;
 
     #[test]
+    fn restore_near_the_end_survives_re_renders() {
+        let src: String = (0..50).map(|i| format!("para {i}\n\n")).collect();
+        let mut r = Reader::new("t".into(), parse(&src), Theme::dark(), 80);
+        // The last paragraph: its block can't reach the top of the view.
+        r.restore = Some(99);
+        r.layout(80, 10);
+        let at = r.scroll;
+        assert_eq!(at, r.max_scroll());
+        r.layout(80, 10);
+        r.layout(70, 10);
+        assert!(r.restore.is_some());
+        assert_eq!(r.scroll, r.max_scroll());
+    }
+
+    #[test]
     fn restore_finds_the_closest_block_in_any_order() {
         let src: String = (0..50).map(|i| format!("para {i}\n\n")).collect();
         let mut r = Reader::new("t".into(), parse(&src), Theme::dark(), 80);

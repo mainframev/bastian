@@ -249,6 +249,9 @@ impl Reader {
         if let Some(line) = self.restore {
             if self.restored_at.is_none_or(|at| at == self.scroll) {
                 self.scroll_to_source_line(line);
+                // Near the end the view can't reach the block's top; note
+                // where it really is, or the clamp below looks like a move.
+                self.scroll = self.scroll.min(self.max_scroll());
                 self.restored_at = Some(self.scroll);
             } else {
                 self.restore = None;

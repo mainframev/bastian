@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: 'Version bump (leave as "auto" to detect it from the commits)'
+        description: 'Version bump ("auto" detects it from the commits; before 1.0 it never picks major)'
         required: true
         type: choice
         default: auto
@@ -50,6 +50,13 @@ jobs:
             DETECTED="minor"
           else
             DETECTED="patch"
+          fi
+          # Before 1.0 a breaking change is a minor bump (0.3 -> 0.4, which
+          # Cargo treats as incompatible); 1.0.0 only comes from choosing
+          # "major" by hand.
+          CURRENT="${{ steps.current.outputs.version }}"
+          if [ "$DETECTED" = "major" ] && [ "${CURRENT%%.*}" = "0" ]; then
+            DETECTED="minor"
           fi
           echo "Detected bump: $DETECTED (since ${LATEST_TAG:-the first commit})"
           echo "detected=$DETECTED" >> "$GITHUB_OUTPUT"

@@ -109,8 +109,6 @@ pub enum Command {
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
-    /// Print the man page (roff), e.g. `bastian man | man -l -`.
-    Man,
     /// Pick a theme with a live preview and save it to the config file
     /// (lists the themes instead when output isn't a terminal).
     Themes,

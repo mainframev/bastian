@@ -51,7 +51,6 @@ $LINUX_INTEL
   def install
     bin.install "bastian"
     generate_completions_from_executable(bin/"bastian", "completions")
-    (man1/"bastian.1").write Utils.safe_popen_read(bin/"bastian", "man")
   end
 
   test do

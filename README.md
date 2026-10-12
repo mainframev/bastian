@@ -34,7 +34,7 @@ cargo install --locked bastian
 cargo binstall bastian                   # prebuilt binary, no compiling
 ```
 
-Homebrew also installs the shell completions and the man page. With Cargo
+Homebrew also installs the shell completions. With Cargo
 ([rustup](https://rustup.rs)), the latest unreleased version is
 `cargo install --locked --git https://github.com/mainframev/bastian`.
 

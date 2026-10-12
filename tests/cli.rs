@@ -261,14 +261,12 @@ fn fetches_a_remote_document() {
 }
 
 #[test]
-fn completions_and_man_page() {
+fn completions() {
     let dir = tempfile::tempdir().unwrap();
     let zsh = bastian(dir.path(), &["completions", "zsh"], &[]);
     assert!(stdout(&zsh).contains("#compdef bastian"));
     // Theme names are offered for --theme.
     assert!(stdout(&zsh).contains("kanagawa-wave"));
-    let man = bastian(dir.path(), &["man"], &[]);
-    assert!(stdout(&man).contains(".TH bastian"));
 }
 
 #[test]

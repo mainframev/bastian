@@ -295,3 +295,7 @@ check on macOS and Linux for every push and pull request.
 The GIFs in this README are recorded from the scripts in `demo/` with
 [vhs](https://github.com/charmbracelet/vhs) (`brew install vhs`); `just demo`
 re-records them with your build.
+
+## License
+
+[MIT](LICENSE)

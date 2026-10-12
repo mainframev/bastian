@@ -173,6 +173,18 @@ impl CalloutKind {
             CalloutKind::Caution => "Caution",
         }
     }
+
+    /// The kind an alert marker names: `NOTE` in `> [!NOTE]`, any case.
+    pub fn from_marker(marker: &str) -> Option<Self> {
+        Some(match marker.to_ascii_uppercase().as_str() {
+            "NOTE" => CalloutKind::Note,
+            "TIP" => CalloutKind::Tip,
+            "IMPORTANT" => CalloutKind::Important,
+            "WARNING" => CalloutKind::Warning,
+            "CAUTION" => CalloutKind::Caution,
+            _ => return None,
+        })
+    }
 }
 
 /// Horizontal alignment of a table column.
@@ -215,9 +227,10 @@ pub struct InlineStyle {
 
 /// Anchor (without `#`) that a footnote's references link to. Labels
 /// match case-insensitively; anything else in them is kept, so distinct
-/// labels never share an anchor.
+/// labels never share an anchor. The `:` keeps it apart from heading
+/// anchors, which never contain one.
 pub fn footnote_anchor(label: &str) -> String {
-    format!("fn-{}", label.to_lowercase())
+    format!("fn:{}", label.to_lowercase())
 }
 
 /// A heading's text for its anchor: without footnote references, as

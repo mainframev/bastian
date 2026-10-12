@@ -474,6 +474,37 @@ mod tests {
     use crate::doc::parse;
 
     #[test]
+    fn callouts_take_their_colour_from_the_theme() {
+        let t = Theme::dark();
+        let src = "> [!NOTE]\n> a\n\n> [!TIP]\n> a\n\n> [!IMPORTANT]\n> a\n\n> [!WARNING]\n> a\n\n> [!CAUTION]\n> a\n";
+        let r = render(&parse(src), 40, &t);
+        let titles: Vec<_> = r
+            .lines
+            .iter()
+            .filter(|l| l.spans.len() == 2 && l.spans[0].content == "▌ ")
+            .filter(|l| !l.spans[1].content.starts_with('a'))
+            .map(|l| {
+                // The title's colour may sit on the line rather than the span.
+                let text = l.style.patch(l.spans[1].style);
+                (l.spans[1].content.to_string(), l.spans[0].style.fg, text.fg)
+            })
+            .collect();
+        let expect = [
+            ("Note", t.link),
+            ("Tip", t.ok),
+            ("Important", t.accent),
+            ("Warning", t.warn),
+            ("Caution", t.err),
+        ];
+        assert_eq!(titles.len(), expect.len(), "{titles:?}");
+        for ((title, bar, text), (want, color)) in titles.iter().zip(expect) {
+            assert_eq!(title, want);
+            assert_eq!(*bar, Some(color), "{title} bar");
+            assert_eq!(*text, Some(color), "{title} title");
+        }
+    }
+
+    #[test]
     fn empty_task_items_and_footnotes_keep_their_marker() {
         let r = render(
             &parse("- [ ]\n- [x] \n- c\n\nx[^a]\n\n[^a]:\n"),

@@ -536,6 +536,19 @@ mod tests {
         assert_eq!(*kind, CalloutKind::Warning);
         assert!(matches!(&blocks[..], [Block::Paragraph(i)] if plain_text(i) == "Mind the gap."));
         assert!(matches!(&doc.blocks[1], Block::Quote(_)));
+
+        // MDX too, where markdown-rs leaves the marker as text.
+        let mdx = crate::doc::parse_for(
+            "> [!tip]\n> Mind the *gap*.\n\n> [!TIP]\n\n> [!bogus]\n> plain\n",
+            Some(std::path::Path::new("x.mdx")),
+        );
+        let Block::Callout { kind, blocks } = &mdx.blocks[0] else {
+            panic!("expected callout, got {:?}", mdx.blocks[0]);
+        };
+        assert_eq!(*kind, CalloutKind::Tip);
+        assert!(matches!(&blocks[..], [Block::Paragraph(i)] if plain_text(i) == "Mind the gap."));
+        assert!(matches!(&mdx.blocks[1], Block::Callout { blocks, .. } if blocks.is_empty()));
+        assert!(matches!(&mdx.blocks[2], Block::Quote(_)));
     }
 
     #[test]
@@ -548,7 +561,7 @@ mod tests {
         };
         assert_eq!(plain_text(inl), "See[1] and[2] again[1].");
         let refs: Vec<_> = inl.iter().filter_map(|i| i.style.link.as_deref()).collect();
-        assert_eq!(refs, ["#fn-a", "#fn-b", "#fn-a"]);
+        assert_eq!(refs, ["#fn:a", "#fn:b", "#fn:a"]);
         assert!(matches!(&doc.blocks[1], Block::Heading { .. }));
         assert_eq!(doc.blocks[2], Block::Rule);
         let notes: Vec<_> = doc.blocks[3..]

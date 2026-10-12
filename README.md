@@ -1,5 +1,7 @@
 # bastian
 
+![bastian: a terminal Markdown reader](assets/bastian.png)
+
 A terminal Markdown reader, made to bring documentation into the command line
 and make it a pleasure to read there.
 

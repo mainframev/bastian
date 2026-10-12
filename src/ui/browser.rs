@@ -9,11 +9,12 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_width::UnicodeWidthStr;
 
 use super::inset;
 use super::logo;
 use super::status;
+use super::text::{shorten_left, shorten_right};
 use crate::browser::{Browser, Entry};
 use crate::config::{ListLayout, Selector};
 use crate::render::theme::Theme;
@@ -72,9 +73,8 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, look: Look) {
 
     let finding = b.prompt.is_some() || !b.filter.is_empty();
     if finding {
-        let text = b.prompt.as_ref().map_or(b.filter.as_str(), |p| p.text());
-        let cursor = b.prompt.as_ref().map(super::super::prompt::Prompt::cursor);
-        frame.render_widget(status::find_line(t, text, cursor), inset(top));
+        let find = status::find_prompt(t, b.prompt.as_ref(), &b.filter);
+        frame.render_widget(find, inset(top));
     } else if show_logo {
         logo::draw(frame, inset(top), t);
     }
@@ -302,48 +302,6 @@ fn page_indicator(t: &Theme, page: usize, pages: usize) -> Line<'static> {
     ])
 }
 
-/// Keep the last `max` columns of `s`, marking the cut with `…`.
-fn shorten_left(s: &str, max: usize) -> String {
-    if s.width() <= max {
-        return s.to_string();
-    }
-    if max == 0 {
-        return String::new();
-    }
-    let mut keep = Vec::new();
-    let mut w = 0;
-    for c in s.chars().rev() {
-        let cw = c.width().unwrap_or(0);
-        if w + cw + 1 > max {
-            break;
-        }
-        keep.push(c);
-        w += cw;
-    }
-    format!("…{}", keep.iter().rev().collect::<String>())
-}
-
-/// Keep the first `max` columns of `s`, marking the cut with `…`.
-fn shorten_right(s: &str, max: usize) -> String {
-    if s.width() <= max {
-        return s.to_string();
-    }
-    let mut out = String::new();
-    let mut w = 0;
-    for c in s.chars() {
-        let cw = c.width().unwrap_or(0);
-        if w + cw + 1 > max {
-            break;
-        }
-        out.push(c);
-        w += cw;
-    }
-    if max > 0 {
-        out.push('…');
-    }
-    out
-}
-
 /// Braille spinner frame for the running scan, advancing every 80 ms.
 fn spinner(b: &Browser) -> char {
     const FRAMES: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -386,16 +344,6 @@ mod tests {
         assert_eq!(text(6, 12), "━━━━━━──────  6/12");
         assert_eq!(text(95, 95), "━━━━━━━━━━━━  95/95");
         assert_eq!(text(1, 95), "━───────────  1/95");
-    }
-
-    #[test]
-    fn shortens_paths_from_the_left() {
-        assert_eq!(shorten_left("~/code/app", 20), "~/code/app");
-        assert_eq!(shorten_left("~/code/app", 6), "…e/app");
-        assert_eq!(shorten_left("~/code/app", 0), "");
-        // Wide characters count by the columns they take.
-        assert_eq!(shorten_left("日本語/説明書.md", 10), "…説明書.md");
-        assert!(shorten_left("日本語/説明書.md", 10).width() <= 10);
     }
 
     #[test]
@@ -556,13 +504,6 @@ mod tests {
             "{text}"
         );
         assert!(text.contains('━'), "more than one page:\n{text}");
-    }
-
-    #[test]
-    fn shortens_titles_from_the_right() {
-        assert_eq!(shorten_right("Guide", 10), "Guide");
-        assert_eq!(shorten_right("A long title", 6), "A lon…");
-        assert_eq!(shorten_right("Guide", 0), "");
     }
 
     #[test]

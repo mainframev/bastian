@@ -1,9 +1,11 @@
+mod date;
 mod describe;
 mod file;
 mod resolve;
 mod theme;
 mod value;
 
+pub use date::{check_date_format, format_time};
 pub use describe::describe;
 pub use file::{TEMPLATE, load_at, load_from, locate, path};
 pub use resolve::{EnvMap, Resolved, Setting, Source, env_var, env_vars, resolve};

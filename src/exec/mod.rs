@@ -7,7 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 /// Output lines kept per block; older lines are dropped and counted.
-pub const MAX_OUTPUT_LINES: usize = 2000;
+const MAX_OUTPUT_LINES: usize = 2000;
 
 /// Built-in command lines that run a block's source for a fence language.
 /// The source is passed as the final argument.

@@ -1,0 +1,199 @@
+use std::time::Duration;
+
+use super::*;
+use crate::exec::Interpreters;
+use crate::{doc, render};
+use ratatui::crossterm::event::{KeyModifiers, MouseEvent};
+
+fn wheel(kind: MouseEventKind) -> Event {
+    Event::Mouse(MouseEvent {
+        kind,
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    })
+}
+
+fn settings() -> Settings {
+    Settings {
+        theme: Theme::dark(),
+        max_width: 80,
+        assume_yes: false,
+        interpreters: Interpreters::default(),
+        line_numbers: false,
+        scan: browser::Scan::default(),
+        date_format: Some(crate::config::DATE_FORMAT.into()),
+        render: render::Options::default(),
+        hyperlinks: true,
+        scrollbar: true,
+        editor: None,
+        mouse: true,
+        logo: true,
+        images: None,
+        show_images: false,
+        selector: crate::config::Selector::Bar,
+        list_layout: crate::config::ListLayout::Cards,
+    }
+}
+
+fn press(app: &mut App, code: KeyCode) -> bool {
+    app.on_event(&Event::Key(KeyEvent::new(code, KeyModifiers::NONE)))
+}
+
+/// An app reading a short document, with theme files and a config file
+/// in `dir`.
+fn reading(dir: &Path, current: &str) -> App {
+    let s = settings();
+    let reader = s.reader("t".into(), doc::parse("# A\n\ntext\n"), PathBuf::from("."));
+    let mut app = App::read(reader, s);
+    app.themes = ThemeFiles {
+        dir: Some(dir.join("themes")),
+        config: Some(dir.join("config.toml")),
+        current: current.into(),
+        overridden_by: None,
+    };
+    app
+}
+
+#[test]
+fn theme_picker_previews_and_cancels() {
+    let dir = tempfile::tempdir().unwrap();
+    // Next in the list is dracula, which looks nothing like nord.
+    let mut app = reading(dir.path(), "nord");
+    app.apply_theme(crate::themes::load("nord", None).unwrap());
+    let before = app.settings.theme.accent;
+    assert!(press(&mut app, KeyCode::Char('T')));
+    assert!(app.picker.is_some());
+    press(&mut app, KeyCode::Char('j'));
+    // The whole app previews the highlighted theme...
+    let preview = app.settings.theme.accent;
+    assert_ne!(preview, before);
+    assert_eq!(app.reader.as_ref().unwrap().theme.accent, preview);
+    // ...and Esc puts the old one back without saving anything.
+    press(&mut app, KeyCode::Esc);
+    assert!(app.picker.is_none());
+    assert_eq!(app.settings.theme.accent, before);
+    assert_eq!(app.reader.as_ref().unwrap().theme.accent, before);
+    assert!(!dir.path().join("config.toml").exists());
+}
+
+#[test]
+fn picking_a_theme_saves_it() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("config.toml"), "# mine\nwidth = 90\n").unwrap();
+    let mut app = reading(dir.path(), "rose-pine");
+    press(&mut app, KeyCode::Char('T'));
+    press(&mut app, KeyCode::Char('g'));
+    assert!(press(&mut app, KeyCode::Enter));
+    let first = crate::themes::builtin_names().next().unwrap();
+    assert_eq!(app.themes.current, first);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("config.toml")).unwrap(),
+        format!("# mine\ntheme = \"{first}\"\nwidth = 90\n")
+    );
+    let msg = app.reader.as_ref().unwrap().message.clone().unwrap();
+    assert!(msg.contains("saved to"), "{msg}");
+
+    // With --theme in effect, saving says the flag still wins.
+    let mut app = reading(dir.path(), "rose-pine");
+    app.themes.overridden_by = Some("--theme".into());
+    press(&mut app, KeyCode::Char('T'));
+    press(&mut app, KeyCode::Enter);
+    let msg = app.reader.as_ref().unwrap().message.clone().unwrap();
+    assert!(msg.ends_with("--theme still overrides it"), "{msg}");
+}
+
+#[test]
+fn bastian_themes_quits_once_a_theme_is_picked() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = reading(dir.path(), "nord");
+    app.pick_and_exit = true;
+    app.open_picker();
+    assert!(!press(&mut app, KeyCode::Enter), "picking ends the app");
+    assert!(
+        app.exit_note
+            .as_deref()
+            .unwrap()
+            .starts_with("theme nord saved")
+    );
+
+    let mut app = reading(dir.path(), "nord");
+    app.pick_and_exit = true;
+    app.open_picker();
+    assert!(!press(&mut app, KeyCode::Esc), "cancelling ends it too");
+}
+
+#[test]
+fn mouse_wheel_scrolls_the_reader() {
+    let settings = settings();
+    let src: String = (0..50).map(|i| format!("line {i}\n\n")).collect();
+    let mut reader = settings.reader("t".into(), doc::parse(&src), PathBuf::from("."));
+    reader.layout(80, 10);
+    let mut app = App::read(reader, settings);
+    assert!(app.on_event(&wheel(MouseEventKind::ScrollDown)));
+    assert!(app.on_event(&wheel(MouseEventKind::ScrollDown)));
+    assert_eq!(app.reader.as_ref().unwrap().scroll, 6);
+    app.on_event(&wheel(MouseEventKind::ScrollUp));
+    assert_eq!(app.reader.as_ref().unwrap().scroll, 3);
+}
+
+#[test]
+fn i_toggles_pictures_in_every_reader() {
+    use crate::images::Support;
+    use ratatui_image::picker::Picker;
+
+    let dir = tempfile::tempdir().unwrap();
+    image::RgbImage::from_pixel(40, 40, image::Rgb([220, 40, 40]))
+        .save(dir.path().join("p.png"))
+        .unwrap();
+    let mut s = settings();
+    s.images = Some(Support::fixed(Picker::halfblocks()));
+    s.show_images = true;
+    let reader = s.reader(
+        "t".into(),
+        doc::parse("![a red square](p.png)\n"),
+        dir.path().to_path_buf(),
+    );
+    let mut app = App::read(reader, s);
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let r = app.reader.as_mut().unwrap();
+        r.layout(60, 20);
+        if !r.rendered.images.is_empty() {
+            break;
+        }
+        r.tick();
+        assert!(std::time::Instant::now() < deadline, "picture did not load");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let text = |app: &mut App| {
+        let r = app.reader.as_mut().unwrap();
+        r.layout(60, 20);
+        r.rendered
+            .lines
+            .iter()
+            .map(render::plain)
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    press(&mut app, KeyCode::Char('i'));
+    let off = text(&mut app);
+    let r = app.reader.as_ref().unwrap();
+    assert!(r.rendered.images.is_empty(), "{:?}", r.rendered.images);
+    assert!(off.contains("a red square"), "{off}");
+    assert_eq!(r.message.as_deref(), Some("images off"));
+    // Readers opened afterwards start with pictures off too.
+    assert!(
+        !app.settings
+            .reader("u".into(), doc::parse(""), dir.path().into())
+            .images
+            .enabled()
+    );
+
+    press(&mut app, KeyCode::Char('i'));
+    text(&mut app);
+    let r = app.reader.as_ref().unwrap();
+    assert_eq!(r.rendered.images.len(), 1);
+    assert_eq!(r.message.as_deref(), Some("images on"));
+}

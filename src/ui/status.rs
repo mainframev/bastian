@@ -5,6 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Padding, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
+use crate::prompt::Prompt;
 use crate::render::theme::Theme;
 
 /// What the left side of the status bar shows.
@@ -59,8 +60,6 @@ pub fn draw(frame: &mut Frame, area: Rect, t: &Theme, left: Left, right: &str) {
     );
 }
 
-/// The `Find:` line shown above a list or document while searching.
-/// `editing` draws a cursor after the text.
 /// A thin vertical scrollbar in the last column of `area`, drawn only when
 /// `content` doesn't fit in `viewport` (both in the same units).
 pub fn scrollbar(
@@ -90,6 +89,13 @@ pub fn scrollbar(
     frame.render_widget(&bar, column);
 }
 
+/// The `Find:` line while searching: the prompt's text with its cursor
+/// while editing, else the `query` last searched for.
+pub fn find_prompt(t: &Theme, prompt: Option<&Prompt>, query: &str) -> Line<'static> {
+    let text = prompt.map_or(query, Prompt::text);
+    find_line(t, text, prompt.map(Prompt::cursor))
+}
+
 /// `Find: text`, with a block cursor at character `cursor` while editing.
 pub fn find_line(t: &Theme, text: &str, cursor: Option<usize>) -> Line<'static> {
     let label = Span::styled("Find: ", Style::default().fg(t.warn).bold());
@@ -106,6 +112,34 @@ pub fn find_line(t: &Theme, text: &str, cursor: Option<usize>) -> Line<'static> 
         Span::styled(under, Style::default().fg(t.h1_fg).bg(t.accent)),
         Span::styled(after, style),
     ])
+}
+
+/// The `▶ ` in front of the selected row of a popup list, blank otherwise.
+pub fn select_marker(t: &Theme, selected: bool) -> Span<'static> {
+    Span::styled(
+        if selected { "▶ " } else { "  " },
+        Style::default().fg(t.accent),
+    )
+}
+
+/// First of `rows` visible rows of a `len`-row list so `selected` shows:
+/// in the middle when `centered`, else as low as it can go.
+pub fn window(selected: usize, len: usize, rows: usize, centered: bool) -> usize {
+    let above = if centered {
+        rows / 2
+    } else {
+        rows.saturating_sub(1)
+    };
+    selected.saturating_sub(above).min(len.saturating_sub(rows))
+}
+
+/// The accent-bordered, padded block around popups.
+pub fn panel_block<'a>(t: &Theme, title: impl Into<Line<'a>>) -> Block<'a> {
+    Block::bordered()
+        .title(title.into().style(Style::default().fg(t.accent)))
+        .border_style(Style::default().fg(t.accent))
+        .padding(Padding::horizontal(1))
+        .style(Style::default().bg(t.surface))
 }
 
 /// A bordered box centered on screen.
@@ -141,7 +175,7 @@ fn box_size(area: Rect, title: &str, lines: &[Line]) -> (u16, u16) {
     let inner_w = lines
         .iter()
         .map(Line::width)
-        .chain(std::iter::once(title.chars().count()))
+        .chain(std::iter::once(title.width()))
         .max()
         .unwrap_or(20);
     let width = (inner_w as u16 + 4).min(area.width);
@@ -152,16 +186,7 @@ fn box_size(area: Rect, title: &str, lines: &[Line]) -> (u16, u16) {
 fn boxed(frame: &mut Frame, t: &Theme, title: &str, lines: Vec<Line>, rect: Rect) {
     frame.render_widget(Clear, rect);
     frame.render_widget(
-        Paragraph::new(lines).block(
-            Block::bordered()
-                .title(Span::styled(
-                    title.to_string(),
-                    Style::default().fg(t.accent),
-                ))
-                .border_style(Style::default().fg(t.accent))
-                .padding(Padding::horizontal(1))
-                .style(Style::default().bg(t.surface)),
-        ),
+        Paragraph::new(lines).block(panel_block(t, title.to_string())),
         rect,
     );
 }

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::mpsc::{self, Receiver, Sender};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use image::DynamicImage;
 
 use ratatui_image::FontSize;
@@ -190,7 +190,7 @@ fn drawable(url: &str) -> bool {
 
 fn load(source: &Source) -> Result<DynamicImage> {
     let bytes = match source {
-        Source::File(path) => read_file(path)?,
+        Source::File(path) => crate::text::read_capped(path, MAX_BYTES)?,
         Source::Url(url) => crate::remote::fetch_bytes(url, MAX_BYTES)?,
     };
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format()?;
@@ -203,30 +203,6 @@ fn load(source: &Source) -> Result<DynamicImage> {
     Ok(reader.decode()?)
 }
 
-/// Read a local image, refusing anything but a regular file: a link to
-/// `/dev/zero` or a FIFO would otherwise read forever.
-fn read_file(path: &std::path::Path) -> Result<Vec<u8>> {
-    use std::io::Read;
-    let context = || format!("reading {}", path.display());
-    // Checked before opening: opening a FIFO blocks until a writer comes.
-    anyhow::ensure!(
-        std::fs::metadata(path).with_context(context)?.is_file(),
-        "{} is not a file",
-        path.display()
-    );
-    let file = std::fs::File::open(path).with_context(context)?;
-    let mut bytes = Vec::new();
-    file.take(MAX_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .with_context(context)?;
-    anyhow::ensure!(
-        bytes.len() as u64 <= MAX_BYTES,
-        "{} is too large",
-        path.display()
-    );
-    Ok(bytes)
-}
-
 /// The best protocol the terminal answered for: kitty graphics, then
 /// iTerm2's (named by the environment, as it has no query), then sixel,
 /// else half-blocks, which are also used inside tmux. The cell size comes from the reply, the window size,
@@ -234,9 +210,8 @@ fn read_file(path: &std::path::Path) -> Result<Vec<u8>> {
 fn picker_for(g: crate::term::Graphics) -> Picker {
     let cell = g
         .cell
-        .map(|(w, h)| FontSize::new(w, h))
-        .or_else(cell_size)
-        .unwrap_or(FontSize::new(10, 20));
+        .or_else(crate::term::cell_pixels)
+        .map_or(FontSize::new(10, 20), |(w, h)| FontSize::new(w, h));
     // Also detects tmux and iTerm2-compatible terminals from the environment.
     #[allow(deprecated, reason = "the only constructor that doesn't read stdin")]
     let mut picker = Picker::from_fontsize(cell);
@@ -250,24 +225,6 @@ fn picker_for(g: crate::term::Graphics) -> Picker {
         picker.set_protocol_type(ProtocolType::Sixel);
     }
     picker
-}
-
-/// Pixel size of one character cell, from the terminal's window size.
-fn cell_size() -> Option<FontSize> {
-    #[cfg(unix)]
-    {
-        use std::os::fd::AsRawFd;
-        let tty = std::fs::File::open("/dev/tty").ok()?;
-        // SAFETY: TIOCGWINSZ fills a winsize struct we own, on an open fd.
-        let mut ws: libc::winsize = unsafe { std::mem::zeroed() };
-        if unsafe { libc::ioctl(tty.as_raw_fd(), libc::TIOCGWINSZ, &raw mut ws) } != 0 {
-            return None;
-        }
-        (ws.ws_xpixel > 0 && ws.ws_ypixel > 0 && ws.ws_col > 0 && ws.ws_row > 0)
-            .then(|| FontSize::new(ws.ws_xpixel / ws.ws_col, ws.ws_ypixel / ws.ws_row))
-    }
-    #[cfg(not(unix))]
-    None
 }
 
 #[cfg(test)]

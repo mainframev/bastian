@@ -1,0 +1,218 @@
+mod media;
+mod overlays;
+
+use ratatui::Frame;
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::Style;
+use ratatui::text::{Line, Span};
+use ratatui::widgets::Paragraph;
+
+pub use super::MARGIN;
+use super::status;
+use super::text::highlight;
+use crate::reader::Reader;
+use media::{draw_hyperlinks, draw_images};
+use overlays::{draw_confirm, draw_links, draw_outline};
+
+pub fn draw(frame: &mut Frame, r: &mut Reader) {
+    // A blank row above the document (the `Find:` line takes it while
+    // searching, with its own blank row below) and one above the status
+    // bar, so the text never touches either edge.
+    let finding = r.prompt.is_some() || r.search.is_some();
+    let [find, body, _, status] = Layout::vertical([
+        Constraint::Length(if finding { 2 } else { 1 }),
+        Constraint::Min(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+    ])
+    .areas(frame.area());
+    if finding {
+        draw_find(frame, r, find);
+    }
+
+    // The gutter width depends on the line count, which depends on the
+    // width, so lay out again if the digit count changed.
+    let mut gutter = gutter_width(r, r.rendered.lines.len());
+    let max_width = r.max_width;
+    let width = |g: u16| body.width.saturating_sub(MARGIN * 2 + g).min(max_width);
+    r.layout(width(gutter), body.height);
+    let fitted = gutter_width(r, r.rendered.lines.len());
+    if fitted != gutter {
+        gutter = fitted;
+        r.layout(width(gutter), body.height);
+    }
+
+    let content = Rect {
+        x: body.x + MARGIN + gutter,
+        width: width(gutter),
+        ..body
+    };
+    let end = (r.scroll + content.height as usize).min(r.rendered.lines.len());
+    // A copy (cheap: colors and an `Arc`), so `r` can be borrowed mutably
+    // for the images below.
+    let theme = r.theme.clone();
+    let t = &theme;
+    let visible: Vec<Line> = (r.scroll..end)
+        .map(|i| {
+            let line = &r.rendered.lines[i];
+            let Some(s) = &r.search else {
+                return line.clone();
+            };
+            // Matches are in line order: take just this line's.
+            let first = s.matches.partition_point(|m| m.line < i);
+            let last = s.matches.partition_point(|m| m.line <= i);
+            let ranges: Vec<_> = s.matches[first..last]
+                .iter()
+                .enumerate()
+                .map(|(k, m)| {
+                    let n = first + k;
+                    let style = if n == s.current {
+                        Style::default().fg(t.h1_fg).bg(t.current_bg)
+                    } else {
+                        Style::default().bg(t.match_bg)
+                    };
+                    (m.start, m.end, style)
+                })
+                .collect();
+            highlight(line, &ranges)
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(visible), content);
+    if r.hyperlinks {
+        draw_hyperlinks(frame, r, content, end);
+    }
+    draw_images(frame, r, content, end);
+    if r.scrollbar {
+        status::scrollbar(
+            frame,
+            t,
+            body,
+            r.rendered.lines.len(),
+            usize::from(body.height),
+            r.scroll,
+        );
+    }
+
+    if gutter > 0 {
+        let digits = usize::from(gutter - GUTTER_GAP);
+        // Source line numbers when the document maps them (code files),
+        // otherwise rendered line numbers. The gap to the text is the rest
+        // of the gutter.
+        let label = |i: usize| match r.rendered.src_line.get(i) {
+            Some(Some(n)) => format!("{:>digits$}", n + 1),
+            Some(None) => String::new(),
+            None => format!("{:>digits$}", i + 1),
+        };
+        let numbers: Vec<Line> = (r.scroll..end)
+            .map(|i| Line::styled(label(i), Style::default().fg(t.muted)))
+            .collect();
+        let area = Rect {
+            x: body.x + MARGIN,
+            width: gutter,
+            ..body
+        };
+        frame.render_widget(Paragraph::new(numbers), area);
+    }
+
+    // Focus marker in the left margin, next to the focused block.
+    if let Some(range) = r
+        .focus
+        .and_then(|id| r.rendered.code_blocks.iter().find(|c| c.id == id))
+        .map(|c| c.lines.clone())
+    {
+        let top = range.start.max(r.scroll);
+        let bottom = range.end.min(end);
+        for line in top..bottom {
+            let y = body.y + (line - r.scroll) as u16;
+            let cell = Rect::new(body.x, y, 1, 1);
+            frame.render_widget(Span::styled("▌", Style::default().fg(t.accent)), cell);
+        }
+    }
+
+    let pct = if r.max_scroll() == 0 {
+        100
+    } else {
+        r.scroll * 100 / r.max_scroll()
+    };
+    let right = if r.search.is_none() && r.focus.is_some() {
+        let (i, n) = r.focus_position().unwrap_or((0, 0));
+        format!("block {i}/{n}  {pct:>3}%")
+    } else {
+        format!("{} lines  {pct:>3}%", r.rendered.lines.len())
+    };
+    let hint = if r.focus.is_some() {
+        format!("{}  enter run · R all · x stop · y copy · ? more", r.name)
+    } else {
+        format!("{}  e edit · ? more", r.name)
+    };
+    let left = status::left(r.prompt.is_some(), r.message.as_deref(), &hint);
+    status::draw(frame, status, &r.theme, left, &right);
+
+    if let Some(ids) = &r.confirm {
+        draw_confirm(frame, r, ids);
+    } else if let Some(picker) = &r.link_picker {
+        draw_links(frame, r, picker);
+    } else if r.outline.is_some() {
+        draw_outline(frame, r);
+    } else if r.help {
+        status::help(frame, &r.theme, HELP);
+    }
+}
+
+/// Blank columns between the line numbers and the text.
+pub const GUTTER_GAP: u16 = 3;
+
+/// Columns for the line-number gutter: the digits of `lines` plus the gap
+/// to the text, or nothing when line numbers are off.
+pub fn gutter_width(r: &Reader, lines: usize) -> u16 {
+    if !r.line_numbers {
+        return 0;
+    }
+    lines.max(1).to_string().len() as u16 + GUTTER_GAP
+}
+
+const HELP: &[(&str, &str)] = &[
+    ("j/k  ↓/↑", "scroll"),
+    ("ctrl-d/u", "half page"),
+    ("space/b", "page down/up"),
+    ("g/G", "top/bottom"),
+    ("/  n/N", "search, next/previous match"),
+    ("Tab/S-Tab", "focus next/previous code block"),
+    ("Enter, r", "run focused block"),
+    ("R", "run all blocks from the focused one"),
+    ("x", "stop running blocks"),
+    ("o", "show/hide output"),
+    ("y", "copy focused block"),
+    ("c", "copy whole document"),
+    ("L", "list links"),
+    ("e", "edit at this line in $VISUAL/$EDITOR"),
+    ("ctrl-z", "suspend (resume with fg)"),
+    ("#", "toggle line numbers"),
+    ("O", "outline: jump to a heading"),
+    ("i", "show/hide images"),
+    ("T", "pick a theme"),
+    ("Esc, h", "back"),
+    ("q", "quit"),
+];
+
+/// `Find:` line above the document, with the match count on the right.
+fn draw_find(frame: &mut Frame, r: &Reader, area: Rect) {
+    let t = &r.theme;
+    let area = Rect {
+        height: 1,
+        ..super::inset(area)
+    };
+    let count = match &r.search {
+        Some(s) if s.matches.is_empty() => "no matches".to_string(),
+        Some(s) => format!("{}/{}", s.current + 1, s.matches.len()),
+        None => String::new(),
+    };
+    let [left, right] = Layout::horizontal([
+        Constraint::Min(1),
+        Constraint::Length(count.chars().count() as u16),
+    ])
+    .areas(area);
+    let query = r.search.as_ref().map_or("", |s| s.query.as_str());
+    frame.render_widget(status::find_prompt(t, r.prompt.as_ref(), query), left);
+    frame.render_widget(Span::styled(count, Style::default().fg(t.muted)), right);
+}

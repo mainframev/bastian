@@ -23,7 +23,7 @@ as well as plain Markdown, and comes with popular color themes or your own.
 For runbooks and setup guides it can also run a document's shell, Python or
 Node code blocks right where you read them.
 
-Named after Bastian Balthazar Bux, who reads *The NeverEnding Story* until he
+Named after Bastian Balthazar Bux, who reads _The NeverEnding Story_ until he
 ends up inside it.
 
 ![Browsing, filtering, searching and the outline in bastian](demo/usage.gif)
@@ -66,27 +66,27 @@ bastian -t kanagawa README.md  # use another theme
 
 ## Keys
 
-| Key | Reader |
-|-----|--------|
-| `j/k`, `ctrl-d/u`, `space/b`, `g/G` | scroll |
-| `/`, `n/N` | search, next/previous match |
-| `Tab`, `Shift-Tab` | focus next/previous code block |
-| `Enter`, `r` | run focused block |
-| `R` | run all runnable blocks from the focused one, stop at first failure |
-| `x` | stop running blocks |
-| `o` | show/hide a block's output |
-| `y` | copy focused block (OSC 52) |
-| `c` | copy the whole document |
-| `L` | list links; follow one with `Enter` |
-| `O` | outline of the headings; `Enter` jumps to one |
-| `e` | edit the file in your `editor`, `$VISUAL`, `$EDITOR` or `vi`, at the line you're reading |
-| `ctrl-z` | suspend; resume with `fg` |
-| `#` | toggle line numbers |
-| `i` | show/hide images |
-| `T` | pick a theme (also in the browser) |
-| `?` | key help |
-| `Esc`, `h` | back to the previous document or the browser |
-| `q` | quit |
+| Key                                 | Reader                                                                                   |
+| ----------------------------------- | ---------------------------------------------------------------------------------------- |
+| `j/k`, `ctrl-d/u`, `space/b`, `g/G` | scroll                                                                                   |
+| `/`, `n/N`                          | search, next/previous match                                                              |
+| `Tab`, `Shift-Tab`                  | focus next/previous code block                                                           |
+| `Enter`, `r`                        | run focused block                                                                        |
+| `R`                                 | run all runnable blocks from the focused one, stop at first failure                      |
+| `x`                                 | stop running blocks                                                                      |
+| `o`                                 | show/hide a block's output                                                               |
+| `y`                                 | copy focused block (OSC 52)                                                              |
+| `c`                                 | copy the whole document                                                                  |
+| `L`                                 | list links; follow one with `Enter`                                                      |
+| `O`                                 | outline of the headings; `Enter` jumps to one                                            |
+| `e`                                 | edit the file in your `editor`, `$VISUAL`, `$EDITOR` or `vi`, at the line you're reading |
+| `ctrl-z`                            | suspend; resume with `fg`                                                                |
+| `#`                                 | toggle line numbers                                                                      |
+| `i`                                 | show/hide images                                                                         |
+| `T`                                 | pick a theme (also in the browser)                                                       |
+| `?`                                 | key help                                                                                 |
+| `Esc`, `h`                          | back to the previous document or the browser                                             |
+| `q`                                 | quit                                                                                     |
 
 ![Switching themes with T while reading](demo/reader-themes.gif)
 
@@ -144,14 +144,14 @@ Put attributes in braces after the language:
 ```
 ````
 
-| Attribute | Effect |
-|-----------|--------|
-| `name=...` | label shown on the block and in prompts; quote values with spaces |
-| `cwd=...` | working directory, relative to the document's directory |
-| `env=KEY=VALUE` | environment variable; repeat for more |
-| `timeout=30s` | stop the block after `ms`, `s`, `m` or `h` |
-| `confirm` | always ask before running, even with `--yes` |
-| `norun` | never run this block |
+| Attribute       | Effect                                                            |
+| --------------- | ----------------------------------------------------------------- |
+| `name=...`      | label shown on the block and in prompts; quote values with spaces |
+| `cwd=...`       | working directory, relative to the document's directory           |
+| `env=KEY=VALUE` | environment variable; repeat for more                             |
+| `timeout=30s`   | stop the block after `ms`, `s`, `m` or `h`                        |
+| `confirm`       | always ask before running, even with `--yes`                      |
+| `norun`         | never run this block                                              |
 
 Blocks run in the document's directory with no terminal attached, so
 interactive programs (editors, ssh, password prompts) don't work. Each block
@@ -218,17 +218,17 @@ defaults < config file < environment < command-line flags.
 
 Built-in themes, which also color code blocks:
 
-| Family | Themes |
-|---|---|
-| Tokyo Night | `tokyonight-night` (`tokyonight`), `tokyonight-storm`, `tokyonight-moon`, `tokyonight-day` |
-| Rosé Pine | `rose-pine`, `rose-pine-moon`, `rose-pine-dawn` |
-| Kanagawa | `kanagawa-wave` (`kanagawa`), `kanagawa-dragon`, `kanagawa-lotus` |
-| Catppuccin | `catppuccin-mocha` (`catppuccin`), `catppuccin-macchiato`, `catppuccin-frappe`, `catppuccin-latte` |
-| Gruvbox | `gruvbox-dark` (`gruvbox`), `gruvbox-light` |
-| Nord | `nord` |
-| Dracula | `dracula` |
-| Everforest | `everforest-dark` (`everforest`), `everforest-light` |
-| Solarized | `solarized-dark` (`solarized`), `solarized-light` |
+| Family      | Themes                                                                                             |
+| ----------- | -------------------------------------------------------------------------------------------------- |
+| Tokyo Night | `tokyonight-night` (`tokyonight`), `tokyonight-storm`, `tokyonight-moon`, `tokyonight-day`         |
+| Rosé Pine   | `rose-pine`, `rose-pine-moon`, `rose-pine-dawn`                                                    |
+| Kanagawa    | `kanagawa-wave` (`kanagawa`), `kanagawa-dragon`, `kanagawa-lotus`                                  |
+| Catppuccin  | `catppuccin-mocha` (`catppuccin`), `catppuccin-macchiato`, `catppuccin-frappe`, `catppuccin-latte` |
+| Gruvbox     | `gruvbox-dark` (`gruvbox`), `gruvbox-light`                                                        |
+| Nord        | `nord`                                                                                             |
+| Dracula     | `dracula`                                                                                          |
+| Everforest  | `everforest-dark` (`everforest`), `everforest-light`                                               |
+| Solarized   | `solarized-dark` (`solarized`), `solarized-light`                                                  |
 
 ```sh {norun}
 bastian themes               # pick one with a live preview; Enter saves it
@@ -282,26 +282,6 @@ own name (`extends = "nord"` in `themes/nord.toml`).
 bastian completions zsh > ~/.zfunc/_bastian   # also bash, fish, elvish, powershell
 bastian man > bastian.1 && man ./bastian.1
 ```
-
-## Development
-
-```sh {name=check}
-cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
-```
-
-With [just](https://github.com/casey/just) (`brew install just`), the same is
-`just check`; `just lint` and `just test` run each half. Clippy runs with the
-pedantic group plus a few extras, configured in the `[lints]` table of
-`Cargo.toml`, and warnings fail the check.
-
-`just install-hooks` makes git run the formatting and lint checks before each
-commit in your clone (`git config core.hooksPath .githooks`). CI runs the full
-check on macOS and Linux for every push and pull request.
-
-The GIFs in this README are recorded from the scripts in `demo/` (on the
-sample docs in `demo/docs/`) with
-[vhs](https://github.com/charmbracelet/vhs) (`brew install vhs`); `just demo`
-re-records them with your build.
 
 ## License
 

@@ -47,6 +47,17 @@ fn anchor_link_scrolls_to_heading() {
 }
 
 #[test]
+fn anchor_link_skips_lines_that_only_look_like_the_heading() {
+    let filler: String = (0..40).map(|i| format!("para {i}\n\n")).collect();
+    let src = format!("[Usage](#usage)\n\n{filler}## Usage\n\n{filler}");
+    let mut r = reader(&src);
+    key(&mut r, KeyCode::Char('L'));
+    key(&mut r, KeyCode::Enter);
+    let line = bastian::render::plain(&r.rendered.lines[r.scroll]);
+    assert_eq!(line, "## Usage");
+}
+
+#[test]
 fn relative_markdown_link_opens_document() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("next.md"), "# Next\n").unwrap();

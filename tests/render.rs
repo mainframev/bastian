@@ -76,11 +76,8 @@ fn markdown_and_unknown_extensions_stay_markdown() {
         assert!(!doc.code_file, "{name}");
         assert_eq!(doc.title().as_deref(), Some("Title"), "{name}");
     }
-    assert!(
-        render(&parse_for("# T\n", None), 40, &Theme::dark())
-            .src_line
-            .is_empty()
-    );
+    let src_line = render(&parse_for("# T\n", None), 40, &Theme::dark()).src_line;
+    assert!(src_line.is_empty(), "{src_line:?}");
 }
 
 #[test]

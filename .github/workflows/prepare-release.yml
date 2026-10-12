@@ -101,7 +101,11 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Cargo.toml Cargo.lock CHANGELOG.md
           git commit -m "chore: prepare release ${{ steps.new.outputs.version }}"
-          git push origin "release/v${{ steps.new.outputs.version }}"
+          # The branch is the bot's: a leftover from an earlier run (say, a
+          # closed release PR) is replaced rather than rejecting the push.
+          BRANCH="release/v${{ steps.new.outputs.version }}"
+          git fetch origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" 2>/dev/null || true
+          git push --force-with-lease origin "$BRANCH"
 
       - name: Create pull request
         env:
@@ -111,6 +115,14 @@ jobs:
             BUMP_INFO="auto-detected as **${{ steps.new.outputs.bump }}** from the commit history"
           else
             BUMP_INFO="set manually to **${{ steps.new.outputs.bump }}**"
+          fi
+
+          # Re-running for the same version refreshes the open PR's branch;
+          # don't try to open a second one.
+          OPEN=$(gh pr list --head "release/v${{ steps.new.outputs.version }}" --state open --json number --jq '.[0].number')
+          if [ -n "$OPEN" ]; then
+            echo "Updated the branch of release PR #$OPEN"
+            exit 0
           fi
 
           gh pr create \

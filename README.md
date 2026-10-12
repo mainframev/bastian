@@ -5,6 +5,7 @@
 [![Latest release](https://img.shields.io/crates/v/bastian.svg)](https://crates.io/crates/bastian)
 [![Downloads](https://img.shields.io/crates/d/bastian.svg)](https://crates.io/crates/bastian)
 [![Build status](https://github.com/mainframev/bastian/actions/workflows/ci.yml/badge.svg)](https://github.com/mainframev/bastian/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A terminal Markdown reader, made to bring documentation into the command line
 and make it a pleasure to read there.

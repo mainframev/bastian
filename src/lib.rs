@@ -9,6 +9,7 @@ pub mod links;
 pub mod nav;
 pub mod outline;
 pub mod output;
+pub mod paths;
 pub mod picker;
 pub mod prompt;
 pub mod reader;

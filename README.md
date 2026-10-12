@@ -179,7 +179,7 @@ images = true         # false: show images as their alt text (--no-images);
                       # `i` toggles them in the reader
 selector = "bar"      # how the file list marks the selected file: "bar",
                       # "thick", "block", "arrow" or "highlight" (--selector)
-browser_layout = "cards"  # "compact" lists one file per row (--browser-layout)
+list_layout = "cards"  # "compact" lists one file per row (--list-layout)
 sort = "modified"     # file list order: "modified", "created" or "name" (--sort)
 dates = true          # false: no file dates in the file list
 date_format = "%d %b %Y %H:%M %Z"  # strftime format of those dates

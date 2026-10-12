@@ -54,8 +54,8 @@ pub struct Settings {
     pub show_images: bool,
     /// How the file browser marks the selected file.
     pub selector: crate::config::Selector,
-    /// How the file browser lays out each file.
-    pub browser_layout: crate::config::BrowserLayout,
+    /// How the file list lays out each file.
+    pub list_layout: crate::config::ListLayout,
 }
 
 impl Settings {
@@ -492,7 +492,7 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<Option<String
                         date_format: s.date_format.as_deref(),
                         scrollbar: s.scrollbar,
                         selector: s.selector,
-                        layout: s.browser_layout,
+                        layout: s.list_layout,
                     };
                     ui::browser::draw(f, b, &s.theme, look);
                 }
@@ -552,7 +552,7 @@ mod tests {
             images: None,
             show_images: false,
             selector: crate::config::Selector::Bar,
-            browser_layout: crate::config::BrowserLayout::Cards,
+            list_layout: crate::config::ListLayout::Cards,
         }
     }
 
@@ -662,7 +662,7 @@ mod tests {
             images: None,
             show_images: false,
             selector: crate::config::Selector::Bar,
-            browser_layout: crate::config::BrowserLayout::Cards,
+            list_layout: crate::config::ListLayout::Cards,
         };
         let src: String = (0..50).map(|i| format!("line {i}\n\n")).collect();
         let mut reader = settings.reader("t".into(), doc::parse(&src), PathBuf::from("."));

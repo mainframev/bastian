@@ -34,8 +34,8 @@ pub struct Config {
     pub images: Option<bool>,
     /// How the file browser marks the selected file.
     pub selector: Option<Selector>,
-    /// How the file browser lays out each file.
-    pub browser_layout: Option<BrowserLayout>,
+    /// How the file list lays out each file.
+    pub list_layout: Option<ListLayout>,
     /// Order of the files in the browser.
     pub sort: Option<SortBy>,
     /// Show each file's date in the browser.
@@ -97,7 +97,7 @@ pub enum Selector {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
-pub enum BrowserLayout {
+pub enum ListLayout {
     // Title, path and date on rows of their own (the default), or one row
     // per file.
     #[default]
@@ -216,7 +216,7 @@ pub const TEMPLATE: &str = r#"# bastian configuration. Every key is optional; co
 # images = true         # show pictures for images in documents (`i` toggles)
 # selector = "bar"      # marks the selected file: "bar", "thick", "block",
 #                       # "arrow" or "highlight"
-# browser_layout = "cards"  # "cards" (title, path, date) or "compact" (one row)
+# list_layout = "cards"  # "cards" (title, path, date) or "compact" (one row)
 # sort = "modified"     # browser order: "modified", "created" or "name"
 # dates = true          # show file dates in the browser
 # date_format = "%d %b %Y %H:%M %Z"  # strftime format of those dates
@@ -268,7 +268,7 @@ pub fn describe(r: &Resolved, file: Option<&Path>) -> String {
         row("logo", &r.logo),
         row("images", &r.images),
         row("selector", &r.selector),
-        row("browser_layout", &r.browser_layout),
+        row("list_layout", &r.list_layout),
         row("sort", &r.sort),
         row("dates", &r.dates),
         row("date_format", &r.date_format),
@@ -352,7 +352,7 @@ pub struct Resolved {
     pub logo: Setting<bool>,
     pub images: Setting<bool>,
     pub selector: Setting<Selector>,
-    pub browser_layout: Setting<BrowserLayout>,
+    pub list_layout: Setting<ListLayout>,
     pub sort: Setting<SortBy>,
     pub dates: Setting<bool>,
     pub date_format: Setting<String>,
@@ -409,11 +409,11 @@ pub fn resolve(file: Config, env: &EnvMap, cli: Config) -> Result<Resolved> {
             cli.selector,
             env,
         )?,
-        browser_layout: setting(
-            "browser_layout",
-            BrowserLayout::default(),
-            file.browser_layout,
-            cli.browser_layout,
+        list_layout: setting(
+            "list_layout",
+            ListLayout::default(),
+            file.list_layout,
+            cli.list_layout,
             env,
         )?,
         sort: setting("sort", SortBy::default(), file.sort, cli.sort, env)?,
@@ -653,7 +653,7 @@ macro_rules! enum_value {
         }
     )*};
 }
-enum_value!(Confirm, ColorMode, Selector, BrowserLayout, SortBy);
+enum_value!(Confirm, ColorMode, Selector, ListLayout, SortBy);
 
 fn enum_name<T: ValueEnum>(v: &T) -> String {
     v.to_possible_value()
@@ -830,7 +830,7 @@ mod tests {
             ("BASTIAN_LINE_NUMBERS", "yes"),
             ("BASTIAN_THEME", ""),
             ("BASTIAN_SELECTOR", "Arrow"),
-            ("BASTIAN_BROWSER_LAYOUT", "compact"),
+            ("BASTIAN_LIST_LAYOUT", "compact"),
             ("BASTIAN_EXTENSIONS", "md, txt,,"),
             ("BASTIAN_SORT", "name"),
         ]);
@@ -850,7 +850,7 @@ mod tests {
             }
         );
         assert_eq!(r.selector.value, Selector::Arrow);
-        assert_eq!(r.browser_layout.value, BrowserLayout::Compact);
+        assert_eq!(r.list_layout.value, ListLayout::Compact);
         assert_eq!(r.extensions.value, ["md", "txt"]);
         assert_eq!(r.sort.value, SortBy::Name);
         // Empty means unset.
@@ -893,7 +893,7 @@ mod tests {
             pager = true
             mouse = true
             selector = "highlight"
-            browser_layout = "compact"
+            list_layout = "compact"
             sort = "created"
             dates = false
             date_format = "%Y-%m-%d"
@@ -918,7 +918,7 @@ mod tests {
         assert_eq!(c.pager, Some(true));
         assert_eq!(c.mouse, Some(true));
         assert_eq!(c.selector, Some(Selector::Highlight));
-        assert_eq!(c.browser_layout, Some(BrowserLayout::Compact));
+        assert_eq!(c.list_layout, Some(ListLayout::Compact));
         assert_eq!(c.sort, Some(SortBy::Created));
         assert_eq!(c.dates, Some(false));
         assert_eq!(c.date_format.as_deref(), Some("%Y-%m-%d"));

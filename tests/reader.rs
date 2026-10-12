@@ -216,7 +216,7 @@ fn remote_documents_resolve_links_and_always_confirm() {
         images: None,
         show_images: false,
         selector: bastian::config::Selector::Bar,
-        browser_layout: bastian::config::BrowserLayout::Cards,
+        list_layout: bastian::config::ListLayout::Cards,
     };
     let mut r = settings.remote(RemoteDoc {
         name: "README.md".into(),

@@ -46,15 +46,17 @@ impl Outline {
             let Some(&line) = rendered.block_starts.get(i) else {
                 continue;
             };
+            let text = plain_text(inlines);
+            let text_w = text.width();
             let node = Node {
                 id: lines.len(),
                 level: *level,
-                text: plain_text(inlines),
+                text,
                 children: Vec::new(),
             };
             lines.push(line);
             let depth = insert(&mut roots, node);
-            width = width.max(depth * 2 + 4 + plain_text(inlines).width());
+            width = width.max(depth * 2 + 4 + text_w);
         }
         if roots.is_empty() {
             return None;

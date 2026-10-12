@@ -129,13 +129,7 @@ mod tests {
     #[test]
     fn page_track_fills_with_progress() {
         let t = Theme::dark();
-        let text = |p, n| -> String {
-            page_indicator(&t, p, n)
-                .spans
-                .iter()
-                .map(|s| s.content.as_ref())
-                .collect()
-        };
+        let text = |p, n| crate::render::plain(&page_indicator(&t, p, n));
         assert_eq!(text(1, 12), "━───────────  1/12");
         assert_eq!(text(6, 12), "━━━━━━──────  6/12");
         assert_eq!(text(95, 95), "━━━━━━━━━━━━  95/95");

@@ -19,6 +19,8 @@ pub struct Entry {
     pub created: Option<SystemTime>,
     /// What the filter matches against: the path, then the title.
     pub(super) key: Utf32String,
+    /// `name()` in lowercase, for sorting by name.
+    pub(super) sort_name: String,
 }
 
 impl Entry {
@@ -39,14 +41,17 @@ impl Entry {
             Utf32Str::Ascii(_) => Utf32String::Ascii(hay.into()),
             Utf32Str::Unicode(chars) => Utf32String::Unicode(chars.into()),
         };
-        Self {
+        let mut entry = Self {
             path,
             rel,
             title,
             modified,
             created,
             key,
-        }
+            sort_name: String::new(),
+        };
+        entry.sort_name = entry.name().to_lowercase();
+        entry
     }
 
     /// The name it's listed under: its title, else its file name.

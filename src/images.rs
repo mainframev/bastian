@@ -63,6 +63,12 @@ impl Support {
     fn picker(&self) -> &Picker {
         &self.0
     }
+
+    /// Pixel width and height of a cell, never zero.
+    fn cell_px(&self) -> (u32, u32) {
+        let font = self.0.font_size();
+        (u32::from(font.width.max(1)), u32::from(font.height.max(1)))
+    }
 }
 
 /// Images of the open document, keyed by URL as written in it.
@@ -124,11 +130,10 @@ impl Images {
         while let Ok((key, result)) = self.rx.try_recv() {
             let entry = match result {
                 Ok(img) => {
-                    let picker = support.picker();
-                    let font = picker.font_size();
+                    let (cw, ch) = support.cell_px();
                     let cells = (
-                        img.width().div_ceil(u32::from(font.width.max(1))) as u16,
-                        img.height().div_ceil(u32::from(font.height.max(1))) as u16,
+                        img.width().div_ceil(cw) as u16,
+                        img.height().div_ceil(ch) as u16,
                     );
                     Entry::Ready {
                         image: img,
@@ -166,14 +171,13 @@ impl Images {
             return None;
         };
         let protocol = scaled.entry((cols, rows)).or_insert_with(|| {
-            let picker = support.picker();
-            let font = picker.font_size();
+            let (cw, ch) = support.cell_px();
             let fitted = image.resize_exact(
-                u32::from(cols) * u32::from(font.width.max(1)),
-                u32::from(rows) * u32::from(font.height.max(1)),
+                u32::from(cols) * cw,
+                u32::from(rows) * ch,
                 image::imageops::FilterType::Triangle,
             );
-            Box::new(picker.new_resize_protocol(fitted))
+            Box::new(support.picker().new_resize_protocol(fitted))
         });
         Some(protocol)
     }

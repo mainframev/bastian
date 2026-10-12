@@ -40,7 +40,7 @@ pub fn wrap(runs: &[(String, Style)], width: usize) -> Vec<Line<'static>> {
 }
 
 /// Split spans at `width` columns without regard for words. Used for code.
-pub fn hard_wrap(spans: Vec<Span<'static>>, width: usize) -> Vec<Vec<Span<'static>>> {
+pub fn hard_wrap(spans: &[Span], width: usize) -> Vec<Vec<Span<'static>>> {
     let mut w = Wrapper::new(width);
     for span in spans {
         w.push_split(&span.content, span.style);
@@ -125,10 +125,7 @@ mod tests {
     use super::*;
 
     fn text(lines: &[Line]) -> Vec<String> {
-        lines
-            .iter()
-            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
-            .collect()
+        lines.iter().map(crate::render::plain).collect()
     }
 
     fn run(s: &str) -> Vec<(String, Style)> {
@@ -169,7 +166,7 @@ mod tests {
 
     #[test]
     fn hard_wrap_code() {
-        let lines = hard_wrap(vec![Span::raw("0123456789")], 4);
+        let lines = hard_wrap(&[Span::raw("0123456789")], 4);
         let t: Vec<String> = lines
             .iter()
             .map(|l| l.iter().map(|s| s.content.as_ref()).collect())

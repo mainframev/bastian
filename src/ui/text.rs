@@ -30,20 +30,10 @@ pub fn shorten_right(s: &str, max: usize) -> String {
     if s.width() <= max {
         return s.to_string();
     }
-    let mut out = String::new();
-    let mut w = 0;
-    for c in s.chars() {
-        let cw = c.width().unwrap_or(0);
-        if w + cw + 1 > max {
-            break;
-        }
-        out.push(c);
-        w += cw;
+    if max == 0 {
+        return String::new();
     }
-    if max > 0 {
-        out.push('…');
-    }
-    out
+    format!("{}…", take_width(s, max - 1))
 }
 
 /// The longest start of `s` that fits in `max` columns.

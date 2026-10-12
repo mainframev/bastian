@@ -176,9 +176,6 @@ impl Mapper {
     }
 
     fn inline(&mut self, node: &Node, style: &InlineStyle, out: &mut Vec<Inline>) {
-        let push = |out: &mut Vec<Inline>, text: String, style: InlineStyle| {
-            push_inline(out, &text, &style);
-        };
         let with = |f: &dyn Fn(&mut InlineStyle)| {
             let mut s = style.clone();
             f(&mut s);
@@ -190,13 +187,13 @@ impl Mapper {
             }
         };
         match node {
-            Node::Text(t) => push(out, t.value.clone(), style.clone()),
+            Node::Text(t) => push_inline(out, &t.value, style),
             Node::Strong(s) => children(self, &s.children, &with(&|s| s.strong = true), out),
             Node::Emphasis(e) => children(self, &e.children, &with(&|s| s.emphasis = true), out),
             Node::Delete(d) => children(self, &d.children, &with(&|s| s.strike = true), out),
-            Node::InlineCode(c) => push(out, c.value.clone(), with(&|s| s.code = true)),
-            Node::InlineMath(m) => push(out, m.value.clone(), with(&|s| s.code = true)),
-            Node::Break(_) => push(out, "\n".into(), style.clone()),
+            Node::InlineCode(c) => push_inline(out, &c.value, &with(&|s| s.code = true)),
+            Node::InlineMath(m) => push_inline(out, &m.value, &with(&|s| s.code = true)),
+            Node::Break(_) => push_inline(out, "\n", style),
             Node::Link(l) => {
                 let url = l.url.clone();
                 children(
@@ -207,24 +204,21 @@ impl Mapper {
                 );
             }
             Node::LinkReference(l) => children(self, &l.children, style, out),
-            Node::Image(i) => push(out, super::image_placeholder(&i.alt), style.clone()),
-            Node::ImageReference(i) => push(out, super::image_placeholder(&i.alt), style.clone()),
-            Node::Html(h) => push(out, h.value.clone(), with(&|s| s.muted = true)),
+            Node::Image(i) => push_inline(out, &super::image_placeholder(&i.alt), style),
+            Node::ImageReference(i) => push_inline(out, &super::image_placeholder(&i.alt), style),
+            Node::Html(h) => push_inline(out, &h.value, &with(&|s| s.muted = true)),
             Node::MdxJsxTextElement(el) => {
                 let muted = with(&|s| s.muted = true);
                 let self_closing = el.children.is_empty();
-                push(
-                    out,
-                    open_tag(el.name.as_deref(), &el.attributes, self_closing),
-                    muted.clone(),
-                );
+                let open = open_tag(el.name.as_deref(), &el.attributes, self_closing);
+                push_inline(out, &open, &muted);
                 if !self_closing {
                     children(self, &el.children, style, out);
-                    push(out, close_tag(el.name.as_deref()), muted);
+                    push_inline(out, &close_tag(el.name.as_deref()), &muted);
                 }
             }
             Node::MdxTextExpression(e) if !is_comment(&e.value) => {
-                push(out, format!("{{{}}}", e.value), with(&|s| s.muted = true));
+                push_inline(out, &format!("{{{}}}", e.value), &with(&|s| s.muted = true));
             }
             Node::MdxTextExpression(_) | Node::FootnoteReference(_) => {}
             // Containers that can't appear inline: render their text.

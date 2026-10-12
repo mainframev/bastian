@@ -113,6 +113,11 @@ const SCOPES: &[(&str, &str)] = &[
     ("deleted", "markup.deleted"),
 ];
 
+/// The default `dark_theme`.
+pub const DEFAULT_DARK: &str = "rose-pine";
+/// The default `light_theme`.
+pub const DEFAULT_LIGHT: &str = "rose-pine-dawn";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Appearance {

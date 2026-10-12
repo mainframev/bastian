@@ -208,13 +208,15 @@ fn main() -> Result<()> {
     let stdout_tty = std::io::stdout().is_terminal();
     // In a terminal, `bastian themes` opens the picker; otherwise it lists.
     let pick_theme = list_themes && stdout_tty;
+    // The pager only runs on a terminal, so a tty stdout covers paging too;
+    // piped output stays plain even with the pager switched on.
+    let color = output::use_color(
+        resolved.color.value,
+        stdout_tty,
+        std::env::var("NO_COLOR").ok().as_deref(),
+        std::env::var("CLICOLOR_FORCE").ok().as_deref(),
+    );
     if list_themes && !pick_theme {
-        let color = output::use_color(
-            resolved.color.value,
-            stdout_tty,
-            std::env::var("NO_COLOR").ok().as_deref(),
-            std::env::var("CLICOLOR_FORCE").ok().as_deref(),
-        );
         print!("{}", theme_list(&resolved, themes_dir.as_deref(), color));
         return Ok(());
     }
@@ -228,8 +230,8 @@ fn main() -> Result<()> {
         // The picker is how a bad theme setting gets fixed: start from the
         // defaults instead of refusing to open.
         resolved.theme.value = "auto".into();
-        resolved.dark_theme.value = "rose-pine".into();
-        resolved.light_theme.value = "rose-pine-dawn".into();
+        resolved.dark_theme.value = themes::DEFAULT_DARK.into();
+        resolved.light_theme.value = themes::DEFAULT_LIGHT.into();
     }
     let theme_files = app::ThemeFiles {
         dir: themes_dir.clone(),
@@ -237,7 +239,7 @@ fn main() -> Result<()> {
         current: String::new(),
         overridden_by: match resolved.theme.source {
             config::Source::Flag => Some("--theme".into()),
-            config::Source::Env => Some("BASTIAN_THEME".into()),
+            config::Source::Env => Some(config::env_var("theme")),
             _ => None,
         },
     };
@@ -246,14 +248,7 @@ fn main() -> Result<()> {
             &resolved.width,
             crossterm::terminal::size().ok().map(|(w, _)| w),
         ),
-        // The pager only runs on a terminal, so a tty stdout covers paging
-        // too; piped output stays plain even with the pager switched on.
-        color: output::use_color(
-            resolved.color.value,
-            stdout_tty,
-            std::env::var("NO_COLOR").ok().as_deref(),
-            std::env::var("CLICOLOR_FORCE").ok().as_deref(),
-        ),
+        color,
         pager: (resolved.pager.value && stdout_tty)
             .then(|| output::pager_command(std::env::var("PAGER").ok().as_deref())),
     };
@@ -491,7 +486,7 @@ impl clap::builder::TypedValueParser for ThemeArg {
     fn possible_values(
         &self,
     ) -> Option<Box<dyn Iterator<Item = clap::builder::PossibleValue> + '_>> {
-        let names = ["auto", "dark", "light"]
+        let names = config::THEME_MODES
             .into_iter()
             .chain(themes::builtin_names());
         Some(Box::new(names.map(clap::builder::PossibleValue::new)))

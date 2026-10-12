@@ -5,7 +5,11 @@ use anyhow::{Context, Result, anyhow};
 use clap::ValueEnum;
 use serde::Deserialize;
 
-use crate::paths;
+use crate::{paths, themes};
+
+/// `theme` values that pick `dark_theme` or `light_theme` rather than
+/// naming a theme.
+pub const THEME_MODES: [&str; 3] = ["auto", "dark", "light"];
 
 /// `~/.config/bastian/config.toml`, or under `$XDG_CONFIG_HOME` when set.
 #[derive(Debug, Default, Clone, Deserialize, PartialEq)]
@@ -289,6 +293,11 @@ pub struct Setting<T> {
 /// Environment variables, passed in so resolution is testable.
 pub type EnvMap = HashMap<String, String>;
 
+/// The environment variable for setting `key`: `BASTIAN_<KEY>`.
+pub fn env_var(key: &str) -> String {
+    format!("BASTIAN_{}", key.to_ascii_uppercase())
+}
+
 /// The `BASTIAN_*` variables of the current process.
 pub fn env_vars() -> EnvMap {
     std::env::vars()
@@ -336,14 +345,14 @@ pub fn resolve(file: Config, env: &EnvMap, cli: Config) -> Result<Resolved> {
         theme: setting("theme", "auto".into(), file.theme, cli.theme, env)?,
         dark_theme: setting(
             "dark_theme",
-            "rose-pine".into(),
+            themes::DEFAULT_DARK.into(),
             file.dark_theme,
             cli.dark_theme,
             env,
         )?,
         light_theme: setting(
             "light_theme",
-            "rose-pine-dawn".into(),
+            themes::DEFAULT_LIGHT.into(),
             file.light_theme,
             cli.light_theme,
             env,
@@ -412,7 +421,7 @@ fn setting<T: Value>(
     cli: Option<T>,
     env: &EnvMap,
 ) -> Result<Setting<T>> {
-    let var = format!("BASTIAN_{}", key.to_ascii_uppercase());
+    let var = env_var(key);
     let env = match env.get(&var).map(|v| v.trim()) {
         None | Some("") => None,
         Some(v) => Some(
@@ -497,19 +506,18 @@ pub fn theme_name(r: &Resolved, light_background: bool) -> &str {
 /// Every theme the settings name exists; the error says where a bad name
 /// came from.
 pub fn check_themes(r: &Resolved, exists: impl Fn(&str) -> bool) -> Result<()> {
-    let named = ["auto", "dark", "light"];
     let settings = [
         ("theme", &r.theme),
         ("dark_theme", &r.dark_theme),
         ("light_theme", &r.light_theme),
     ];
     for (key, s) in settings {
-        if (key == "theme" && named.contains(&s.value.as_str())) || exists(&s.value) {
+        if (key == "theme" && THEME_MODES.contains(&s.value.as_str())) || exists(&s.value) {
             continue;
         }
         let from = match s.source {
             Source::Flag => "--theme".to_string(),
-            Source::Env => format!("BASTIAN_{}", key.to_ascii_uppercase()),
+            Source::Env => env_var(key),
             Source::File => format!("`{key}` in the config file"),
             Source::Default => "the default".to_string(),
         };

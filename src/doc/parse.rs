@@ -156,7 +156,7 @@ impl Builder {
             Tag::Link { dest_url, .. } => self.style.link = Some(dest_url.into_string()),
             Tag::Image { dest_url, .. } => {
                 self.images.push(dest_url.into_string());
-                self.push_text("[image: ");
+                self.push_text(super::IMAGE_PREFIX);
             }
             Tag::MetadataBlock(_) => self.metadata = true,
             _ => {}
@@ -292,7 +292,6 @@ impl Builder {
     }
 }
 
-/// Language token of a fence info string: `sh {name=x}` and `sh{name=x}` give `sh`.
 /// The image block for a paragraph that is nothing but `[image: alt]`
 /// (not wrapped in a link, which would be lost).
 fn image_block(inlines: &[Inline], url: &str) -> Option<Block> {
@@ -300,13 +299,17 @@ fn image_block(inlines: &[Inline], url: &str) -> Option<Block> {
         return None;
     }
     let text = super::plain_text(inlines);
-    let alt = text.trim().strip_prefix("[image: ")?.strip_suffix(']')?;
+    let alt = text
+        .trim()
+        .strip_prefix(super::IMAGE_PREFIX)?
+        .strip_suffix(']')?;
     Some(Block::Image {
         alt: alt.to_string(),
         url: url.to_string(),
     })
 }
 
+/// Language token of a fence info string: `sh {name=x}` and `sh{name=x}` give `sh`.
 pub(super) fn lang_of(info: &str) -> Option<String> {
     let lang = info
         .split(|c: char| c.is_whitespace() || c == '{' || c == ',')

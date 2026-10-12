@@ -21,6 +21,14 @@ pub fn parse_for(src: &str, path: Option<&Path>) -> Document {
     }
 }
 
+/// Start of the text standing in for an image: `[image: alt]`.
+pub(crate) const IMAGE_PREFIX: &str = "[image: ";
+
+/// The text standing in for an image with `alt` text.
+pub(crate) fn image_placeholder(alt: &str) -> String {
+    format!("{IMAGE_PREFIX}{alt}]")
+}
+
 /// Extensions treated as Markdown.
 pub fn is_markdown_ext(ext: &str) -> bool {
     matches!(

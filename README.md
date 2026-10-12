@@ -222,14 +222,21 @@ Built-in themes, which also color code blocks:
 | Everforest | `everforest-dark` (`everforest`), `everforest-light` |
 | Solarized | `solarized-dark` (`solarized`), `solarized-light` |
 
-Pick one with `-t`, `theme = "..."` or `BASTIAN_THEME`. With `theme = "auto"`
-(the default), bastian asks the terminal for its background color and uses
-`dark_theme` or `light_theme`; `"dark"` and `"light"` force one of the two.
-`bastian themes` opens a theme picker over a sample document: move through the
-list to preview each theme, `Enter` saves the highlighted one as `theme` in
-your config file (other settings and comments are kept), `Esc` leaves things
-as they were. Press `T` for the same picker while reading or browsing. Piped,
-`bastian themes` prints the list with each theme's colors instead.
+```sh {norun}
+bastian themes               # pick one with a live preview; Enter saves it
+bastian -t nord README.md    # use a theme just this once
+```
+
+Or set it in the config file. The default, `auto`, follows the terminal's
+background:
+
+```toml
+theme = "auto"                  # or "dark", "light", or a theme name
+dark_theme = "rose-pine"
+light_theme = "rose-pine-dawn"
+```
+
+Press `T` while reading or browsing to open the same picker.
 
 ### Your own themes
 

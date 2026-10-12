@@ -154,7 +154,14 @@ fn ask(query: &[u8], timeout: Duration, done: impl Fn(&[u8]) -> bool) -> Option<
             }
         }
     }
-    unsafe { libc::tcsetattr(fd, libc::TCSANOW, &raw const saved) };
+    // A reply cut off by the timeout would be read later as keystrokes;
+    // TCSAFLUSH drops whatever of it has arrived.
+    let when = if done(&reply) {
+        libc::TCSANOW
+    } else {
+        libc::TCSAFLUSH
+    };
+    unsafe { libc::tcsetattr(fd, when, &raw const saved) };
     Some(reply)
 }
 

@@ -50,6 +50,8 @@ impl Reader {
             self.confirm = None;
             self.queue.clear();
         }
+        // The link may be gone or point elsewhere now.
+        self.confirm_open = None;
         // Run state belongs to code, not to a position: follow each block to
         // its new place, and drop what ran code that's gone or changed.
         let mut runs = HashMap::new();

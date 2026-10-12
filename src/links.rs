@@ -80,6 +80,12 @@ pub fn resolve(url: &str, base_dir: &Path) -> Target {
     }
 }
 
+/// Whether `target` is a web or mail link, safe to open without asking.
+/// Other schemes and local files can launch apps or run scripts.
+pub fn is_web(target: &str) -> bool {
+    url::Url::parse(target).is_ok_and(|u| matches!(u.scheme(), "http" | "https" | "mailto"))
+}
+
 /// GitHub-style heading anchor: lowercase, spaces to dashes, punctuation dropped.
 pub fn slug(text: &str) -> String {
     text.trim()
@@ -161,6 +167,28 @@ mod tests {
         for name in ["a.mkd", "b.mdown", "c.mkdn", "d.MD"] {
             std::fs::write(d.join(name), "# Doc\n").unwrap();
             assert_eq!(resolve(name, d), Target::Document(d.join(name)), "{name}");
+        }
+    }
+
+    #[test]
+    fn only_web_and_mail_links_are_web() {
+        for t in [
+            "https://x.dev",
+            "http://x.dev/a?b#c",
+            "HTTPS://X.DEV",
+            "mailto:a@b.c",
+        ] {
+            assert!(is_web(t), "{t}");
+        }
+        for t in [
+            "file:///Applications/X.app",
+            "vscode://file/etc/passwd",
+            "javascript:alert(1)",
+            "/tmp/setup.command",
+            "setup.command",
+            "",
+        ] {
+            assert!(!is_web(t), "{t}");
         }
     }
 

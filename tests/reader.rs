@@ -337,6 +337,75 @@ fn reopening_a_file_returns_to_where_it_was_left() {
     assert_eq!(bastian::positions::load(&store, &file), None);
 }
 
+/// A reader over one link to `url`, its picker open.
+fn picking(url: &str, base_dir: &std::path::Path) -> Reader {
+    let mut r = reader(&format!("[x]({url})\n"));
+    r.base_dir = base_dir.to_path_buf();
+    key(&mut r, KeyCode::Char('L'));
+    r
+}
+
+#[test]
+fn web_links_open_without_asking() {
+    for url in ["https://x.dev/a", "mailto:a@b.c"] {
+        let mut r = picking(url, std::path::Path::new("."));
+        assert!(
+            matches!(key(&mut r, KeyCode::Enter), Action::OpenExternal(t) if t == url),
+            "{url}"
+        );
+        assert_eq!(r.confirm_open, None);
+    }
+}
+
+#[test]
+fn other_links_ask_before_opening() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("setup.command"), "").unwrap();
+    let local = dir.path().join("setup.command").display().to_string();
+    for (url, target) in [
+        ("file:///Applications/X.app", "file:///Applications/X.app"),
+        ("vscode://file/etc/hosts", "vscode://file/etc/hosts"),
+        ("setup.command", local.as_str()),
+    ] {
+        let mut r = picking(url, dir.path());
+        assert!(matches!(key(&mut r, KeyCode::Enter), Action::None), "{url}");
+        assert_eq!(r.confirm_open.as_deref(), Some(target));
+        assert!(
+            matches!(key(&mut r, KeyCode::Char('y')), Action::OpenExternal(t) if t == target),
+            "{url}"
+        );
+        assert_eq!(r.confirm_open, None);
+
+        let mut r = picking(url, dir.path());
+        key(&mut r, KeyCode::Enter);
+        assert!(
+            matches!(key(&mut r, KeyCode::Char('n')), Action::None),
+            "{url}"
+        );
+        assert_eq!(r.confirm_open, None);
+    }
+}
+
+#[test]
+fn open_prompt_shows_the_whole_target() {
+    use bastian::ui::reader::draw;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let target = format!("vscode://file/{}/end", "x".repeat(60));
+    let mut r = picking(&target, std::path::Path::new("."));
+    key(&mut r, KeyCode::Enter);
+    let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let buf = terminal.backend().buffer();
+    let screen: String = (0..12)
+        .flat_map(|y| (0..40).map(move |x| (x, y)))
+        .map(|(x, y)| buf[(x, y)].symbol().to_string())
+        .collect();
+    // Wrapped across rows, with no cell lost to the box edge.
+    let shown: String = screen.chars().filter(|c| !"│ ".contains(*c)).collect();
+    assert!(shown.contains(&target), "{screen}");
+}
+
 #[test]
 fn remote_documents_resolve_links_and_always_confirm() {
     // Built the way the app builds fetched documents, with --yes on.

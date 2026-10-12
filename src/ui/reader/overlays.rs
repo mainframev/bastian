@@ -107,3 +107,39 @@ pub(super) fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {
     ];
     status::modal(frame, t, " run ", lines);
 }
+
+/// Ask before handing a non-web link to the system opener. The target is
+/// shown whole, wrapped to the screen, so nothing hides past the edge.
+pub(super) fn draw_open_confirm(frame: &mut Frame, r: &Reader, target: &str) {
+    let t = &r.theme;
+    // Border and padding, at least one column for the text.
+    let max_w = (frame.area().width.saturating_sub(4) as usize).max(1);
+    let mut lines = vec![Line::styled(
+        "Open with the system opener?",
+        Style::default().fg(t.text),
+    )];
+    let mut rest = target;
+    while !rest.is_empty() {
+        let mut chunk = take_width(rest, max_w);
+        if chunk.is_empty() {
+            // A character wider than the box: show it anyway.
+            let end = rest.chars().next().map_or(rest.len(), char::len_utf8);
+            chunk = &rest[..end];
+        }
+        lines.push(Line::styled(
+            chunk.to_string(),
+            Style::default().fg(t.accent).bold(),
+        ));
+        rest = &rest[chunk.len()..];
+    }
+    lines.extend([
+        Line::default(),
+        Line::from(vec![
+            Span::styled("y", Style::default().fg(t.ok).bold()),
+            Span::styled(" open   ", Style::default().fg(t.subtle)),
+            Span::styled("n", Style::default().fg(t.err).bold()),
+            Span::styled(" cancel", Style::default().fg(t.subtle)),
+        ]),
+    ]);
+    status::modal(frame, t, " open ", lines);
+}

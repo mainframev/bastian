@@ -194,6 +194,9 @@ fn respond(url: &str, accept: &str) -> Result<ureq::http::Response<ureq::Body>> 
     let mut req = agent()
         .get(url)
         .header("Accept", accept)
+        // An absent Accept-Encoding lets the server pick any coding, and
+        // bodies are read undecoded, so ask for identity outright.
+        .header("Accept-Encoding", "identity")
         .header("User-Agent", concat!("bastian/", env!("CARGO_PKG_VERSION")));
     if url.starts_with("https://api.github.com/")
         && let Ok(token) = std::env::var("GITHUB_TOKEN")
@@ -395,7 +398,10 @@ mod tests {
         let body = fetch_bytes(&format!("http://{addr}/bomb.png"), 1024).unwrap();
         assert!(body == GZIP_4K_ZEROS, "got {} bytes", body.len());
         let request = server.join().unwrap().to_ascii_lowercase();
-        assert!(!request.contains("accept-encoding: gzip"), "{request}");
+        assert!(
+            request.contains("accept-encoding: identity\r\n"),
+            "{request}"
+        );
     }
 
     #[test]

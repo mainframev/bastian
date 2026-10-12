@@ -73,7 +73,7 @@ URL. Images in running text, SVGs (such as most badges), GIFs and printed
 output keep their alt text.
 
 `i` turns pictures on and off for the session. `images = false` (or
-`--no-images`) starts with them off; `image_height` caps how many rows a
+`--images off`) starts with them off; `image_height` caps how many rows a
 picture takes (24 by default).
 
 ## Line numbers

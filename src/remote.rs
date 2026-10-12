@@ -362,6 +362,42 @@ mod tests {
         assert!(guide.as_str().ends_with("/docs/guide.md"));
     }
 
+    /// 4 KiB of zeros, gzipped: 38 bytes on the wire.
+    const GZIP_4K_ZEROS: [u8; 38] = [
+        0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x03, 0xed, 0xc1, 0x01, 0x0d, 0x00,
+        0x00, 0x00, 0xc2, 0xa0, 0xf7, 0x4f, 0x6d, 0x0f, 0x07, 0x14, 0x00, 0x00, 0x00, 0xf0, 0x6e,
+        0x11, 0x00, 0x1c, 0xc7, 0x00, 0x10, 0x00, 0x00,
+    ];
+
+    #[test]
+    fn gzip_bodies_are_not_decoded_past_the_limit() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut request = String::new();
+            let mut line = String::new();
+            while reader.read_line(&mut line).unwrap() > 2 {
+                request.push_str(&line);
+                line.clear();
+            }
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Encoding: gzip\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                GZIP_4K_ZEROS.len()
+            )
+            .unwrap();
+            stream.write_all(&GZIP_4K_ZEROS).unwrap();
+            request
+        });
+        // Decoded, the body would be 4 KiB, past the 1 KiB limit.
+        let body = fetch_bytes(&format!("http://{addr}/bomb.png"), 1024).unwrap();
+        assert!(body == GZIP_4K_ZEROS, "got {} bytes", body.len());
+        let request = server.join().unwrap().to_ascii_lowercase();
+        assert!(!request.contains("accept-encoding: gzip"), "{request}");
+    }
+
     #[test]
     fn http_errors_are_reported() {
         let url = serve_once("404 Not Found", "");

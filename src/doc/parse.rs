@@ -1,13 +1,20 @@
-use pulldown_cmark::{Alignment, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{
+    Alignment, BlockQuoteKind, CodeBlockKind, Event, Options, Parser, Tag, TagEnd,
+};
 
-use super::{Align, Attrs, Block, CodeBlock, Document, Inline, InlineStyle, push_inline};
+use super::{
+    Align, Attrs, Block, CalloutKind, CodeBlock, Document, Footnotes, Inline, InlineStyle,
+    push_inline,
+};
 
 pub fn parse(src: &str) -> Document {
     let opts = Options::ENABLE_TABLES
         | Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TASKLISTS
         | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
-        | Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS;
+        | Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS
+        | Options::ENABLE_GFM
+        | Options::ENABLE_FOOTNOTES;
     let newlines: Vec<usize> = src.match_indices('\n').map(|(i, _)| i).collect();
     let line_of = |offset: usize| newlines.partition_point(|&n| n < offset);
     let mut b = Builder::default();
@@ -17,6 +24,11 @@ pub fn parse(src: &str) -> Document {
         // rendered lines back to the source (e.g. to open an editor there).
         if depth == 0 && matches!(event, Event::Start(_) | Event::Rule) {
             b.block_start = line_of(range.start);
+        }
+        // Footnote definitions are listed apart from where they sit, so
+        // they keep their own line even inside a list or quote.
+        if matches!(event, Event::Start(Tag::FootnoteDefinition(_))) {
+            b.footnote_line = line_of(range.start);
         }
         match &event {
             Event::Start(_) => depth += 1,
@@ -30,12 +42,33 @@ pub fn parse(src: &str) -> Document {
 
 /// Open container blocks while walking the event stream.
 enum Frame {
-    Quote(Vec<Block>),
+    /// A block quote, or a GitHub alert when it has a kind.
+    Quote(Option<CalloutKind>, Vec<Block>),
     List {
         start: Option<u64>,
         items: Vec<Vec<Block>>,
+        tasks: Vec<Option<bool>>,
     },
-    Item(Vec<Block>),
+    /// A list item's blocks and, for a task item, whether it's done.
+    Item(Vec<Block>, Option<bool>),
+    Footnote {
+        label: String,
+        blocks: Vec<Block>,
+        /// Source line of the definition.
+        line: usize,
+    },
+}
+
+impl From<BlockQuoteKind> for CalloutKind {
+    fn from(k: BlockQuoteKind) -> Self {
+        match k {
+            BlockQuoteKind::Note => CalloutKind::Note,
+            BlockQuoteKind::Tip => CalloutKind::Tip,
+            BlockQuoteKind::Important => CalloutKind::Important,
+            BlockQuoteKind::Warning => CalloutKind::Warning,
+            BlockQuoteKind::Caution => CalloutKind::Caution,
+        }
+    }
 }
 
 impl From<Alignment> for Align {
@@ -78,10 +111,19 @@ struct Builder {
     metadata: bool,
     table: Option<TableState>,
     next_code_id: usize,
+    footnotes: Footnotes,
+    /// Source line of the footnote definition being read.
+    footnote_line: usize,
+    /// Inside a repeated footnote definition, which is skipped.
+    discarding: bool,
 }
 
 impl Builder {
     fn event(&mut self, event: Event) {
+        if self.discarding {
+            self.discarding = !matches!(event, Event::End(TagEnd::FootnoteDefinition));
+            return;
+        }
         match event {
             Event::Start(tag) => self.start(tag),
             Event::End(tag) => self.end(tag),
@@ -105,8 +147,13 @@ impl Builder {
                 self.flush();
                 self.push_block(Block::Rule);
             }
-            Event::TaskListMarker(done) => self.push_text(if done { "[x] " } else { "[ ] " }),
-            Event::FootnoteReference(_) | Event::InlineMath(_) | Event::DisplayMath(_) => {}
+            Event::TaskListMarker(done) => {
+                if let Some(Frame::Item(_, task)) = self.stack.last_mut() {
+                    *task = Some(done);
+                }
+            }
+            Event::FootnoteReference(label) => self.footnote_ref(&label),
+            Event::InlineMath(_) | Event::DisplayMath(_) => {}
         }
     }
 
@@ -117,18 +164,20 @@ impl Builder {
                 self.flush();
                 self.heading = Some(level as u8);
             }
-            Tag::BlockQuote(_) => {
+            Tag::BlockQuote(kind) => {
                 self.flush();
-                self.stack.push(Frame::Quote(Vec::new()));
+                self.stack
+                    .push(Frame::Quote(kind.map(CalloutKind::from), Vec::new()));
             }
             Tag::List(start) => {
                 self.flush();
                 self.stack.push(Frame::List {
                     start,
                     items: Vec::new(),
+                    tasks: Vec::new(),
                 });
             }
-            Tag::Item => self.stack.push(Frame::Item(Vec::new())),
+            Tag::Item => self.stack.push(Frame::Item(Vec::new(), None)),
             Tag::CodeBlock(kind) => {
                 self.flush();
                 let info = match kind {
@@ -159,6 +208,18 @@ impl Builder {
                 self.push_text(super::IMAGE_PREFIX);
             }
             Tag::MetadataBlock(_) => self.metadata = true,
+            Tag::FootnoteDefinition(label) => {
+                self.flush();
+                if !self.footnotes.claim(&label) {
+                    self.discarding = true;
+                    return;
+                }
+                self.stack.push(Frame::Footnote {
+                    label: label.into_string(),
+                    blocks: Vec::new(),
+                    line: self.footnote_line,
+                });
+            }
             _ => {}
         }
     }
@@ -174,21 +235,35 @@ impl Builder {
             }
             TagEnd::BlockQuote(_) => {
                 self.flush();
-                if let Some(Frame::Quote(blocks)) = self.stack.pop() {
-                    self.push_block(Block::Quote(blocks));
+                match self.stack.pop() {
+                    Some(Frame::Quote(Some(kind), blocks)) => {
+                        self.push_block(Block::Callout { kind, blocks });
+                    }
+                    Some(Frame::Quote(None, blocks)) => self.push_block(Block::Quote(blocks)),
+                    _ => {}
                 }
             }
             TagEnd::List(_) => {
-                if let Some(Frame::List { start, items }) = self.stack.pop() {
-                    self.push_block(Block::List { start, items });
+                if let Some(Frame::List {
+                    start,
+                    items,
+                    tasks,
+                }) = self.stack.pop()
+                {
+                    self.push_block(Block::List {
+                        start,
+                        items,
+                        tasks,
+                    });
                 }
             }
             TagEnd::Item => {
                 self.flush();
-                if let Some(Frame::Item(blocks)) = self.stack.pop()
-                    && let Some(Frame::List { items, .. }) = self.stack.last_mut()
+                if let Some(Frame::Item(blocks, task)) = self.stack.pop()
+                    && let Some(Frame::List { items, tasks, .. }) = self.stack.last_mut()
                 {
                     items.push(blocks);
+                    tasks.push(task);
                 }
             }
             TagEnd::CodeBlock => {
@@ -235,6 +310,17 @@ impl Builder {
             TagEnd::Link => self.style.link = None,
             TagEnd::Image => self.push_text("]"),
             TagEnd::MetadataBlock(_) => self.metadata = false,
+            TagEnd::FootnoteDefinition => {
+                self.flush();
+                if let Some(Frame::Footnote {
+                    label,
+                    blocks,
+                    line,
+                }) = self.stack.pop()
+                {
+                    self.footnotes.define(label, blocks, line);
+                }
+            }
             _ => {}
         }
     }
@@ -249,6 +335,12 @@ impl Builder {
 
     fn push_text(&mut self, text: &str) {
         push_inline(&mut self.inlines, text, &self.style);
+    }
+
+    /// A footnote reference: `[n]`, linking to the footnote's anchor.
+    fn footnote_ref(&mut self, label: &str) {
+        let r = self.footnotes.reference(label, &self.style);
+        push_inline(&mut self.inlines, &r.text, &r.style);
     }
 
     fn next_id(&mut self) -> usize {
@@ -273,7 +365,9 @@ impl Builder {
 
     fn push_block(&mut self, block: Block) {
         match self.stack.last_mut() {
-            Some(Frame::Quote(blocks) | Frame::Item(blocks)) => blocks.push(block),
+            Some(
+                Frame::Quote(_, blocks) | Frame::Item(blocks, _) | Frame::Footnote { blocks, .. },
+            ) => blocks.push(block),
             // Blocks never appear directly inside a list, only inside items.
             Some(Frame::List { .. }) | None => {
                 self.root.push(block);
@@ -284,6 +378,7 @@ impl Builder {
 
     fn finish(mut self) -> Document {
         self.flush();
+        std::mem::take(&mut self.footnotes).append_to(&mut self.root, &mut self.lines);
         Document {
             blocks: self.root,
             lines: self.lines,
@@ -357,7 +452,7 @@ mod tests {
     #[test]
     fn tight_and_nested_lists() {
         let doc = parse("- one\n- two\n  - nested\n");
-        let Block::List { start, items } = &doc.blocks[0] else {
+        let Block::List { start, items, .. } = &doc.blocks[0] else {
             panic!("expected list");
         };
         assert_eq!(*start, None);
@@ -367,9 +462,26 @@ mod tests {
     }
 
     #[test]
+    fn task_items_carry_their_state() {
+        let doc = parse("- [x] done\n- [ ] todo\n- plain\n");
+        let Block::List { items, tasks, .. } = &doc.blocks[0] else {
+            panic!("expected list");
+        };
+        assert_eq!(tasks, &[Some(true), Some(false), None]);
+        assert!(matches!(&items[0][0], Block::Paragraph(i) if plain_text(i) == "done"));
+        let mdx =
+            crate::doc::parse_for("- [x] done\n- plain\n", Some(std::path::Path::new("x.mdx")));
+        let Block::List { items, tasks, .. } = &mdx.blocks[0] else {
+            panic!("expected list");
+        };
+        assert_eq!(tasks, &[Some(true), None]);
+        assert!(matches!(&items[0][0], Block::Paragraph(i) if plain_text(i) == "done"));
+    }
+
+    #[test]
     fn code_inside_list_item() {
         let doc = parse("1. run:\n\n   ```sh\n   ls\n   ```\n");
-        let Block::List { start, items } = &doc.blocks[0] else {
+        let Block::List { start, items, .. } = &doc.blocks[0] else {
             panic!("expected list");
         };
         assert_eq!(*start, Some(1));
@@ -423,6 +535,133 @@ mod tests {
             panic!("expected paragraph");
         };
         assert_eq!(inl[1].style.link.as_deref(), Some("https://x.dev"));
+    }
+
+    #[test]
+    fn gfm_alerts_become_callouts() {
+        let doc = parse("> [!WARNING]\n> Mind the *gap*.\n\n> [!bogus]\n> plain\n");
+        let Block::Callout { kind, blocks } = &doc.blocks[0] else {
+            panic!("expected callout, got {:?}", doc.blocks[0]);
+        };
+        assert_eq!(*kind, CalloutKind::Warning);
+        assert!(matches!(&blocks[..], [Block::Paragraph(i)] if plain_text(i) == "Mind the gap."));
+        assert!(matches!(&doc.blocks[1], Block::Quote(_)));
+
+        // MDX too, where markdown-rs leaves the marker as text.
+        let mdx = crate::doc::parse_for(
+            "> [!tip]\n> Mind the *gap*.\n\n> [!TIP]\n\n> [!bogus]\n> plain\n",
+            Some(std::path::Path::new("x.mdx")),
+        );
+        let Block::Callout { kind, blocks } = &mdx.blocks[0] else {
+            panic!("expected callout, got {:?}", mdx.blocks[0]);
+        };
+        assert_eq!(*kind, CalloutKind::Tip);
+        assert!(matches!(&blocks[..], [Block::Paragraph(i)] if plain_text(i) == "Mind the gap."));
+        assert!(matches!(&mdx.blocks[1], Block::Callout { blocks, .. } if blocks.is_empty()));
+        assert!(matches!(&mdx.blocks[2], Block::Quote(_)));
+    }
+
+    #[test]
+    fn footnotes_are_numbered_and_listed_last() {
+        let doc = parse(
+            "[^b]: Bee.\n\nSee[^a] and[^B] again[^a].\n\n[^a]: Ay *one*.\n\n[^z]: Unused.\n\n# After\n",
+        );
+        let Block::Paragraph(inl) = &doc.blocks[0] else {
+            panic!("expected paragraph, got {:?}", doc.blocks[0]);
+        };
+        assert_eq!(plain_text(inl), "See[1] and[2] again[1].");
+        let refs: Vec<_> = inl.iter().filter_map(|i| i.style.link.as_deref()).collect();
+        assert_eq!(refs, ["#fn:a", "#fn:b", "#fn:a"]);
+        assert!(matches!(&doc.blocks[1], Block::Heading { .. }));
+        assert_eq!(doc.blocks[2], Block::Rule);
+        let notes: Vec<_> = doc.blocks[3..]
+            .iter()
+            .map(|b| match b {
+                Block::Footnote {
+                    label,
+                    number,
+                    blocks,
+                } => (label.as_str(), *number, blocks.len()),
+                other => panic!("expected footnote, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(notes, [("a", 1, 1), ("b", 2, 1), ("z", 3, 1)]);
+        assert_eq!(doc.lines.len(), doc.blocks.len());
+        assert_eq!(doc.lines[3], 4);
+
+        let mdx = crate::doc::parse_for(
+            "See[^a].\n\n[^a]: Ay.\n",
+            Some(std::path::Path::new("x.mdx")),
+        );
+        assert!(matches!(&mdx.blocks[0], Block::Paragraph(i) if plain_text(i) == "See[1]."));
+        assert!(matches!(&mdx.blocks[2], Block::Footnote { number: 1, .. }));
+        assert_eq!(mdx.lines, [0, 2, 2]);
+    }
+
+    #[test]
+    fn footnote_edge_cases() {
+        // Distinct labels get distinct anchors.
+        let doc = parse("A[^*] B[^†] C[^a b] D[^a-b].\n\n[^*]: 1\n[^†]: 2\n[^a b]: 3\n[^a-b]: 4\n");
+        let Block::Paragraph(inl) = &doc.blocks[0] else {
+            panic!("expected paragraph");
+        };
+        let mut refs: Vec<_> = inl.iter().filter_map(|i| i.style.link.clone()).collect();
+        refs.dedup();
+        assert_eq!(refs.len(), 4, "{refs:?}");
+
+        // The first definition of a label wins, and a repeat counts for
+        // nothing: not its references, not its code.
+        for path in ["x.md", "x.mdx"] {
+            let doc = crate::doc::parse_for(
+                "A[^a].\n\n[^a]: one\n\n[^A]: dup[^b]\n\n    ```sh\n    no\n    ```\n\n[^b]: bee\n\nB[^b].\n",
+                Some(std::path::Path::new(path)),
+            );
+            let numbers: Vec<_> = doc
+                .blocks
+                .iter()
+                .filter_map(|b| match b {
+                    Block::Footnote {
+                        label,
+                        number,
+                        blocks,
+                    } => Some((label.as_str(), *number, blocks.len())),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(numbers, [("a", 1, 1), ("b", 2, 1)], "{path}");
+        }
+
+        // Code ids follow the order blocks are shown in, even when a note
+        // with code is defined before other code.
+        for path in ["x.md", "x.mdx"] {
+            let doc = crate::doc::parse_for(
+                "x[^n]\n\n[^n]: note\n\n    ```sh\n    in note\n    ```\n\n```sh\nafter\n```\n",
+                Some(std::path::Path::new(path)),
+            );
+            let mut codes = Vec::new();
+            crate::doc::visit(&doc.blocks, &mut |b| {
+                if let Block::Code(c) = b {
+                    codes.push((c.id, c.src.clone()));
+                }
+            });
+            assert_eq!(
+                codes,
+                [(0, "after\n".to_string()), (1, "in note\n".to_string())],
+                "{path}"
+            );
+        }
+
+        // A definition inside a list keeps its own source line.
+        let doc = parse("- item[^n]\n\n  [^n]: note\n");
+        assert_eq!(doc.lines, [0, 2, 2]);
+
+        // Footnote references aren't part of a heading's anchor text.
+        let doc = parse("# Setup[^h]\n\n[^h]: x\n");
+        let Block::Heading { inlines, .. } = &doc.blocks[0] else {
+            panic!("expected heading");
+        };
+        assert_eq!(crate::doc::anchor_text(inlines), "Setup");
+        assert_eq!(plain_text(inlines), "Setup[1]");
     }
 
     #[test]

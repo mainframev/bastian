@@ -25,7 +25,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::doc::{Block, CalloutKind, Document, Inline, plain_text};
 use crate::exec::{BlockRun, Interpreters};
-use links::{is_link_style, locate_links};
+use links::{LinkRun, is_link_style, locate_links};
 use theme::Theme;
 use wrap::wrap;
 
@@ -240,7 +240,7 @@ struct Renderer<'a> {
     theme: &'a Theme,
     cx: Context<'a>,
     /// Link runs in the order they were styled, for `locate_links`.
-    link_runs: RefCell<Vec<(String, usize)>>,
+    link_runs: RefCell<Vec<LinkRun>>,
 }
 
 impl Renderer<'_> {
@@ -414,11 +414,9 @@ impl Renderer<'_> {
 
     fn runs(&self, inlines: &[Inline], base: Style) -> Vec<(String, Style)> {
         let t = self.theme;
-        let mut prev_link: Option<&str> = None;
         inlines
             .iter()
             .map(|i| {
-                let continues = prev_link.is_some() && prev_link == i.style.link.as_deref();
                 let mut s = base;
                 if i.style.strong {
                     s = s.add_modifier(Modifier::BOLD);
@@ -438,18 +436,21 @@ impl Renderer<'_> {
                 if i.style.muted {
                     s = s.fg(t.muted);
                 }
-                if let Some(url) = &i.style.link
+                if let (Some(url), Some(id)) = (&i.style.link, i.style.link_id)
                     && is_link_style(s, t)
                 {
                     let chars = i.text.chars().filter(|c| !c.is_whitespace()).count();
                     let mut link_runs = self.link_runs.borrow_mut();
                     // `[the **docs**](url)` is several inlines but one link.
                     match link_runs.last_mut() {
-                        Some(run) if continues => run.1 += chars,
-                        _ => link_runs.push((url.clone(), chars)),
+                        Some(run) if run.id == id => run.chars += chars,
+                        _ => link_runs.push(LinkRun {
+                            url: url.clone(),
+                            chars,
+                            id,
+                        }),
                     }
                 }
-                prev_link = i.style.link.as_deref();
                 (i.text.clone(), s)
             })
             .collect()

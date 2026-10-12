@@ -186,7 +186,7 @@ fn link_focus_starts_in_view_and_scrolls_to_far_links() {
     assert_eq!(r.link_focus, Some(0));
     key(&mut r, KeyCode::Char('s'));
     assert_eq!(r.link_focus, Some(1));
-    let line = r.rendered.links[r.link_stops()[1].start].line;
+    let line = r.rendered.links[r.link_stops()[1][0]].line;
     assert!((r.scroll..r.scroll + 10).contains(&line));
 
     let mut none = reader("no links here\n");
@@ -199,11 +199,79 @@ fn link_focus_starts_in_view_and_scrolls_to_far_links() {
 fn link_stops_are_links_not_urls() {
     // Separate links to the same place on consecutive lines stay separate.
     let r = reader("- [Install](a.md)\n- [Setup](a.md)\n");
-    assert_eq!(r.link_stops(), [0..1, 1..2]);
+    assert_eq!(r.link_stops(), [vec![0], vec![1]]);
     // A link with styled parts is one stop; another link to the same place
     // is another.
     let r = reader("[the **docs**](a.md) [again](a.md) and [b](b.md)\n");
     assert_eq!(r.link_stops().len(), 3, "{:?}", r.rendered.links);
+}
+
+#[test]
+fn link_stops_follow_link_occurrences() {
+    let urls = |r: &Reader| -> Vec<String> {
+        r.link_stops()
+            .iter()
+            .map(|s| r.rendered.links[s[0]].url.clone())
+            .collect()
+    };
+    // Two links to one place with nothing between them stay two.
+    let r = reader("[a](x)[b](x)\n");
+    assert_eq!(urls(&r), ["x", "x"]);
+
+    // In a table, a link wrapping in one cell and a link in the next cell
+    // keep their own targets, and each is one stop.
+    let mut r = Reader::new(
+        "t.md".into(),
+        parse("| a | b |\n|---|---|\n| [a long link that wraps](one.md) | [two](two.md) |\n"),
+        Theme::dark(),
+        80,
+    );
+    r.layout(22, 10);
+    assert_eq!(urls(&r), ["one.md", "two.md"]);
+    assert!(r.link_stops()[0].len() > 1, "{:?}", r.rendered.links);
+    for &i in &r.link_stops()[0] {
+        assert_eq!(r.rendered.links[i].url, "one.md");
+    }
+
+    // An MDX tag inside a link isn't drawn as a link, and doesn't tie the
+    // link to the one before it.
+    let doc = bastian::doc::parse_for(
+        "[old](y) [<Badge/>new](x)\n",
+        Some(std::path::Path::new("t.mdx")),
+    );
+    let mut r = Reader::new("t.mdx".into(), doc, Theme::dark(), 80);
+    r.layout(80, 10);
+    assert_eq!(urls(&r), ["y", "x"]);
+}
+
+#[test]
+fn link_focus_starts_with_a_link_wrapping_into_view() {
+    let words = "word ".repeat(30);
+    let src = format!("[{words}](#x)\n\nafter [b](#b)\n");
+    let mut r = Reader::new("t.md".into(), parse(&src), Theme::dark(), 20);
+    r.layout(20, 3);
+    // Scroll so the link's first line is above the view but its rest shows.
+    r.scroll = 2;
+    key(&mut r, KeyCode::Char('s'));
+    assert_eq!(r.link_focus, Some(0));
+}
+
+#[test]
+fn previews_read_mdx_titles_and_whole_notes() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("page.mdx"),
+        "import X from './x'\n\n<Page>\n\n# Inside JSX\n\n</Page>\n",
+    )
+    .unwrap();
+    let src =
+        "[page](page.mdx) and a note[^t].\n\n[^t]: | k | v |\n    |---|---|\n    | key | value |\n";
+    let mut r = reader(src);
+    r.base_dir = dir.path().to_path_buf();
+    key(&mut r, KeyCode::Char('s'));
+    assert_eq!(r.link_preview, "→ page.mdx · Inside JSX");
+    key(&mut r, KeyCode::Char('s'));
+    assert_eq!(r.link_preview, "[1] k v key value");
 }
 
 #[test]

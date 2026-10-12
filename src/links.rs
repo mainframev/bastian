@@ -8,8 +8,8 @@ pub struct Link {
     pub url: String,
 }
 
-/// Links in document order. Adjacent runs pointing at the same URL (e.g. a
-/// partly bold link) are merged into one.
+/// Links in document order. The parts of one link (e.g. a partly bold
+/// one) are merged.
 pub fn collect(doc: &Document) -> Vec<Link> {
     let mut out = Vec::new();
     doc::visit(&doc.blocks, &mut |b| match b {
@@ -27,21 +27,22 @@ pub fn collect(doc: &Document) -> Vec<Link> {
 }
 
 fn inline_links(inlines: &[Inline], out: &mut Vec<Link>) {
-    let mut prev: Option<&str> = None;
+    let mut prev: Option<usize> = None;
     for i in inlines {
-        match (&i.style.link, prev) {
-            (Some(url), Some(p)) if p == url => {
+        match &i.style.link {
+            // Another part of the same link, e.g. its bold words.
+            Some(_) if prev.is_some() && i.style.link_id == prev => {
                 if let Some(last) = out.last_mut() {
                     last.text.push_str(&i.text);
                 }
             }
-            (Some(url), _) => out.push(Link {
+            Some(url) => out.push(Link {
                 text: i.text.clone(),
                 url: url.clone(),
             }),
-            (None, _) => {}
+            None => {}
         }
-        prev = i.style.link.as_deref();
+        prev = i.style.link_id;
     }
 }
 

@@ -47,7 +47,7 @@ pub(super) fn draw_hyperlinks(
     r: &Reader,
     content: Rect,
     end: usize,
-    skip: &std::ops::Range<usize>,
+    skip: &[usize],
 ) {
     let first = r.rendered.links.partition_point(|l| l.line < r.scroll);
     for (i, link) in r.rendered.links[first..]

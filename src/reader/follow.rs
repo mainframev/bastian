@@ -9,23 +9,40 @@ use crate::nav::{self, Motion};
 use crate::render;
 
 impl Reader {
-    /// Absolute target for a link written as `url`, for terminal hyperlinks:
-    /// URLs as they are, relative links against the remote document's URL
-    /// or as `file://` paths. In-document `#anchors` have none.
+    /// Absolute target for a link written as `url`, for terminal hyperlinks.
+    /// A click there opens without asking, so only links bastian would open
+    /// without asking get one: web and mail URLs, and existing local
+    /// Markdown files as `file://` URLs. In a remote document, links resolve
+    /// against its URL and only web targets qualify. In-document `#anchors`,
+    /// other schemes and other local files have none; the link picker still
+    /// follows them, behind a prompt.
     pub fn hyperlink_target(&self, url: &str) -> Option<String> {
         if url.starts_with('#') {
             return None;
         }
-        if let Ok(abs) = url::Url::parse(url) {
-            return Some(abs.to_string());
-        }
         if let Some(base) = &self.remote_base {
-            return crate::remote::resolve_link(base, url).map(|u| u.to_string());
+            return crate::remote::resolve_link(base, url)
+                .map(|u| u.to_string())
+                .filter(|u| links::is_web(u));
+        }
+        if let Ok(abs) = url::Url::parse(url) {
+            if links::is_web(abs.as_str()) {
+                return Some(abs.to_string());
+            }
+            // `to_file_path` doesn't check the scheme itself.
+            if abs.scheme() != "file" {
+                return None;
+            }
+            let path = abs.to_file_path().ok()?;
+            return is_markdown_file(&path).then(|| abs.to_string());
         }
         let (path, fragment) = url
             .split_once('#')
             .map_or((url, None), |(p, f)| (p, Some(f)));
         let abs = std::path::absolute(self.base_dir.join(path)).ok()?;
+        if !is_markdown_file(&abs) {
+            return None;
+        }
         let mut file = url::Url::from_file_path(abs).ok()?;
         file.set_fragment(fragment);
         Some(file.to_string())
@@ -62,7 +79,7 @@ impl Reader {
         {
             return match crate::remote::resolve_link(base, url) {
                 Some(target) if crate::remote::is_document(&target) => Action::OpenRemote(target),
-                Some(target) => Action::OpenExternal(target.to_string()),
+                Some(target) => self.open_external(target.to_string()),
                 None => {
                     self.message = Some(format!("can't resolve link {url}"));
                     Action::None
@@ -71,7 +88,7 @@ impl Reader {
         }
         match links::resolve(url, &self.base_dir) {
             Target::Document(path) => Action::OpenDocument(path),
-            Target::External(target) => Action::OpenExternal(target),
+            Target::External(target) => self.open_external(target),
             Target::Anchor(anchor) => {
                 match self.heading_line(&anchor) {
                     Some(line) => self.jump_to(line),
@@ -84,6 +101,30 @@ impl Reader {
                 Action::None
             }
         }
+    }
+
+    /// Web and mail links open right away; anything else could launch an
+    /// app or run a script, so it waits for a yes/no.
+    fn open_external(&mut self, target: String) -> Action {
+        if links::is_web(&target) {
+            Action::OpenExternal(target)
+        } else {
+            self.confirm_open = Some(target);
+            Action::None
+        }
+    }
+
+    pub(super) fn on_open_confirm_key(&mut self, key: KeyEvent) -> Action {
+        match key.code {
+            KeyCode::Char('y' | 'Y') | KeyCode::Enter => {
+                if let Some(target) = self.confirm_open.take() {
+                    return Action::OpenExternal(target);
+                }
+            }
+            KeyCode::Char('n' | 'N' | 'q') | KeyCode::Esc => self.confirm_open = None,
+            _ => {}
+        }
+        Action::None
     }
 
     /// Rendered line of the heading whose GitHub-style slug is `anchor`.
@@ -282,6 +323,14 @@ fn blocks_text(blocks: &[Block]) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// Whether `path` is an existing file with a Markdown extension.
+fn is_markdown_file(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(doc::is_markdown_ext)
+        && path.is_file()
 }
 
 /// `(anchor text, shown text)` of every heading.

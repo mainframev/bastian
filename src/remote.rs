@@ -226,10 +226,14 @@ pub fn resolve_link(base: &Url, href: &str) -> Option<Url> {
 }
 
 /// Whether a resolved link points at a document bastian should open itself.
+/// Only http(s): other schemes (`file:`, `vscode:`, …) go to the opener,
+/// which asks first.
 pub(crate) fn is_document(url: &Url) -> bool {
-    url.path()
-        .rsplit_once('.')
-        .is_some_and(|(_, ext)| doc::is_markdown_ext(ext))
+    matches!(url.scheme(), "http" | "https")
+        && url
+            .path()
+            .rsplit_once('.')
+            .is_some_and(|(_, ext)| doc::is_markdown_ext(ext))
 }
 
 #[cfg(test)]
@@ -326,6 +330,13 @@ mod tests {
         assert!(is_document(&docs));
         let up = resolve_link(&base, "../other/x.png").unwrap();
         assert!(!is_document(&up));
+        for other in [
+            "file:///tmp/a.md",
+            "vscode://file/a.md",
+            "mailto:user@example.md",
+        ] {
+            assert!(!is_document(&Url::parse(other).unwrap()), "{other}");
+        }
         let abs = resolve_link(&base, "https://example.com/").unwrap();
         assert_eq!(abs.as_str(), "https://example.com/");
     }

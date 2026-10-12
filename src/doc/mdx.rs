@@ -91,7 +91,7 @@ impl Mapper {
                 let id = self.next_id();
                 out.push(Block::Code(CodeBlock {
                     id,
-                    lang: c.lang.clone(),
+                    lang: super::parse::lang_of(&info),
                     attrs: Attrs::parse(&info),
                     src: format!("{}\n", c.value),
                 }));
@@ -392,6 +392,16 @@ Use <Badge>new</Badge> for the inline API and {props.version} too.
         assert_eq!(code.attrs.name.as_deref(), Some("demo"));
         assert_eq!(code.src, "echo hi\n");
         assert_eq!(code.id, 0);
+    }
+
+    #[test]
+    fn attributes_glued_to_the_language_are_not_part_of_it() {
+        let doc = parse("```sh{name=x}\necho hi\n```\n").unwrap();
+        let Some(Block::Code(code)) = doc.blocks.first() else {
+            panic!("expected a code block: {doc:?}");
+        };
+        assert_eq!(code.lang.as_deref(), Some("sh"));
+        assert_eq!(code.attrs.name.as_deref(), Some("x"));
     }
 
     #[test]

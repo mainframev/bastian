@@ -91,8 +91,8 @@ fn parse_duration(s: &str) -> Option<Duration> {
     Some(match unit {
         "" | "s" => Duration::from_secs(n),
         "ms" => Duration::from_millis(n),
-        "m" => Duration::from_secs(n * 60),
-        "h" => Duration::from_secs(n * 3600),
+        "m" => Duration::from_secs(n.checked_mul(60)?),
+        "h" => Duration::from_secs(n.checked_mul(3600)?),
         _ => return None,
     })
 }
@@ -142,5 +142,6 @@ mod tests {
         assert_eq!(parse_duration("10"), Some(Duration::from_secs(10)));
         assert_eq!(parse_duration("1h"), Some(Duration::from_hours(1)));
         assert_eq!(parse_duration("x"), None);
+        assert_eq!(parse_duration("99999999999999999h"), None);
     }
 }

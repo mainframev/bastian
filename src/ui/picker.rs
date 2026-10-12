@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
-use super::status;
+use super::status::{self, Place};
 use crate::picker::ThemePicker;
 use crate::render::theme::{Appearance, Theme};
 
@@ -11,23 +11,17 @@ use crate::render::theme::{Appearance, Theme};
 pub fn draw(frame: &mut Frame, t: &Theme, p: &ThemePicker) {
     // Leave room for the border and the status bar.
     let rows = frame.area().height.saturating_sub(4).max(1) as usize;
-    let start = status::window(p.selected, p.entries.len(), rows, true);
     let name_w = p.entries.iter().map(|e| e.name.len()).max().unwrap_or(0);
     let lines: Vec<Line> = p
         .entries
         .iter()
         .enumerate()
-        .skip(start)
-        .take(rows)
         .map(|(i, e)| {
             let selected = i == p.selected;
-            let mut spans = vec![
-                status::select_marker(t, selected),
-                Span::styled(
-                    format!("{:<name_w$}  ", e.name),
-                    status::row_style(t, selected),
-                ),
-            ];
+            let mut spans = vec![Span::styled(
+                format!("{:<name_w$}  ", e.name),
+                status::row_style(t, selected),
+            )];
             match &e.theme {
                 Ok(theme) => {
                     let kind = match theme.appearance {
@@ -51,7 +45,7 @@ pub fn draw(frame: &mut Frame, t: &Theme, p: &ThemePicker) {
         p.selected + 1,
         p.entries.len()
     );
-    status::side_panel(frame, t, &title, lines);
+    status::list_popup(frame, t, &title, lines, p.selected, rows, Place::Right);
     if let Err(e) = &p.entries[p.selected].theme {
         let area = frame.area();
         let y = area.bottom().saturating_sub(2);

@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, Padding, Paragraph};
+use ratatui::widgets::{Block, Clear, HighlightSpacing, List, ListState, Padding, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
 use crate::prompt::Prompt;
@@ -114,25 +114,6 @@ pub fn find_line(t: &Theme, text: &str, cursor: Option<usize>) -> Line<'static> 
     ])
 }
 
-/// The `▶ ` in front of the selected row of a popup list, blank otherwise.
-pub fn select_marker(t: &Theme, selected: bool) -> Span<'static> {
-    Span::styled(
-        if selected { "▶ " } else { "  " },
-        Style::default().fg(t.accent),
-    )
-}
-
-/// First of `rows` visible rows of a `len`-row list so `selected` shows:
-/// in the middle when `centered`, else as low as it can go.
-pub fn window(selected: usize, len: usize, rows: usize, centered: bool) -> usize {
-    let above = if centered {
-        rows / 2
-    } else {
-        rows.saturating_sub(1)
-    };
-    selected.saturating_sub(above).min(len.saturating_sub(rows))
-}
-
 /// The accent-bordered, padded block around popups.
 pub fn panel_block<'a>(t: &Theme, title: impl Into<Line<'a>>) -> Block<'a> {
     Block::bordered()
@@ -142,53 +123,81 @@ pub fn panel_block<'a>(t: &Theme, title: impl Into<Line<'a>>) -> Block<'a> {
         .style(Style::default().bg(t.surface))
 }
 
+/// Where a popup goes on screen.
+#[derive(Clone, Copy)]
+pub enum Place {
+    /// Centered.
+    Center,
+    /// Against the right edge, below the top row, so the screen behind
+    /// stays visible.
+    Right,
+}
+
 /// A bordered box centered on screen.
 pub fn modal(frame: &mut Frame, t: &Theme, title: &str, lines: Vec<Line>) {
-    let area = frame.area();
-    let (width, height) = box_size(area, title, &lines);
-    let rect = Rect::new(
-        area.x + area.width.saturating_sub(width) / 2,
-        area.y + area.height.saturating_sub(height) / 2,
-        width,
-        height,
-    );
-    boxed(frame, t, title, lines, rect);
-}
-
-/// Like `modal`, but against the right edge (above the status bar), so the
-/// screen behind stays visible.
-pub fn side_panel(frame: &mut Frame, t: &Theme, title: &str, lines: Vec<Line>) {
-    let area = frame.area();
-    let (width, height) = box_size(area, title, &lines);
-    let height = height.min(area.height.saturating_sub(2));
-    let rect = Rect::new(
-        area.right().saturating_sub(width + 1),
-        area.y + 1,
-        width,
-        height,
-    );
-    boxed(frame, t, title, lines, rect);
-}
-
-/// Border, padding and title around `lines`, fitted to `area`.
-fn box_size(area: Rect, title: &str, lines: &[Line]) -> (u16, u16) {
-    let inner_w = lines
-        .iter()
-        .map(Line::width)
-        .chain(std::iter::once(title.width()))
-        .max()
-        .unwrap_or(20);
-    let width = (inner_w as u16 + 4).min(area.width);
-    let height = (lines.len() as u16 + 2).min(area.height);
-    (width, height)
-}
-
-fn boxed(frame: &mut Frame, t: &Theme, title: &str, lines: Vec<Line>, rect: Rect) {
+    let rect = popup_rect(frame.area(), title, &lines, 0, lines.len(), Place::Center);
     frame.render_widget(Clear, rect);
     frame.render_widget(
         Paragraph::new(lines).block(panel_block(t, title.to_string())),
         rect,
     );
+}
+
+/// A popup list of `lines` showing at most `rows` of them, with `selected`
+/// marked `▶ ` and kept in view. Right-docked lists keep the selection
+/// mid-list while scrolling; centered lists keep it at the edge.
+pub fn list_popup(
+    frame: &mut Frame,
+    t: &Theme,
+    title: &str,
+    lines: Vec<Line>,
+    selected: usize,
+    rows: usize,
+    place: Place,
+) {
+    let marker = Span::styled("▶ ", Style::default().fg(t.accent));
+    let rect = popup_rect(frame.area(), title, &lines, marker.width(), rows, place);
+    let padding = match place {
+        Place::Center => 0,
+        Place::Right => rows / 2,
+    };
+    let list = List::new(lines)
+        .block(panel_block(t, title.to_string()))
+        .highlight_symbol(marker)
+        .highlight_spacing(HighlightSpacing::Always)
+        .scroll_padding(padding);
+    let mut state = ListState::default().with_selected(Some(selected));
+    frame.render_widget(Clear, rect);
+    frame.render_stateful_widget(list, rect, &mut state);
+}
+
+/// The box for at most `rows` of `lines`, each `extra` columns wider:
+/// border, padding and title, fitted to `area` and put at `place`.
+fn popup_rect(
+    area: Rect,
+    title: &str,
+    lines: &[Line],
+    extra: usize,
+    rows: usize,
+    place: Place,
+) -> Rect {
+    let inner_w = lines
+        .iter()
+        .map(|l| l.width() + extra)
+        .chain(std::iter::once(title.width()))
+        .max()
+        .unwrap_or(20);
+    let width = (inner_w as u16 + 4).min(area.width);
+    let height = (lines.len().min(rows) as u16 + 2).min(area.height);
+    match place {
+        Place::Center => area.centered(Constraint::Length(width), Constraint::Length(height)),
+        Place::Right => Rect::new(
+            area.right().saturating_sub(width + 1),
+            area.y + 1,
+            width,
+            height.min(area.height.saturating_sub(2)),
+        ),
+    }
 }
 
 /// Key reference overlay: `(keys, what they do)` rows in a modal.
@@ -216,4 +225,38 @@ pub fn help(frame: &mut Frame, t: &Theme, keys: &[(&str, &str)]) {
         Style::default().fg(t.muted),
     ));
     modal(frame, t, " keys ", lines);
+}
+
+#[cfg(test)]
+mod tests {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    use super::*;
+
+    fn rows(t: &Terminal<TestBackend>) -> Vec<String> {
+        let buf = t.backend().buffer();
+        (0..buf.area.height)
+            .map(|y| (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect())
+            .collect()
+    }
+
+    #[test]
+    fn list_popup_keeps_the_selection_in_view() {
+        let theme = Theme::dark();
+        let lines: Vec<Line> = (0..20).map(|i| Line::raw(format!("item {i}"))).collect();
+        let mut term = Terminal::new(TestBackend::new(30, 10)).unwrap();
+        term.draw(|f| list_popup(f, &theme, " t ", lines.clone(), 15, 4, Place::Center))
+            .unwrap();
+        let screen = rows(&term);
+        let marked: Vec<&String> = screen.iter().filter(|r| r.contains('▶')).collect();
+        assert_eq!(marked.len(), 1, "{screen:#?}");
+        assert!(marked[0].contains("▶ item 15"), "{screen:#?}");
+        // Four rows inside the border, ending on the selection.
+        assert!(
+            screen.iter().any(|r| r.contains("  item 12")),
+            "{screen:#?}"
+        );
+        assert!(!screen.iter().any(|r| r.contains("item 16")), "{screen:#?}");
+    }
 }

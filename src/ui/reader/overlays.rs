@@ -6,7 +6,7 @@ use ratatui::widgets::Clear;
 use unicode_width::UnicodeWidthStr;
 
 use crate::reader::{LinkPicker, Reader};
-use crate::ui::status;
+use crate::ui::status::{self, Place};
 use crate::ui::text::take_width;
 
 /// The outline tree, docked to the right.
@@ -45,14 +45,11 @@ pub(super) fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
     let area = frame.area();
     // Leave room for the border and a margin around the box.
     let rows = area.height.saturating_sub(6).max(1) as usize;
-    let start = status::window(picker.selected, picker.links.len(), rows, false);
     let max_w = area.width.saturating_sub(10) as usize;
     let lines: Vec<Line> = picker
         .links
         .iter()
         .enumerate()
-        .skip(start)
-        .take(rows)
         .map(|(i, link)| {
             let selected = i == picker.selected;
             let text_style = status::row_style(t, selected);
@@ -61,7 +58,6 @@ pub(super) fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
             // Both are starts of `entry`, so the shorter one ends on a char.
             let (text, url) = shown.split_at(link.text.len().min(shown.len()));
             Line::from(vec![
-                status::select_marker(t, selected),
                 Span::styled(text.to_string(), text_style),
                 Span::styled(url.to_string(), Style::default().fg(t.muted)),
             ])
@@ -72,7 +68,15 @@ pub(super) fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
         picker.selected + 1,
         picker.links.len()
     );
-    status::modal(frame, t, &title, lines);
+    status::list_popup(
+        frame,
+        t,
+        &title,
+        lines,
+        picker.selected,
+        rows,
+        Place::Center,
+    );
 }
 
 pub(super) fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {

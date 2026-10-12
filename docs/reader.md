@@ -91,7 +91,7 @@ save.
 Leaving a file (going back, following a link or quitting) remembers the
 section you were reading, and opening it again scrolls back there, even at a
 different width. Positions live in `$XDG_STATE_HOME/bastian/positions.json`
-(or `~/.local/state/bastian/`) and are forgotten after 90 days. Set
+(or `~/.local/state/bastian/positions.json`) and are forgotten after 90 days. Set
 `remember_position = false` to turn this off.
 
 ## Copying

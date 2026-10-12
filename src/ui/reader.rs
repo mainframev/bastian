@@ -2,10 +2,11 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, Padding, Paragraph};
+use ratatui::widgets::{Clear, Paragraph};
 
 pub use super::MARGIN;
 use super::status;
+use super::text::highlight;
 use crate::reader::{LinkPicker, Reader};
 
 pub fn draw(frame: &mut Frame, r: &mut Reader) {
@@ -209,13 +210,7 @@ fn draw_outline(frame: &mut Frame, r: &mut Reader) {
     );
     let tree = tui_tree_widget::Tree::new(&outline.items)
         .expect("heading ids are unique")
-        .block(
-            Block::bordered()
-                .title(Span::styled(title, Style::default().fg(t.accent)))
-                .border_style(Style::default().fg(t.accent))
-                .padding(Padding::horizontal(1))
-                .style(Style::default().bg(t.surface)),
-        )
+        .block(status::panel_block(&t, title))
         .style(Style::default().fg(t.text))
         .highlight_style(status::row_style(&t, true))
         .highlight_symbol("▶ ")
@@ -231,7 +226,7 @@ fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
     let area = frame.area();
     // Leave room for the border and a margin around the box.
     let rows = area.height.saturating_sub(6).max(1) as usize;
-    let start = picker.selected.saturating_sub(rows.saturating_sub(1));
+    let start = status::window(picker.selected, picker.links.len(), rows, false);
     let max_w = area.width.saturating_sub(10) as usize;
     let lines: Vec<Line> = picker
         .links
@@ -241,7 +236,6 @@ fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
         .take(rows)
         .map(|(i, link)| {
             let selected = i == picker.selected;
-            let marker = if selected { "▶ " } else { "  " };
             let text_style = status::row_style(t, selected);
             let entry = format!("{}  {}", link.text, link.url);
             let shown: String = entry.chars().take(max_w.saturating_sub(2)).collect();
@@ -251,7 +245,7 @@ fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
                 shown.chars().skip(split).collect(),
             );
             Line::from(vec![
-                Span::styled(marker, Style::default().fg(t.accent)),
+                status::select_marker(t, selected),
                 Span::styled(text, text_style),
                 Span::styled(url, Style::default().fg(t.muted)),
             ])
@@ -385,11 +379,6 @@ fn draw_find(frame: &mut Frame, r: &Reader, area: Rect) {
         height: 1,
         ..super::inset(area)
     };
-    let text = match (&r.prompt, &r.search) {
-        (Some(p), _) => p.text(),
-        (None, Some(s)) => s.query.as_str(),
-        (None, None) => "",
-    };
     let count = match &r.search {
         Some(s) if s.matches.is_empty() => "no matches".to_string(),
         Some(s) => format!("{}/{}", s.current + 1, s.matches.len()),
@@ -400,68 +389,7 @@ fn draw_find(frame: &mut Frame, r: &Reader, area: Rect) {
         Constraint::Length(count.chars().count() as u16),
     ])
     .areas(area);
-    frame.render_widget(
-        status::find_line(
-            t,
-            text,
-            r.prompt.as_ref().map(super::super::prompt::Prompt::cursor),
-        ),
-        left,
-    );
+    let query = r.search.as_ref().map_or("", |s| s.query.as_str());
+    frame.render_widget(status::find_prompt(t, r.prompt.as_ref(), query), left);
     frame.render_widget(Span::styled(count, Style::default().fg(t.muted)), right);
-}
-
-/// Restyle char ranges of `line`, splitting spans where needed.
-fn highlight(line: &Line<'static>, ranges: &[(usize, usize, Style)]) -> Line<'static> {
-    if ranges.is_empty() {
-        return line.clone();
-    }
-    let style_at = |pos: usize| {
-        ranges
-            .iter()
-            .find(|(s, e, _)| (*s..*e).contains(&pos))
-            .map(|r| r.2)
-    };
-    let mut spans = Vec::new();
-    let mut pos = 0;
-    for span in &line.spans {
-        let mut buf = String::new();
-        let mut cur: Option<Style> = None;
-        for c in span.content.chars() {
-            let hl = style_at(pos);
-            if hl != cur && !buf.is_empty() {
-                let style = cur.map_or(span.style, |h| span.style.patch(h));
-                spans.push(Span::styled(std::mem::take(&mut buf), style));
-            }
-            cur = hl;
-            buf.push(c);
-            pos += 1;
-        }
-        if !buf.is_empty() {
-            let style = cur.map_or(span.style, |h| span.style.patch(h));
-            spans.push(Span::styled(buf, style));
-        }
-    }
-    Line::from(spans).style(line.style)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn highlight_splits_across_spans() {
-        let line = Line::from(vec![Span::raw("ab"), Span::raw("cd")]);
-        let hl = Style::default().bold();
-        let out = highlight(&line, &[(1, 3, hl)]);
-        let parts: Vec<(&str, bool)> = out
-            .spans
-            .iter()
-            .map(|s| (s.content.as_ref(), s.style == hl))
-            .collect();
-        assert_eq!(
-            parts,
-            [("a", false), ("b", true), ("c", true), ("d", false)]
-        );
-    }
 }

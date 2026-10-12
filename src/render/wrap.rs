@@ -125,10 +125,7 @@ mod tests {
     use super::*;
 
     fn text(lines: &[Line]) -> Vec<String> {
-        lines
-            .iter()
-            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
-            .collect()
+        lines.iter().map(crate::render::plain).collect()
     }
 
     fn run(s: &str) -> Vec<(String, Style)> {

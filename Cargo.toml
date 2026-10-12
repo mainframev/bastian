@@ -2,7 +2,14 @@
 name = "bastian"
 version = "0.1.0"
 edition = "2024"
+description = "A terminal Markdown reader"
 license = "MIT"
+repository = "https://github.com/mainframev/bastian"
+readme = "README.md"
+keywords = ["markdown", "terminal", "tui", "reader", "cli"]
+categories = ["command-line-utilities"]
+# README images and repo tooling, not needed to build the crate.
+exclude = ["assets/", "demo/", ".github/", ".githooks/", "justfile", "cliff.toml"]
 
 [dependencies]
 anyhow = "1.0.104"

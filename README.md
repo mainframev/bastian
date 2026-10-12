@@ -24,7 +24,14 @@ ends up inside it.
 
 ## Install
 
-bastian is built with Cargo; get it with [rustup](https://rustup.rs) if you
+With [Homebrew](https://brew.sh) on macOS or Linux, which also installs the
+shell completions and the man page:
+
+```sh {norun}
+brew install mainframev/tap/bastian
+```
+
+Or build it with Cargo; get it with [rustup](https://rustup.rs) if you
 don't have it. Then install it from crates.io:
 
 ```sh {name=install}

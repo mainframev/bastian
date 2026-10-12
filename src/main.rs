@@ -112,8 +112,13 @@ fn main() -> Result<()> {
     };
     let tui = pick_theme || (!cli.print && out.pager.is_none() && stdout_tty);
     // Plain output has no colors, so it skips the background query.
-    let (settings, current) =
-        Settings::from_resolved(resolved, themes_dir.as_deref(), tui || out.color, tui)?;
+    let (settings, current) = Settings::from_resolved(
+        resolved,
+        themes_dir.as_deref(),
+        tui || out.color,
+        tui,
+        stdout_tty,
+    )?;
     let theme_files = app::ThemeFiles {
         current,
         ..theme_files

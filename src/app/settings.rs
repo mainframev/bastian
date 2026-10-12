@@ -53,16 +53,23 @@ pub struct Settings {
 
 impl Settings {
     /// Turn resolved configuration into what the app runs with. `colored` says
-    /// whether the theme's colors will show; if not, `auto` doesn't ask the
-    /// terminal for its background.
+    /// whether the theme's colors will show; if not, `auto` doesn't look at the
+    /// background. `stdout_tty` says whether stdout is a terminal: behind a
+    /// pipe the reader (`less -R`, say) shares the terminal, and the query's
+    /// raw mode and reply would get mixed up with its own, so only
+    /// `COLORFGBG` is consulted.
     pub fn from_resolved(
         r: config::Resolved,
         themes_dir: Option<&Path>,
         colored: bool,
         tui: bool,
+        stdout_tty: bool,
     ) -> Result<(Settings, String)> {
-        let light =
-            colored && r.theme.value == "auto" && term::background() == Some(Background::Light);
+        // The TUI only runs with a terminal on stdout.
+        let query = tui || stdout_tty;
+        let light = colored
+            && r.theme.value == "auto"
+            && term::background(query) == Some(Background::Light);
         let name = config::theme_name(&r, light).to_string();
         let scan = browser::Scan {
             all: r.all.value,

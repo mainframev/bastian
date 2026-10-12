@@ -74,6 +74,26 @@ fn footnote_reference_scrolls_to_its_note() {
 }
 
 #[test]
+fn footnote_reference_in_a_title_is_listed_and_followed() {
+    let filler: String = (0..40).map(|i| format!("para {i}\n\n")).collect();
+    let src = format!("# Title[^t]\n\n{filler}[^t]: Where the title comes from.\n");
+    let mut r = reader(&src);
+    key(&mut r, KeyCode::Char('L'));
+    let picker = r.link_picker.as_ref().expect("the title's reference is listed");
+    assert_eq!(picker.links[0].url, "#fn:t");
+    key(&mut r, KeyCode::Enter);
+    let shown: Vec<String> = r.rendered.lines[r.scroll..]
+        .iter()
+        .take(10)
+        .map(bastian::render::plain)
+        .collect();
+    assert!(
+        shown.iter().any(|l| l == "[1] Where the title comes from."),
+        "{shown:?}"
+    );
+}
+
+#[test]
 fn footnote_targets_never_hit_a_heading() {
     // A heading whose slug looks like a footnote anchor.
     let filler: String = (0..40).map(|i| format!("para {i}\n\n")).collect();

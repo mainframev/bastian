@@ -46,6 +46,18 @@ pub fn shorten_right(s: &str, max: usize) -> String {
     out
 }
 
+/// The longest start of `s` that fits in `max` columns.
+pub fn take_width(s: &str, max: usize) -> &str {
+    let mut w = 0;
+    for (i, c) in s.char_indices() {
+        w += c.width().unwrap_or(0);
+        if w > max {
+            return &s[..i];
+        }
+    }
+    s
+}
+
 /// Restyle char ranges of `line`, splitting spans where needed.
 pub fn highlight(line: &Line<'static>, ranges: &[(usize, usize, Style)]) -> Line<'static> {
     if ranges.is_empty() {
@@ -99,6 +111,14 @@ mod tests {
         assert_eq!(shorten_right("Guide", 10), "Guide");
         assert_eq!(shorten_right("A long title", 6), "A lon…");
         assert_eq!(shorten_right("Guide", 0), "");
+    }
+
+    #[test]
+    fn takes_whole_characters_within_the_width() {
+        assert_eq!(take_width("abc", 2), "ab");
+        assert_eq!(take_width("日本語", 5), "日本");
+        assert_eq!(take_width("日本語", 1), "");
+        assert_eq!(take_width("ab", 9), "ab");
     }
 
     #[test]

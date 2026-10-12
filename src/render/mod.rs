@@ -414,9 +414,11 @@ impl Renderer<'_> {
 
     fn runs(&self, inlines: &[Inline], base: Style) -> Vec<(String, Style)> {
         let t = self.theme;
+        let mut prev_link: Option<&str> = None;
         inlines
             .iter()
             .map(|i| {
+                let continues = prev_link.is_some() && prev_link == i.style.link.as_deref();
                 let mut s = base;
                 if i.style.strong {
                     s = s.add_modifier(Modifier::BOLD);
@@ -440,8 +442,14 @@ impl Renderer<'_> {
                     && is_link_style(s, t)
                 {
                     let chars = i.text.chars().filter(|c| !c.is_whitespace()).count();
-                    self.link_runs.borrow_mut().push((url.clone(), chars));
+                    let mut link_runs = self.link_runs.borrow_mut();
+                    // `[the **docs**](url)` is several inlines but one link.
+                    match link_runs.last_mut() {
+                        Some(run) if continues => run.1 += chars,
+                        _ => link_runs.push((url.clone(), chars)),
+                    }
                 }
+                prev_link = i.style.link.as_deref();
                 (i.text.clone(), s)
             })
             .collect()

@@ -200,6 +200,10 @@ fn link_stops_are_links_not_urls() {
     // Separate links to the same place on consecutive lines stay separate.
     let r = reader("- [Install](a.md)\n- [Setup](a.md)\n");
     assert_eq!(r.link_stops(), [0..1, 1..2]);
+    // A link with styled parts is one stop; another link to the same place
+    // is another.
+    let r = reader("[the **docs**](a.md) [again](a.md) and [b](b.md)\n");
+    assert_eq!(r.link_stops().len(), 3, "{:?}", r.rendered.links);
 }
 
 #[test]

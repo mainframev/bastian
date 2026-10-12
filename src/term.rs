@@ -169,6 +169,10 @@ fn readable(fd: std::os::fd::RawFd, timeout: Duration) -> bool {
         let mut set: libc::fd_set = std::mem::zeroed();
         libc::FD_ZERO(&raw mut set);
         libc::FD_SET(fd, &raw mut set);
+        #[allow(
+            clippy::cast_lossless,
+            reason = "suseconds_t is i64 on Linux but i32 on macOS, where `From<u32>` doesn't exist"
+        )]
         let mut tv = libc::timeval {
             tv_sec: timeout.as_secs() as libc::time_t,
             tv_usec: timeout.subsec_micros() as libc::suseconds_t,

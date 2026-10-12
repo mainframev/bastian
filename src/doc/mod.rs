@@ -209,11 +209,25 @@ pub struct InlineStyle {
     pub link: Option<String>,
     /// De-emphasized syntax such as inline JSX tags and expressions.
     pub muted: bool,
+    /// A footnote reference, left out of heading anchors.
+    pub footnote: bool,
 }
 
-/// Anchor (without `#`) that a footnote's references link to.
+/// Anchor (without `#`) that a footnote's references link to. Labels
+/// match case-insensitively; anything else in them is kept, so distinct
+/// labels never share an anchor.
 pub fn footnote_anchor(label: &str) -> String {
-    format!("fn-{}", crate::links::slug(label))
+    format!("fn-{}", label.to_lowercase())
+}
+
+/// A heading's text for its anchor: without footnote references, as
+/// GitHub slugs it.
+pub fn anchor_text(inlines: &[Inline]) -> String {
+    inlines
+        .iter()
+        .filter(|i| !i.style.footnote)
+        .map(|i| i.text.as_str())
+        .collect()
 }
 
 /// Footnotes gathered while parsing. References are numbered in the order
@@ -238,14 +252,19 @@ impl Footnotes {
         };
         let mut style = style.clone();
         style.link = Some(format!("#{}", footnote_anchor(label)));
+        style.footnote = true;
         Inline {
             text: format!("[{n}]"),
             style,
         }
     }
 
+    /// Record a definition; as in GitHub, the first one of a label wins.
     fn define(&mut self, label: String, blocks: Vec<Block>, line: usize) {
-        self.defs.push((label, blocks, line));
+        let key = label.to_lowercase();
+        if !self.defs.iter().any(|(l, ..)| l.to_lowercase() == key) {
+            self.defs.push((label, blocks, line));
+        }
     }
 
     /// Append a rule and the notes to a document's top-level `blocks` (and

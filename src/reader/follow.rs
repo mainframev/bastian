@@ -95,7 +95,7 @@ impl Reader {
             .enumerate()
             .find_map(|(i, b)| match b {
                 Block::Heading { inlines, .. }
-                    if links::slug(&doc::plain_text(inlines)) == anchor =>
+                    if links::slug(&doc::anchor_text(inlines)) == anchor =>
                 {
                     Some(i)
                 }
@@ -106,9 +106,9 @@ impl Reader {
             return self.rendered.block_starts.get(i).copied();
         }
         // Headings nested in quotes, lists or components: match by text.
-        let text = heading_texts(&self.doc.blocks)
+        let (_, text) = heading_texts(&self.doc.blocks)
             .into_iter()
-            .find(|h| links::slug(h) == anchor)?;
+            .find(|(a, _)| links::slug(a) == anchor)?;
         self.rendered.lines.iter().position(|line| {
             let plain = render::plain(line);
             let plain = plain.trim().trim_start_matches('#').trim();
@@ -117,11 +117,12 @@ impl Reader {
     }
 }
 
-pub(super) fn heading_texts(blocks: &[Block]) -> Vec<String> {
+/// `(anchor text, shown text)` of every heading.
+pub(super) fn heading_texts(blocks: &[Block]) -> Vec<(String, String)> {
     let mut out = Vec::new();
     doc::visit(blocks, &mut |b| {
         if let Block::Heading { inlines, .. } = b {
-            out.push(doc::plain_text(inlines));
+            out.push((doc::anchor_text(inlines), doc::plain_text(inlines)));
         }
     });
     out

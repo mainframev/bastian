@@ -25,6 +25,11 @@ pub fn parse(src: &str) -> Document {
         if depth == 0 && matches!(event, Event::Start(_) | Event::Rule) {
             b.block_start = line_of(range.start);
         }
+        // Footnote definitions are listed apart from where they sit, so
+        // they keep their own line even inside a list or quote.
+        if matches!(event, Event::Start(Tag::FootnoteDefinition(_))) {
+            b.footnote_line = line_of(range.start);
+        }
         match &event {
             Event::Start(_) => depth += 1,
             Event::End(_) => depth = depth.saturating_sub(1),
@@ -107,6 +112,8 @@ struct Builder {
     table: Option<TableState>,
     next_code_id: usize,
     footnotes: Footnotes,
+    /// Source line of the footnote definition being read.
+    footnote_line: usize,
 }
 
 impl Builder {
@@ -200,7 +207,7 @@ impl Builder {
                 self.stack.push(Frame::Footnote {
                     label: label.into_string(),
                     blocks: Vec::new(),
-                    line: self.block_start,
+                    line: self.footnote_line,
                 });
             }
             _ => {}
@@ -566,6 +573,34 @@ mod tests {
         assert!(matches!(&mdx.blocks[0], Block::Paragraph(i) if plain_text(i) == "See[1]."));
         assert!(matches!(&mdx.blocks[2], Block::Footnote { number: 1, .. }));
         assert_eq!(mdx.lines, [0, 2, 2]);
+    }
+
+    #[test]
+    fn footnote_edge_cases() {
+        // Distinct labels get distinct anchors.
+        let doc = parse("A[^*] B[^†] C[^a b] D[^a-b].\n\n[^*]: 1\n[^†]: 2\n[^a b]: 3\n[^a-b]: 4\n");
+        let Block::Paragraph(inl) = &doc.blocks[0] else {
+            panic!("expected paragraph");
+        };
+        let mut refs: Vec<_> = inl.iter().filter_map(|i| i.style.link.clone()).collect();
+        refs.dedup();
+        assert_eq!(refs.len(), 4, "{refs:?}");
+
+        // The first definition of a label wins.
+        let doc = parse("A[^a].\n\n[^a]: one\n\n[^A]: dup\n");
+        assert_eq!(doc.blocks.len(), 3);
+
+        // A definition inside a list keeps its own source line.
+        let doc = parse("- item[^n]\n\n  [^n]: note\n");
+        assert_eq!(doc.lines, [0, 2, 2]);
+
+        // Footnote references aren't part of a heading's anchor text.
+        let doc = parse("# Setup[^h]\n\n[^h]: x\n");
+        let Block::Heading { inlines, .. } = &doc.blocks[0] else {
+            panic!("expected heading");
+        };
+        assert_eq!(crate::doc::anchor_text(inlines), "Setup");
+        assert_eq!(plain_text(inlines), "Setup[1]");
     }
 
     #[test]

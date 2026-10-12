@@ -312,7 +312,7 @@ impl Renderer<'_> {
                 let first = [Span::styled(marker, Style::default().fg(t.muted))];
                 let mut out = Out::default();
                 out.append(
-                    self.blocks(blocks, width.saturating_sub(pad[0].width()), true),
+                    non_empty(self.blocks(blocks, width.saturating_sub(pad[0].width()), true)),
                     &first,
                     &pad,
                 );
@@ -412,7 +412,7 @@ impl Renderer<'_> {
                 first.insert(0, Span::raw(" ".repeat(gap)));
             }
             let inner = self.blocks(item, width.saturating_sub(marker_w), false);
-            out.append(inner, &first, &pad);
+            out.append(non_empty(inner), &first, &pad);
         }
         out
     }
@@ -453,6 +453,16 @@ impl Renderer<'_> {
     }
 }
 
+/// `out`, or a blank line when it has none, so a marker put in front of an
+/// empty list item or footnote still shows.
+fn non_empty(out: Out) -> Out {
+    if out.lines.is_empty() {
+        Out::from(vec![Line::default()])
+    } else {
+        out
+    }
+}
+
 /// `<Name ...>` but not `</Name>` or a self-closing `<Name />`.
 fn is_open_tag(label: &str) -> bool {
     label.starts_with('<') && !label.starts_with("</") && !label.ends_with("/>")
@@ -462,6 +472,22 @@ fn is_open_tag(label: &str) -> bool {
 mod tests {
     use super::*;
     use crate::doc::parse;
+
+    #[test]
+    fn empty_task_items_and_footnotes_keep_their_marker() {
+        let r = render(
+            &parse("- [ ]\n- [x] \n- c\n\nx[^a]\n\n[^a]:\n"),
+            40,
+            &Theme::dark(),
+        );
+        let lines: Vec<String> = r
+            .lines
+            .iter()
+            .map(|l| plain(l).trim_end().to_string())
+            .collect();
+        assert_eq!(lines[..3], ["☐", "☑", "• c"], "{lines:?}");
+        assert_eq!(lines.last().map(String::as_str), Some("[1]"), "{lines:?}");
+    }
 
     #[test]
     fn options_set_tab_width_and_picture_height() {

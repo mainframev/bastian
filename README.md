@@ -53,7 +53,6 @@ bastian                 # browse Markdown files under the current directory
 bastian docs/           # browse another directory
 bastian -a              # also list hidden and gitignored files
 bastian README.md       # read a file
-cat notes.md | bastian -
 bastian github.com/owner/repo         # a repository's README (GitLab too)
 bastian https://example.com/doc.md    # any Markdown URL
 bastian https://github.com/o/r/blob/main/docs/guide.md  # file pages are read raw

@@ -129,7 +129,7 @@ pub fn fetch(source: &Source) -> Result<RemoteDoc> {
 /// The raw-file URL behind a file page, for documents and images:
 /// `github.com/o/r/blob/<ref>/<path>` → `raw.githubusercontent.com/o/r/<ref>/<path>`,
 /// and GitLab's `…/-/blob/…` → `…/-/raw/…` on any host.
-pub fn raw_url(url: &Url) -> Option<Url> {
+pub(crate) fn raw_url(url: &Url) -> Option<Url> {
     let path = url.path();
     let raw = if url.host_str() == Some("github.com") {
         let mut parts = path.trim_start_matches('/').splitn(4, '/');
@@ -177,7 +177,7 @@ fn get(agent: &ureq::Agent, url: &str, accept: &str) -> Result<String> {
 }
 
 /// GET `url` as raw bytes (e.g. an image), up to `limit` bytes.
-pub fn fetch_bytes(url: &str, limit: u64) -> Result<Vec<u8>> {
+pub(crate) fn fetch_bytes(url: &str, limit: u64) -> Result<Vec<u8>> {
     respond(&agent(), url, "*/*")?
         .body_mut()
         .with_config()
@@ -224,7 +224,7 @@ pub fn resolve_link(base: &Url, href: &str) -> Option<Url> {
 }
 
 /// Whether a resolved link points at a document bastian should open itself.
-pub fn is_document(url: &Url) -> bool {
+pub(crate) fn is_document(url: &Url) -> bool {
     let path = url.path().to_ascii_lowercase();
     doc::is_markdown_ext(path.rsplit('.').next().unwrap_or("")) && path.contains('.')
 }

@@ -28,9 +28,9 @@ use terminal::with_terminal_released;
 /// Followed links push the previous reader onto `history`.
 pub struct App {
     pub settings: Settings,
-    pub browser: Option<Browser>,
-    pub reader: Option<Reader>,
-    pub history: Vec<Reader>,
+    browser: Option<Browser>,
+    reader: Option<Reader>,
+    history: Vec<Reader>,
     /// File to open in the editor once the current event is handled.
     edit: Option<(PathBuf, Option<usize>)>,
     /// Set by ctrl-z; the run loop suspends bastian like a shell job.
@@ -42,7 +42,7 @@ pub struct App {
     /// Quit once the picker closes (`bastian themes`).
     pub pick_and_exit: bool,
     /// Shown after the TUI exits, e.g. what `bastian themes` saved.
-    pub exit_note: Option<String>,
+    exit_note: Option<String>,
 }
 
 /// Theme locations and the current choice, for the theme picker.

@@ -28,7 +28,7 @@ pub fn decode(bytes: &[u8]) -> Result<String> {
 
 /// Like `decode`, but never fails: invalid bytes become U+FFFD. For
 /// best-effort reads such as a title from the start of a file.
-pub fn decode_lossy(bytes: &[u8]) -> String {
+pub(crate) fn decode_lossy(bytes: &[u8]) -> String {
     decode(bytes).unwrap_or_else(|_| String::from_utf8_lossy(bytes).into_owned())
 }
 

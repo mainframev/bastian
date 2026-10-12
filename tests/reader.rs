@@ -74,6 +74,22 @@ fn footnote_reference_scrolls_to_its_note() {
 }
 
 #[test]
+fn footnote_targets_never_hit_a_heading() {
+    // A heading whose slug looks like a footnote anchor.
+    let filler: String = (0..40).map(|i| format!("para {i}\n\n")).collect();
+    let src = format!("x[^a]\n\n# fn-a\n\n# fn:a\n\n{filler}[^a]: The note.\n");
+    let mut r = reader(&src);
+    key(&mut r, KeyCode::Char('L'));
+    key(&mut r, KeyCode::Enter);
+    let shown: Vec<String> = r.rendered.lines[r.scroll..]
+        .iter()
+        .take(10)
+        .map(bastian::render::plain)
+        .collect();
+    assert!(shown.iter().any(|l| l == "[1] The note."), "{shown:?}");
+}
+
+#[test]
 fn relative_markdown_link_opens_document() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("next.md"), "# Next\n").unwrap();

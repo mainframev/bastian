@@ -7,8 +7,39 @@ use markdown::mdast::{AlignKind, AttributeContent, AttributeValue, Node};
 use markdown::{Constructs, MdxSignal, ParseOptions};
 
 use super::{
-    Align, Attrs, Block, CodeBlock, Document, Footnotes, Inline, InlineStyle, push_inline,
+    Align, Attrs, Block, CalloutKind, CodeBlock, Document, Footnotes, Inline, InlineStyle,
+    push_inline,
 };
+
+/// A quote's blocks as a GitHub alert when its first line is just a
+/// marker like `[!NOTE]` (markdown-rs doesn't parse these), else a quote.
+fn alert(mut blocks: Vec<Block>) -> Block {
+    let kind = match blocks.first() {
+        Some(Block::Paragraph(inl)) => inl.first().and_then(|first| {
+            let line = first.text.split('\n').next()?;
+            let marker = line.trim_end().strip_prefix("[!")?.strip_suffix(']')?;
+            (first.style == InlineStyle::default())
+                .then(|| CalloutKind::from_marker(marker))
+                .flatten()
+        }),
+        _ => None,
+    };
+    let Some(kind) = kind else {
+        return Block::Quote(blocks);
+    };
+    if let Some(Block::Paragraph(inl)) = blocks.first_mut() {
+        let rest = inl[0].text.split_once('\n').map_or("", |(_, r)| r);
+        if rest.is_empty() {
+            inl.remove(0);
+        } else {
+            inl[0].text = rest.to_string();
+        }
+        if inl.is_empty() {
+            blocks.remove(0);
+        }
+    }
+    Block::Callout { kind, blocks }
+}
 
 /// Parse MDX, or `None` when the source isn't valid MDX (e.g. broken JSX),
 /// so the caller can fall back to the plain Markdown parser.
@@ -83,7 +114,7 @@ impl Mapper {
                 }),
                 children => out.push(Block::Paragraph(self.inlines(children))),
             },
-            Node::Blockquote(q) => out.push(Block::Quote(self.blocks(&q.children))),
+            Node::Blockquote(q) => out.push(alert(self.blocks(&q.children))),
             Node::List(l) => out.push(Block::List {
                 start: l.ordered.then(|| u64::from(l.start.unwrap_or(1))),
                 items: l.children.iter().map(|item| self.list_item(item)).collect(),

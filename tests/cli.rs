@@ -58,7 +58,7 @@ fn short_and_long_help_match() {
     let long = bastian(dir.path(), &["--help"], &[]);
     assert!(short.status.success());
     assert_eq!(stdout(&short), stdout(&long));
-    assert!(stdout(&short).contains("--no-images"));
+    assert!(stdout(&short).contains("--images <WHEN>"));
 }
 
 #[test]
@@ -85,7 +85,7 @@ fn print_config_names_every_source() {
 }
 
 #[test]
-fn images_flags_override_the_config_file() {
+fn images_flag_overrides_the_config_file() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("bastian")).unwrap();
     std::fs::write(dir.path().join("bastian/config.toml"), "images = false\n").unwrap();
@@ -100,11 +100,11 @@ fn images_flags_override_the_config_file() {
             .to_string()
     };
     assert!(images(&[]).starts_with("images = false"));
-    assert!(images(&["--images"]).starts_with("images = true"));
-    assert!(images(&["--images"]).ends_with("# flag"));
-    // The last of the pair wins.
-    assert!(images(&["--images", "--no-images"]).starts_with("images = false"));
-    assert!(images(&["--no-images", "--images"]).starts_with("images = true"));
+    assert!(images(&["--images", "on"]).starts_with("images = true"));
+    assert!(images(&["--images=on"]).ends_with("# flag"));
+    // The last one wins.
+    assert!(images(&["--images", "on", "--images", "off"]).starts_with("images = false"));
+    assert!(images(&["--images", "off", "--images", "on"]).starts_with("images = true"));
 }
 
 #[test]
@@ -156,7 +156,11 @@ fn printing_is_plain_unless_color_is_asked_for() {
     assert!(!stdout(&none).contains('\u{1b}'));
 
     // Display-only flags are accepted when printing.
-    let flags = bastian(dir.path(), &["-p", "--no-logo", "--no-images", doc], &[]);
+    let flags = bastian(
+        dir.path(),
+        &["-p", "--no-logo", "--images", "off", doc],
+        &[],
+    );
     assert!(flags.status.success(), "{}", stderr(&flags));
 }
 

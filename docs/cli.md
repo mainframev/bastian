@@ -51,7 +51,7 @@ instead of opening the TUI.
 | `-a`, `--all`              | also list hidden and gitignored files                                |
 | `-y`, `--yes`              | run code blocks without asking ([code blocks](code-blocks.md))       |
 | `--mouse`                  | scroll with the mouse wheel                                          |
-| `--images`, `--no-images`  | draw pictures, or keep alt text                                      |
+| `--images <on\|off>`       | draw pictures, or keep alt text                                      |
 | `--no-logo`                | hide the logo above the file list                                    |
 | `--selector <STYLE>`       | how the file list marks the selected file                            |
 | `--list-layout <LAYOUT>`   | `cards` or `compact` file list                                       |

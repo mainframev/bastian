@@ -260,23 +260,6 @@ h1_bg = "#ff9e64"
 comment = "#7a88cf"
 ```
 
-Without `extends`, a theme sets `appearance` (`"dark"` or `"light"`) and every
-color. `[ui]` colors the document: `text`, `muted`, `subtle`, `surface`,
-`accent`, `h1_fg`, `h1_bg`, `heading`, `link`, `code`, `match_bg`,
-`current_bg`, `err`, `ok`, `warn`. `[syntax]` colors code blocks: `comment`,
-`keyword`, `string`, `number`, `constant`, `function`, `type`, `operator`,
-`punctuation`, `tag`, `attribute`, `inserted`, `deleted`. The built-in themes
-in the repository's `themes/` directory are complete examples. A file named
-after a built-in replaces it; to tweak a built-in in place, extend it under its
-own name (`extends = "nord"` in `themes/nord.toml`).
-
-## Shell completions and man page
-
-```sh {norun}
-bastian completions zsh > ~/.zfunc/_bastian   # also bash, fish, elvish, powershell
-bastian man > bastian.1 && man ./bastian.1
-```
-
 ## License
 
 [MIT](LICENSE)

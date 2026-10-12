@@ -61,7 +61,7 @@ pub fn resolve(url: &str, base_dir: &Path) -> Target {
     if let Some(anchor) = url.strip_prefix('#') {
         return Target::Anchor(anchor.to_string());
     }
-    if url.contains("://") || url.starts_with("mailto:") {
+    if url.contains("://") || has_scheme(url) {
         return Target::External(url.to_string());
     }
     let path_part = url.split('#').next().unwrap_or(url);
@@ -78,6 +78,12 @@ pub fn resolve(url: &str, base_dir: &Path) -> Target {
     } else {
         Target::External(path.display().to_string())
     }
+}
+
+/// Whether `url` starts with a URI scheme (`mailto:`, `tel:`, `javascript:`,
+/// …). One-letter schemes are left out: those are Windows drive letters.
+fn has_scheme(url: &str) -> bool {
+    url::Url::parse(url).is_ok_and(|u| u.scheme().len() >= 2)
 }
 
 /// Whether `target` is a web or mail link, safe to open without asking.
@@ -158,6 +164,27 @@ mod tests {
         );
         assert!(matches!(resolve("logo.png", d), Target::External(_)));
         assert!(matches!(resolve("nope.md", d), Target::Missing(_)));
+    }
+
+    #[test]
+    fn any_uri_scheme_is_external() {
+        let d = Path::new("/nowhere");
+        for url in [
+            "mailto:a@b.c",
+            "MAILTO:a@b.c",
+            "tel:+15551234",
+            "sms:+15551234",
+            "javascript:alert(1)",
+            "vscode://file/etc/hosts",
+            "file:///Applications/X.app",
+        ] {
+            assert_eq!(resolve(url, d), Target::External(url.into()), "{url}");
+        }
+        assert!(is_web("MAILTO:a@b.c"));
+        // Drive letters and plain paths stay local.
+        for url in ["C:/docs/a.md", "c:\\docs\\a.md", "docs/a.md", "a.md#x"] {
+            assert!(matches!(resolve(url, d), Target::Missing(_)), "{url}");
+        }
     }
 
     #[test]

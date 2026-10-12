@@ -365,6 +365,8 @@ fn other_links_ask_before_opening() {
     for (url, target) in [
         ("file:///Applications/X.app", "file:///Applications/X.app"),
         ("vscode://file/etc/hosts", "vscode://file/etc/hosts"),
+        ("tel:+15551234", "tel:+15551234"),
+        ("javascript:alert(1)", "javascript:alert(1)"),
         ("setup.command", local.as_str()),
     ] {
         let mut r = picking(url, dir.path());

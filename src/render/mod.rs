@@ -11,8 +11,9 @@ mod wrap;
 
 pub use ansi::to_ansi;
 pub use code::known_extension;
-pub use plain::{plain, strip_controls, to_plain};
-pub use run::run_status;
+pub(crate) use plain::strip_controls;
+pub use plain::{plain, to_plain};
+pub(crate) use run::run_status;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -127,7 +128,7 @@ pub fn render_with(doc: &Document, width: u16, theme: &Theme, opts: Options) -> 
 /// on width or run state, so a reader keeps these across re-renders and
 /// clears them when the document changes.
 #[derive(Default)]
-pub struct Highlights(RefCell<HashMap<usize, Vec<Vec<Span<'static>>>>>);
+pub(crate) struct Highlights(RefCell<HashMap<usize, Vec<Vec<Span<'static>>>>>);
 
 impl Highlights {
     pub fn clear(&self) {
@@ -137,7 +138,7 @@ impl Highlights {
 
 /// The reader state a render draws on besides the document.
 #[derive(Clone, Copy)]
-pub struct Context<'a> {
+pub(crate) struct Context<'a> {
     /// Run status and output per code block id.
     pub runs: &'a HashMap<usize, BlockRun>,
     pub interpreters: &'a Interpreters,
@@ -148,7 +149,7 @@ pub struct Context<'a> {
 }
 
 /// Render with each code block's run status and output drawn under it.
-pub fn render_with_runs(doc: &Document, width: u16, theme: &Theme, cx: Context) -> Rendered {
+pub(crate) fn render_with_runs(doc: &Document, width: u16, theme: &Theme, cx: Context) -> Rendered {
     let r = Renderer {
         theme,
         runs: cx.runs,

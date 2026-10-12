@@ -20,7 +20,7 @@ pub fn background() -> Option<Background> {
 }
 
 /// Parse an OSC 11 reply such as `\e]11;rgb:1919/1717/2424\e\\`.
-pub fn parse_osc11(reply: &str) -> Option<Background> {
+fn parse_osc11(reply: &str) -> Option<Background> {
     let rgb = reply.split("rgb:").nth(1)?;
     let channels: Vec<f32> = rgb
         .split('/')
@@ -42,7 +42,7 @@ pub fn parse_osc11(reply: &str) -> Option<Background> {
 
 /// `COLORFGBG` is `fg;bg` (or `fg;default;bg`) with ANSI color indices; set by
 /// rxvt, Konsole and some others. Backgrounds 7 and 9–15 are light.
-pub fn from_colorfgbg(value: &str) -> Option<Background> {
+fn from_colorfgbg(value: &str) -> Option<Background> {
     let bg: u8 = value.rsplit(';').next()?.trim().parse().ok()?;
     Some(if bg == 7 || (9..=15).contains(&bg) {
         Background::Light
@@ -82,7 +82,7 @@ pub fn graphics() -> Graphics {
 }
 
 /// Read the replies to graphics queries.
-pub fn parse_graphics(reply: &[u8]) -> Graphics {
+fn parse_graphics(reply: &[u8]) -> Graphics {
     let text = String::from_utf8_lossy(reply);
     let kitty = text.contains("_Gi=31;OK");
     // `ESC [ ? 62 ; 4 ; … c`: attribute 4 is sixel.
@@ -115,7 +115,7 @@ fn da1_end(reply: &[u8]) -> Option<usize> {
 /// restored, and never leaves a reader behind.
 /// Pixel width and height of one character cell, from the terminal's
 /// window size.
-pub fn cell_pixels() -> Option<(u16, u16)> {
+pub(crate) fn cell_pixels() -> Option<(u16, u16)> {
     #[cfg(unix)]
     {
         use std::os::fd::AsRawFd;

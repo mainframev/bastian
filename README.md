@@ -23,9 +23,21 @@ ends up inside it.
 
 ## Install
 
+bastian is built with Cargo; get it with [rustup](https://rustup.rs) if you
+don't have it. Then install it from crates.io:
+
 ```sh {name=install}
-cargo install --path .
+cargo install --locked bastian
 ```
+
+For the latest unreleased changes, install from GitHub instead:
+
+```sh {norun}
+cargo install --locked --git https://github.com/mainframev/bastian
+```
+
+Either puts `bastian` in `~/.cargo/bin`, which rustup adds to your `PATH`.
+Run the same command again to update.
 
 ## Usage
 

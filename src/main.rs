@@ -246,10 +246,11 @@ fn main() -> Result<()> {
             &resolved.width,
             crossterm::terminal::size().ok().map(|(w, _)| w),
         ),
-        // A pager shows colors itself, so `auto` colors when paging too.
+        // The pager only runs on a terminal, so a tty stdout covers paging
+        // too; piped output stays plain even with the pager switched on.
         color: output::use_color(
             resolved.color.value,
-            stdout_tty || resolved.pager.value,
+            stdout_tty,
             std::env::var("NO_COLOR").ok().as_deref(),
             std::env::var("CLICOLOR_FORCE").ok().as_deref(),
         ),

@@ -5,6 +5,7 @@ mod parse;
 pub use attrs::Attrs;
 pub use parse::parse;
 
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 /// Parse a document, choosing the MDX front end for `.mdx` files. Invalid
@@ -247,22 +248,19 @@ pub fn anchor_text(inlines: &[Inline]) -> String {
 /// they first appear; definitions are held back and listed at the end.
 #[derive(Default)]
 struct Footnotes {
-    /// Lowercased labels in order of first reference.
-    refs: Vec<String>,
+    /// Lowercased label → number, in order of first reference.
+    refs: HashMap<String, usize>,
     /// `(label, blocks, source line)` of each definition.
     defs: Vec<(String, Vec<Block>, usize)>,
+    /// Lowercased labels of `defs`.
+    defined: HashSet<String>,
 }
 
 impl Footnotes {
     /// The `[n]` text for a reference to `label`, linking to its note.
     fn reference(&mut self, label: &str, style: &InlineStyle) -> Inline {
-        let key = label.to_lowercase();
-        let n = if let Some(i) = self.refs.iter().position(|l| *l == key) {
-            i + 1
-        } else {
-            self.refs.push(key);
-            self.refs.len()
-        };
+        let next = self.refs.len() + 1;
+        let n = *self.refs.entry(label.to_lowercase()).or_insert(next);
         let mut style = style.clone();
         style.link = Some(format!("#{}", footnote_anchor(label)));
         style.footnote = true;
@@ -274,8 +272,7 @@ impl Footnotes {
 
     /// Record a definition; as in GitHub, the first one of a label wins.
     fn define(&mut self, label: String, blocks: Vec<Block>, line: usize) {
-        let key = label.to_lowercase();
-        if !self.defs.iter().any(|(l, ..)| l.to_lowercase() == key) {
+        if self.defined.insert(label.to_lowercase()) {
             self.defs.push((label, blocks, line));
         }
     }
@@ -289,9 +286,8 @@ impl Footnotes {
             .defs
             .into_iter()
             .map(|(label, inner, line)| {
-                let key = label.to_lowercase();
-                let number = if let Some(i) = self.refs.iter().position(|l| *l == key) {
-                    i + 1
+                let number = if let Some(&n) = self.refs.get(&label.to_lowercase()) {
+                    n
                 } else {
                     unreferenced += 1;
                     unreferenced

@@ -486,7 +486,7 @@ mod tests {
             .map(|l| {
                 // The title's colour may sit on the line rather than the span.
                 let text = l.style.patch(l.spans[1].style);
-                (l.spans[1].content.to_string(), l.spans[0].style.fg, text.fg)
+                (l.spans[1].content.to_string(), l.spans[0].style.fg, text)
             })
             .collect();
         let expect = [
@@ -500,7 +500,11 @@ mod tests {
         for ((title, bar, text), (want, color)) in titles.iter().zip(expect) {
             assert_eq!(title, want);
             assert_eq!(*bar, Some(color), "{title} bar");
-            assert_eq!(*text, Some(color), "{title} title");
+            assert_eq!(text.fg, Some(color), "{title} title");
+            assert!(
+                text.add_modifier.contains(Modifier::BOLD),
+                "{title} not bold"
+            );
         }
     }
 

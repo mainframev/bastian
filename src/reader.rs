@@ -8,6 +8,7 @@ use crate::doc::{self, Block, CodeBlock, Document};
 use crate::exec::{BlockRun, Interpreters, RunEvent, RunSpec, Runner, Status};
 use crate::images::{Images, Source as ImageSource};
 use crate::links::{self, Link, Target};
+use crate::nav::{self, Motion};
 use crate::outline::{self, Outline};
 use crate::prompt::{self, Prompt, PromptEvent};
 use crate::render::theme::Theme;
@@ -691,13 +692,13 @@ impl Reader {
         let Some(picker) = &mut self.link_picker else {
             return Action::None;
         };
-        let last = picker.links.len().saturating_sub(1);
+        let len = picker.links.len();
         match key.code {
             KeyCode::Char('j') | KeyCode::Down | KeyCode::Tab => {
-                picker.selected = (picker.selected + 1).min(last);
+                picker.selected = nav::step(picker.selected, len, Motion::Down);
             }
             KeyCode::Char('k') | KeyCode::Up | KeyCode::BackTab => {
-                picker.selected = picker.selected.saturating_sub(1);
+                picker.selected = nav::step(picker.selected, len, Motion::Up);
             }
             KeyCode::Enter => {
                 let url = picker.links[picker.selected].url.clone();

@@ -4,7 +4,7 @@ use std::path::Path;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
-use crate::prompt;
+use crate::nav;
 use crate::render::theme::Theme;
 use crate::themes;
 
@@ -85,29 +85,27 @@ impl ThemePicker {
     }
 
     pub fn on_key(&mut self, key: KeyEvent) -> Event {
-        let last = self.entries.len().saturating_sub(1);
-        let to = match key.code {
-            KeyCode::Char('j') | KeyCode::Down => (self.selected + 1).min(last),
-            KeyCode::Char('n') if prompt::ctrl(&key) => (self.selected + 1).min(last),
-            KeyCode::Char('k') | KeyCode::Up => self.selected.saturating_sub(1),
-            KeyCode::Char('p') if prompt::ctrl(&key) => self.selected.saturating_sub(1),
-            KeyCode::Char('g') | KeyCode::Home => 0,
-            KeyCode::Char('G') | KeyCode::End => last,
-            KeyCode::Enter => {
-                return match &self.entries[self.selected] {
-                    Entry {
-                        name,
-                        theme: Ok(theme),
-                    } => Event::Pick {
-                        name: name.clone(),
-                        theme: theme.clone(),
-                    },
-                    Entry { theme: Err(_), .. } => Event::None,
-                };
-            }
-            KeyCode::Esc | KeyCode::Char('q' | 'T') => return Event::Cancel,
-            _ => return Event::None,
-        };
+        if let Some(motion) = nav::list_motion(&key) {
+            return self.select(nav::step(self.selected, self.entries.len(), motion));
+        }
+        match key.code {
+            KeyCode::Enter => match &self.entries[self.selected] {
+                Entry {
+                    name,
+                    theme: Ok(theme),
+                } => Event::Pick {
+                    name: name.clone(),
+                    theme: theme.clone(),
+                },
+                Entry { theme: Err(_), .. } => Event::None,
+            },
+            KeyCode::Esc | KeyCode::Char('q' | 'T') => Event::Cancel,
+            _ => Event::None,
+        }
+    }
+
+    /// Move the selection to `to`, previewing the theme there.
+    fn select(&mut self, to: usize) -> Event {
         if to == self.selected {
             return Event::None;
         }

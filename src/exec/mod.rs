@@ -215,22 +215,10 @@ impl Runner {
     ) -> thread::JoinHandle<()> {
         let tx = self.tx.clone();
         thread::spawn(move || {
-            let mut reader = BufReader::new(stream);
-            let mut buf = Vec::new();
-            while reader
-                .by_ref()
-                .take(MAX_LINE_BYTES as u64)
-                .read_until(b'\n', &mut buf)
-                .is_ok_and(|n| n > 0)
-            {
-                let text = String::from_utf8_lossy(&buf);
-                let text = text.trim_end_matches(['\n', '\r']);
-                // Keep only the last carriage-return segment, as a terminal would show.
-                let text = text.rsplit('\r').next().unwrap_or("").to_string();
+            for text in LineSplitter::new(BufReader::new(stream), MAX_LINE_BYTES) {
                 if tx.send(RunEvent::Output { id, text, stderr }).is_err() {
                     return;
                 }
-                buf.clear();
             }
         })
     }
@@ -290,6 +278,85 @@ impl Drop for Runner {
         thread::sleep(Duration::from_millis(100));
         for proc in self.procs.values() {
             proc.signal(Signal::Kill);
+        }
+    }
+}
+
+/// Splits a stream into output lines of at most `cap` bytes. A longer run
+/// without a newline becomes several lines, cut between characters.
+struct LineSplitter<R> {
+    reader: R,
+    cap: usize,
+    /// Start of a character cut off at the end of the previous chunk.
+    carry: Vec<u8>,
+    /// The previous chunk was cut at `cap`, not ended by a newline.
+    continued: bool,
+}
+
+impl<R: BufRead> LineSplitter<R> {
+    fn new(reader: R, cap: usize) -> Self {
+        // Room for a whole character, so every chunk makes progress.
+        debug_assert!(cap >= 4);
+        Self {
+            reader,
+            cap,
+            carry: Vec::new(),
+            continued: false,
+        }
+    }
+}
+
+impl<R: BufRead> Iterator for LineSplitter<R> {
+    type Item = String;
+
+    fn next(&mut self) -> Option<String> {
+        loop {
+            let mut buf = std::mem::take(&mut self.carry);
+            let limit = self.cap.saturating_sub(buf.len()).max(1) as u64;
+            let read = self.reader.by_ref().take(limit).read_until(b'\n', &mut buf);
+            if !read.is_ok_and(|n| n > 0) {
+                // End of stream: whatever was carried is all there is.
+                return (!buf.is_empty()).then(|| String::from_utf8_lossy(&buf).into_owned());
+            }
+            // A cut that landed just before the line end already emitted the line.
+            if std::mem::replace(&mut self.continued, !buf.ends_with(b"\n"))
+                && matches!(buf.as_slice(), b"\n" | b"\r\n")
+            {
+                continue;
+            }
+            let text = decode(&buf, &mut self.carry);
+            if text.is_empty() && !self.carry.is_empty() {
+                continue;
+            }
+            let text = text.trim_end_matches(['\n', '\r']);
+            // Keep only the last carriage-return segment, as a terminal would show.
+            return Some(text.rsplit('\r').next().unwrap_or("").to_string());
+        }
+    }
+}
+
+/// Decode `buf` like `String::from_utf8_lossy`, except that a character
+/// cut off at the end goes to `carry` instead of becoming U+FFFD.
+fn decode(buf: &[u8], carry: &mut Vec<u8>) -> String {
+    let mut out = String::with_capacity(buf.len());
+    let mut rest = buf;
+    loop {
+        match std::str::from_utf8(rest) {
+            Ok(s) => {
+                out.push_str(s);
+                return out;
+            }
+            Err(e) => {
+                let (valid, after) = rest.split_at(e.valid_up_to());
+                // Valid by `valid_up_to`, so this borrows without replacing.
+                out.push_str(&String::from_utf8_lossy(valid));
+                let Some(len) = e.error_len() else {
+                    carry.extend_from_slice(after);
+                    return out;
+                };
+                out.push(char::REPLACEMENT_CHARACTER);
+                rest = &after[len..];
+            }
         }
     }
 }
@@ -535,6 +602,39 @@ mod tests {
         assert!(out.iter().all(|l| l.len() <= MAX_LINE_BYTES));
         assert_eq!(out.iter().map(String::len).sum::<usize>(), 300_000);
         assert!(matches!(exit, RunEvent::Exit { code: Some(0), .. }));
+    }
+
+    fn split(input: &[u8], cap: usize) -> Vec<String> {
+        LineSplitter::new(input, cap).collect()
+    }
+
+    #[test]
+    fn line_of_exactly_cap_bytes_is_one_line() {
+        assert_eq!(split(b"12345678\nab\n", 8), ["12345678", "ab"]);
+        assert_eq!(split(b"12345678\r\nab", 8), ["12345678", "ab"]);
+        assert_eq!(split(b"1234567\r\nab", 8), ["1234567", "ab"]);
+        assert_eq!(split(b"12345678abc\n", 8), ["12345678", "abc"]);
+        assert_eq!(split(b"\n\n", 8), ["", ""]);
+        assert_eq!(split(b"12345678\n\n", 8), ["12345678", ""]);
+    }
+
+    #[test]
+    fn characters_straddling_the_cap_stay_whole() {
+        assert_eq!(split("1234567é89\n".as_bytes(), 8), ["1234567", "é89"]);
+        assert_eq!(split("123456日\n".as_bytes(), 8), ["123456", "日"]);
+        assert_eq!(split("1234567é".as_bytes(), 8), ["1234567", "é"]);
+        let text = "日本語のテキスト".repeat(3);
+        let lines = split(text.as_bytes(), 8);
+        assert!(lines.iter().all(|l| l.len() <= 8));
+        assert_eq!(lines.concat(), text);
+    }
+
+    #[test]
+    fn invalid_utf8_is_replaced() {
+        assert_eq!(split(b"a\xffb\n", 8), ["a\u{FFFD}b"]);
+        // A cut-off character at the end of the stream is still shown.
+        assert_eq!(split(b"ab\xe6\x97", 8), ["ab", "\u{FFFD}"]);
+        assert_eq!(split(b"ab\xe6\x97\n", 8), ["ab\u{FFFD}"]);
     }
 
     #[test]

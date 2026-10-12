@@ -2,12 +2,20 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Read};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 
 /// Output lines kept per block; older lines are dropped and counted.
 const MAX_OUTPUT_LINES: usize = 2000;
+
+/// Longest output line read in one piece; a longer run without a newline
+/// is split into lines of this size, so memory stays bounded.
+const MAX_LINE_BYTES: usize = 64 * 1024;
+
+/// Events buffered before the reader threads block, which in turn stalls
+/// a block that writes faster than the UI drains.
+const CHANNEL_CAPACITY: usize = 4096;
 
 /// Built-in command lines that run a block's source for a fence language.
 /// The source is passed as the final argument.
@@ -120,7 +128,7 @@ impl BlockRun {
 /// Spawns block processes and streams their output over a channel.
 /// Dropping the runner kills everything still running.
 pub struct Runner {
-    tx: Sender<RunEvent>,
+    tx: SyncSender<RunEvent>,
     rx: Receiver<RunEvent>,
     pids: HashMap<usize, u32>,
     cancelled: HashSet<usize>,
@@ -128,7 +136,7 @@ pub struct Runner {
 
 impl Default for Runner {
     fn default() -> Self {
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::sync_channel(CHANNEL_CAPACITY);
         Self {
             tx,
             rx,
@@ -186,7 +194,12 @@ impl Runner {
         thread::spawn(move || {
             let mut reader = BufReader::new(stream);
             let mut buf = Vec::new();
-            while reader.read_until(b'\n', &mut buf).is_ok_and(|n| n > 0) {
+            while reader
+                .by_ref()
+                .take(MAX_LINE_BYTES as u64)
+                .read_until(b'\n', &mut buf)
+                .is_ok_and(|n| n > 0)
+            {
                 let text = String::from_utf8_lossy(&buf);
                 let text = text.trim_end_matches(['\n', '\r']);
                 // Keep only the last carriage-return segment, as a terminal would show.
@@ -328,6 +341,17 @@ mod tests {
             .unwrap();
         let (out, _) = run_until_exit(&mut r, Duration::from_secs(5));
         assert_eq!(out, ["100%"]);
+    }
+
+    #[test]
+    fn long_lines_are_split() {
+        let mut r = Runner::default();
+        r.start(0, &spec("yes | tr -d '\\n' | head -c 300000"))
+            .unwrap();
+        let (out, exit) = run_until_exit(&mut r, Duration::from_secs(10));
+        assert!(out.iter().all(|l| l.len() <= MAX_LINE_BYTES));
+        assert_eq!(out.iter().map(String::len).sum::<usize>(), 300_000);
+        assert!(matches!(exit, RunEvent::Exit { code: Some(0), .. }));
     }
 
     #[test]

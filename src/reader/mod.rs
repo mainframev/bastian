@@ -115,6 +115,9 @@ pub struct Reader {
     /// Source line to scroll to, kept until the user moves so it survives
     /// re-renders (e.g. pictures loading).
     pub restore: Option<usize>,
+    /// Where the last restore left the view; any other scroll position
+    /// means the user moved, which ends the restore.
+    restored_at: Option<usize>,
     width: u16,
     height: usize,
 }
@@ -162,6 +165,7 @@ impl Reader {
             scrollbar: true,
             positions: None,
             restore: None,
+            restored_at: None,
             width: 0,
             height: 0,
         }
@@ -243,7 +247,12 @@ impl Reader {
         }
         self.height = usize::from(height);
         if let Some(line) = self.restore {
-            self.scroll_to_source_line(line);
+            if self.restored_at.is_none_or(|at| at == self.scroll) {
+                self.scroll_to_source_line(line);
+                self.restored_at = Some(self.scroll);
+            } else {
+                self.restore = None;
+            }
         }
         self.follow_output();
         self.scroll = self.scroll.min(self.max_scroll());

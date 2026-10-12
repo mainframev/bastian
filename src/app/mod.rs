@@ -168,6 +168,7 @@ impl App {
         match next {
             Ok(next) => {
                 if let Some(prev) = self.reader.replace(next) {
+                    prev.remember_position();
                     self.history.push(prev);
                 }
             }
@@ -242,6 +243,9 @@ impl App {
             reader::Action::None => {}
             reader::Action::Quit => return false,
             reader::Action::Back => {
+                if let Some(r) = &self.reader {
+                    r.remember_position();
+                }
                 self.reader = self.history.pop();
                 return self.reader.is_some() || self.browser.is_some();
             }

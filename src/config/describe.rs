@@ -46,6 +46,7 @@ pub fn describe(r: &Resolved, file: Option<&Path>) -> String {
         row("tab_width", &r.tab_width),
         row("hyperlinks", &r.hyperlinks),
         row("scrollbar", &r.scrollbar),
+        row("remember_position", &r.remember_position),
         row("editor", &r.editor),
     ];
     // Line the source comments up, at least two spaces after the value;

@@ -109,6 +109,12 @@ pub struct Reader {
     pub hyperlinks: bool,
     /// Show a scrollbar when the document overflows.
     pub scrollbar: bool,
+    /// Where reading positions are remembered; `None` doesn't remember
+    /// this document's.
+    pub positions: Option<PathBuf>,
+    /// Source line to scroll to, kept until the user moves so it survives
+    /// re-renders (e.g. pictures loading).
+    pub restore: Option<usize>,
     width: u16,
     height: usize,
 }
@@ -154,6 +160,8 @@ impl Reader {
             render_opts: render::Options::default(),
             hyperlinks: true,
             scrollbar: true,
+            positions: None,
+            restore: None,
             width: 0,
             height: 0,
         }
@@ -234,6 +242,9 @@ impl Reader {
             }
         }
         self.height = usize::from(height);
+        if let Some(line) = self.restore {
+            self.scroll_to_source_line(line);
+        }
         self.follow_output();
         self.scroll = self.scroll.min(self.max_scroll());
     }

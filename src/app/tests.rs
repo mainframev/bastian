@@ -33,6 +33,7 @@ fn settings() -> Settings {
         show_images: false,
         selector: crate::config::Selector::Bar,
         list_layout: crate::config::ListLayout::Cards,
+        positions: None,
     }
 }
 

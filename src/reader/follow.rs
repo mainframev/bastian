@@ -18,7 +18,7 @@ impl Reader {
             return Some(abs.to_string());
         }
         if let Some(base) = &self.remote_base {
-            return base.join(url).ok().map(|u| u.to_string());
+            return crate::remote::resolve_link(base, url).map(|u| u.to_string());
         }
         let (path, fragment) = url
             .split_once('#')

@@ -9,8 +9,11 @@ pub enum Background {
     Light,
 }
 
-/// How long to wait for the terminal to answer before giving up.
-const QUERY_TIMEOUT: Duration = Duration::from_millis(100);
+/// How long to wait for the terminal to answer before giving up. Every
+/// query ends with a device-attributes request, which all terminals answer,
+/// so a responsive terminal ends the wait at once; this bounds slow links
+/// and terminals that don't answer at all.
+const QUERY_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// The terminal's background brightness: asked with OSC 11 when `query`,
 /// else guessed from `COLORFGBG`. `None` when neither says. Only query with
@@ -23,7 +26,8 @@ pub fn background(query: bool) -> Option<Background> {
         .or_else(|| from_colorfgbg(std::env::var("COLORFGBG").ok().as_deref()?))
 }
 
-/// Parse an OSC 11 reply such as `\e]11;rgb:1919/1717/2424\e\\`.
+/// Parse an OSC 11 reply such as `\e]11;rgb:1919/1717/2424\e\\`, which may
+/// be followed by the device-attributes reply.
 fn parse_osc11(reply: &str) -> Option<Background> {
     let rgb = reply.split("rgb:").nth(1)?;
     let channels: Vec<f32> = rgb
@@ -55,10 +59,11 @@ fn from_colorfgbg(value: &str) -> Option<Background> {
     })
 }
 
+/// Ask OSC 11, then the device attributes: terminals answer in order, so the
+/// DA1 reply marks the end, and a terminal that ignores OSC 11 still ends
+/// the wait at once.
 fn query_background(timeout: Duration) -> Option<Background> {
-    let reply = ask(b"\x1b]11;?\x1b\\", timeout, |r| {
-        r.ends_with(b"\x07") || r.ends_with(b"\x1b\\")
-    })?;
+    let reply = ask(b"\x1b]11;?\x1b\\\x1b[c", timeout, |r| da1_end(r).is_some())?;
     parse_osc11(&String::from_utf8_lossy(&reply))
 }
 
@@ -80,7 +85,7 @@ pub struct Graphics {
 pub fn graphics() -> Graphics {
     // A 1×1 query image; supporting terminals reply `_Gi=31;OK`.
     const QUERY: &[u8] = b"\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[16t\x1b[c";
-    ask(QUERY, Duration::from_millis(200), |r| da1_end(r).is_some())
+    ask(QUERY, QUERY_TIMEOUT, |r| da1_end(r).is_some())
         .map(|reply| parse_graphics(&reply))
         .unwrap_or_default()
 }
@@ -252,8 +257,30 @@ mod tests {
             parse_osc11("\x1b]11;rgb:ff/ff/ff\x07"),
             Some(Background::Light)
         );
+        // Followed by the device-attributes reply that ends the query.
+        assert_eq!(
+            parse_osc11("\x1b]11;rgb:fafa/f4f4/eded\x1b\\\x1b[?62;22c"),
+            Some(Background::Light)
+        );
+        assert_eq!(
+            parse_osc11("\x1b]11;rgb:1919/1717/2424\x07\x1b[?1;2c"),
+            Some(Background::Dark)
+        );
+        // A terminal that ignores OSC 11 only answers the device attributes.
+        assert_eq!(parse_osc11("\x1b[?62;22c"), None);
         assert_eq!(parse_osc11("garbage"), None);
         assert_eq!(parse_osc11(""), None);
+    }
+
+    #[test]
+    fn background_query_ends_on_device_attributes() {
+        // The OSC 11 reply alone isn't the end; the DA1 reply after it is.
+        assert_eq!(da1_end(b"\x1b]11;rgb:1919/1717/2424\x1b\\"), None);
+        assert_eq!(
+            da1_end(b"\x1b]11;rgb:1919/1717/2424\x1b\\\x1b[?62;22c"),
+            Some(33)
+        );
+        assert_eq!(da1_end(b"\x1b[?62;22c"), Some(8));
     }
 
     #[test]

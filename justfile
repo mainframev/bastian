@@ -23,3 +23,9 @@ check: lint test
 # Run `lint` before every commit (opt-in, per clone).
 install-hooks:
     git config core.hooksPath .githooks
+
+# Re-record the README's GIFs with this checkout's build (needs vhs).
+demo:
+    cargo build --release
+    PATH="$PWD/target/release:$PATH" vhs demo/themes.tape
+    PATH="$PWD/target/release:$PATH" vhs demo/reader-themes.tape

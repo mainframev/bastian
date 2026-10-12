@@ -238,6 +238,10 @@ light_theme = "rose-pine-dawn"
 
 Press `T` while reading or browsing to open the same picker.
 
+![The theme picker previewing themes on a sample document](demo/themes.gif)
+
+![Switching themes with T while reading](demo/reader-themes.gif)
+
 ### Your own themes
 
 Put `<name>.toml` in `~/.config/bastian/themes/` (the `themes` directory next
@@ -287,3 +291,7 @@ pedantic group plus a few extras, configured in the `[lints]` table of
 `just install-hooks` makes git run the formatting and lint checks before each
 commit in your clone (`git config core.hooksPath .githooks`). CI runs the full
 check on macOS and Linux for every push and pull request.
+
+The GIFs in this README are recorded from the scripts in `demo/` with
+[vhs](https://github.com/charmbracelet/vhs) (`brew install vhs`); `just demo`
+re-records them with your build.

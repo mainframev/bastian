@@ -795,6 +795,13 @@ fn aligned(line: Line<'static>, w: usize, align: Align) -> Vec<Span<'static>> {
     spans
 }
 
+/// `s` without control characters. Document text goes straight to the
+/// terminal in print and pager modes, and an ESC in it would run as an
+/// escape sequence there; ratatui drops them the same way in the TUI.
+pub fn strip_controls(s: &str) -> String {
+    s.chars().filter(|c| !c.is_control()).collect()
+}
+
 /// Text of one rendered line, without styling.
 pub fn plain(line: &Line) -> String {
     line.spans.iter().map(|s| s.content.as_ref()).collect()
@@ -804,7 +811,7 @@ pub fn plain(line: &Line) -> String {
 pub fn to_plain(lines: &[Line]) -> String {
     lines
         .iter()
-        .map(|l| plain(l).trim_end().to_string())
+        .map(|l| strip_controls(plain(l).trim_end()))
         .collect::<Vec<_>>()
         .join("\n")
 }

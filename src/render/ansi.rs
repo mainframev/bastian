@@ -23,6 +23,7 @@ pub fn to_ansi(lines: &[Line]) -> String {
             }
         }
         for (style, text) in runs {
+            let text = super::strip_controls(&text);
             let sgr = sgr(style);
             if sgr.is_empty() {
                 out.push_str(&text);
@@ -121,5 +122,14 @@ mod tests {
         let line = Line::from(vec![Span::styled("a", Style::default().fg(Color::Red))])
             .style(Style::default().bg(Color::Blue));
         assert_eq!(to_ansi(&[line]), "\x1b[31;44ma\x1b[0m");
+    }
+
+    #[test]
+    fn document_escapes_are_dropped() {
+        let line = Line::from(vec![
+            Span::raw("a\x1b]52;c;eA==\x07b"),
+            Span::styled("\x1b[2Jc", Style::new().fg(Color::Red)),
+        ]);
+        assert_eq!(to_ansi(&[line]), "a]52;c;eA==b\x1b[31m[2Jc\x1b[0m");
     }
 }

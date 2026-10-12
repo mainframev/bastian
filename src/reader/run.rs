@@ -223,6 +223,11 @@ impl Reader {
     /// queued block, or ends the queue when the block failed.
     pub(super) fn on_run_event(&mut self, event: RunEvent) {
         match event {
+            RunEvent::Output { id, .. } if self.detached.contains(&id) => {}
+            RunEvent::Exit { id, .. } if self.detached.contains(&id) => {
+                self.detached.remove(&id);
+                self.timed_out.remove(&id);
+            }
             RunEvent::Output { id, text, stderr } => {
                 if let Some(run) = self.runs.get_mut(&id) {
                     run.push(text, stderr);

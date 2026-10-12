@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
 
 use super::{Reader, collect_code};
-use crate::doc::{self, Document};
+use crate::doc::{self, CodeBlock, Document};
 
 impl Reader {
     /// Watch `path` and reload the document when it changes on disk.
@@ -40,22 +41,35 @@ impl Reader {
     /// state whose block still exists.
     pub fn replace_doc(&mut self, doc: Document) {
         let codes = collect_code(&doc.blocks);
+        let moved = match_blocks(&self.codes, &codes);
         // A pending prompt or queue names blocks by index. Once the blocks
         // change, those indexes point at code the user never agreed to run.
         let same = codes.len() == self.codes.len()
-            && codes
-                .iter()
-                .zip(&self.codes)
-                .all(|(a, b)| a.lang == b.lang && a.attrs == b.attrs && a.src == b.src);
+            && moved.iter().enumerate().all(|(i, &to)| to == Some(i));
         if !same {
             self.confirm = None;
             self.queue.clear();
         }
-        self.runs
-            .retain(|id, run| *id < codes.len() || run.is_running());
-        if self.focus.is_some_and(|id| id >= codes.len()) {
-            self.focus = None;
+        // Run state belongs to code, not to a position: follow each block to
+        // its new place, and drop what ran code that's gone or changed.
+        let mut runs = HashMap::new();
+        for (id, run) in std::mem::take(&mut self.runs) {
+            let to = moved.get(id).copied().flatten();
+            if run.is_running() && to != Some(id) {
+                // The process reports under its old id, which may now be
+                // another block's: stop it and ignore what it still sends.
+                self.runner.cancel(id);
+                self.detached.insert(id);
+            } else if let Some(to) = to {
+                runs.insert(to, run);
+            }
         }
+        self.runs = runs;
+        self.follow = self.follow.and_then(|id| moved.get(id).copied().flatten());
+        self.focus = self
+            .focus
+            .and_then(|id| moved.get(id).copied().flatten().or(Some(id)))
+            .filter(|&id| id < codes.len());
         self.codes = codes;
         self.doc = doc;
         self.highlights.clear();
@@ -64,9 +78,103 @@ impl Reader {
     }
 }
 
+/// Where each of the `old` blocks went in `new`: the index of a block with
+/// the same code, preferring the same position, or `None` when it's gone.
+fn match_blocks(old: &[CodeBlock], new: &[CodeBlock]) -> Vec<Option<usize>> {
+    let same =
+        |a: &CodeBlock, b: &CodeBlock| a.lang == b.lang && a.attrs == b.attrs && a.src == b.src;
+    let mut taken = vec![false; new.len()];
+    let mut out = vec![None; old.len()];
+    // Blocks that stayed put first, so a moved copy can't take their place.
+    for (i, a) in old.iter().enumerate() {
+        if new.get(i).is_some_and(|b| same(a, b)) {
+            taken[i] = true;
+            out[i] = Some(i);
+        }
+    }
+    for (i, a) in old.iter().enumerate() {
+        if out[i].is_none()
+            && let Some(j) = (0..new.len()).find(|&j| !taken[j] && same(a, &new[j]))
+        {
+            taken[j] = true;
+            out[i] = Some(j);
+        }
+    }
+    out
+}
+
 /// How often to check the source file for changes.
 const RELOAD_CHECK: Duration = Duration::from_millis(500);
 
 pub(super) fn mtime(path: &std::path::Path) -> Option<SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{Duration, Instant};
+
+    use crate::doc::parse;
+    use crate::exec::Status;
+    use crate::reader::Reader;
+    use crate::render::theme::Theme;
+
+    fn reader(src: &str) -> Reader {
+        let mut r = Reader::new("t".into(), parse(src), Theme::dark(), 80);
+        r.assume_yes = true;
+        r.layout(80, 40);
+        r
+    }
+
+    fn settle(r: &mut Reader) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while r.is_running() || r.runner.is_running(0) || r.runner.is_running(1) {
+            assert!(Instant::now() < deadline, "blocks did not finish");
+            r.tick();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        r.tick();
+    }
+
+    fn output(r: &Reader, id: usize) -> Vec<&str> {
+        r.runs[&id].output.iter().map(|l| l.text.as_str()).collect()
+    }
+
+    #[test]
+    fn output_follows_its_block_when_blocks_move() {
+        let mut r = reader("```sh\necho one\n```\n");
+        r.request_run(vec![0]);
+        settle(&mut r);
+        r.replace_doc(parse("```sh\necho new\n```\n\n```sh\necho one\n```\n"));
+        assert!(!r.runs.contains_key(&0), "new code shows old output");
+        assert_eq!(output(&r, 1), ["one"]);
+    }
+
+    #[test]
+    fn changed_code_drops_its_output() {
+        let mut r = reader("```sh\necho one\n```\n");
+        r.request_run(vec![0]);
+        settle(&mut r);
+        r.replace_doc(parse("```sh\necho two\n```\n"));
+        assert!(r.runs.is_empty());
+    }
+
+    #[test]
+    fn a_moved_running_block_stops_without_touching_other_output() {
+        let mut r = reader("```sh\necho a\n```\n\n```sh\nsleep 5; echo late\n```\n");
+        r.request_run(vec![0]);
+        settle(&mut r);
+        r.request_run(vec![1]);
+        r.tick();
+        assert!(r.runner.is_running(1));
+        // Swap the blocks: `echo a` is now block 1, where the old process
+        // still reports from.
+        r.replace_doc(parse(
+            "```sh\nsleep 5; echo late\n```\n\n```sh\necho a\n```\n",
+        ));
+        settle(&mut r);
+        assert_eq!(output(&r, 1), ["a"]);
+        assert!(matches!(r.runs[&1].status, Status::Ok(_)));
+        assert!(!r.runs.contains_key(&0));
+    }
 }

@@ -90,6 +90,9 @@ pub struct Reader {
     /// Remaining blocks of a run-all, started one after another.
     queue: VecDeque<usize>,
     timed_out: HashSet<usize>,
+    /// Runner ids of processes stopped by a reload that changed or moved
+    /// their block: their remaining events belong to no block.
+    detached: HashSet<usize>,
     /// Block whose output the view keeps in sight until the user scrolls.
     follow: Option<usize>,
     dirty: bool,
@@ -142,6 +145,7 @@ impl Reader {
             runner: Runner::default(),
             queue: VecDeque::new(),
             timed_out: HashSet::new(),
+            detached: HashSet::new(),
             follow: None,
             dirty: false,
             images: Images::default(),

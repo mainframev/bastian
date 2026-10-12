@@ -9,17 +9,25 @@ pub enum Background {
     Light,
 }
 
-/// How long to wait for the terminal to answer before giving up.
-const QUERY_TIMEOUT: Duration = Duration::from_millis(100);
+/// How long to wait for the terminal to answer before giving up. Every
+/// query ends with a device-attributes request, which all terminals answer,
+/// so a responsive terminal ends the wait at once; this bounds slow links
+/// and terminals that don't answer at all.
+const QUERY_TIMEOUT: Duration = Duration::from_secs(1);
 
-/// The terminal's background brightness: asked with OSC 11, else guessed
-/// from `COLORFGBG`. `None` when neither says.
-pub fn background() -> Option<Background> {
-    query_background(QUERY_TIMEOUT)
+/// The terminal's background brightness: asked with OSC 11 when `query`,
+/// else guessed from `COLORFGBG`. `None` when neither says. Only query with
+/// a terminal on stdout: behind a pipe the reader (a pager, say) shares
+/// `/dev/tty`.
+pub fn background(query: bool) -> Option<Background> {
+    query
+        .then(|| query_background(QUERY_TIMEOUT))
+        .flatten()
         .or_else(|| from_colorfgbg(std::env::var("COLORFGBG").ok().as_deref()?))
 }
 
-/// Parse an OSC 11 reply such as `\e]11;rgb:1919/1717/2424\e\\`.
+/// Parse an OSC 11 reply such as `\e]11;rgb:1919/1717/2424\e\\`, which may
+/// be followed by the device-attributes reply.
 fn parse_osc11(reply: &str) -> Option<Background> {
     let rgb = reply.split("rgb:").nth(1)?;
     let channels: Vec<f32> = rgb
@@ -51,10 +59,11 @@ fn from_colorfgbg(value: &str) -> Option<Background> {
     })
 }
 
+/// Ask OSC 11, then the device attributes: terminals answer in order, so the
+/// DA1 reply marks the end, and a terminal that ignores OSC 11 still ends
+/// the wait at once.
 fn query_background(timeout: Duration) -> Option<Background> {
-    let reply = ask(b"\x1b]11;?\x1b\\", timeout, |r| {
-        r.ends_with(b"\x07") || r.ends_with(b"\x1b\\")
-    })?;
+    let reply = ask(b"\x1b]11;?\x1b\\\x1b[c", timeout, |r| da1_end(r).is_some())?;
     parse_osc11(&String::from_utf8_lossy(&reply))
 }
 
@@ -76,7 +85,7 @@ pub struct Graphics {
 pub fn graphics() -> Graphics {
     // A 1×1 query image; supporting terminals reply `_Gi=31;OK`.
     const QUERY: &[u8] = b"\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[16t\x1b[c";
-    ask(QUERY, Duration::from_millis(200), |r| da1_end(r).is_some())
+    ask(QUERY, QUERY_TIMEOUT, |r| da1_end(r).is_some())
         .map(|reply| parse_graphics(&reply))
         .unwrap_or_default()
 }
@@ -110,9 +119,6 @@ fn da1_end(reply: &[u8]) -> Option<usize> {
         .map(|i| start + i)
 }
 
-/// Write `query` to the terminal and read its reply until `done` says it's
-/// complete or `timeout` passes. Talks to `/dev/tty` in raw mode, always
-/// restored, and never leaves a reader behind.
 /// Pixel width and height of one character cell, from the terminal's
 /// window size.
 pub(crate) fn cell_pixels() -> Option<(u16, u16)> {
@@ -132,6 +138,13 @@ pub(crate) fn cell_pixels() -> Option<(u16, u16)> {
     None
 }
 
+/// Write `query` to the terminal and read its reply until `done` says it's
+/// complete or `timeout` passes. Talks to `/dev/tty` in raw mode, always
+/// restored, and never leaves a reader behind.
+///
+/// Does nothing unless this process is in the terminal's foreground
+/// process group: a background job changing the terminal mode would be
+/// stopped by `SIGTTOU`.
 #[cfg(unix)]
 fn ask(query: &[u8], timeout: Duration, done: impl Fn(&[u8]) -> bool) -> Option<Vec<u8>> {
     use std::fs::OpenOptions;
@@ -144,6 +157,11 @@ fn ask(query: &[u8], timeout: Duration, done: impl Fn(&[u8]) -> bool) -> Option<
         .open("/dev/tty")
         .ok()?;
     let fd = tty.as_raw_fd();
+
+    // SAFETY: tcgetpgrp on a file descriptor we own; getpgrp can't fail.
+    if unsafe { libc::tcgetpgrp(fd) != libc::getpgrp() } {
+        return None;
+    }
 
     // Raw mode so the reply isn't echoed or line-buffered; always restored.
     // SAFETY: termios calls on a file descriptor we own, with a zeroed struct
@@ -239,8 +257,30 @@ mod tests {
             parse_osc11("\x1b]11;rgb:ff/ff/ff\x07"),
             Some(Background::Light)
         );
+        // Followed by the device-attributes reply that ends the query.
+        assert_eq!(
+            parse_osc11("\x1b]11;rgb:fafa/f4f4/eded\x1b\\\x1b[?62;22c"),
+            Some(Background::Light)
+        );
+        assert_eq!(
+            parse_osc11("\x1b]11;rgb:1919/1717/2424\x07\x1b[?1;2c"),
+            Some(Background::Dark)
+        );
+        // A terminal that ignores OSC 11 only answers the device attributes.
+        assert_eq!(parse_osc11("\x1b[?62;22c"), None);
         assert_eq!(parse_osc11("garbage"), None);
         assert_eq!(parse_osc11(""), None);
+    }
+
+    #[test]
+    fn background_query_ends_on_device_attributes() {
+        // The OSC 11 reply alone isn't the end; the DA1 reply after it is.
+        assert_eq!(da1_end(b"\x1b]11;rgb:1919/1717/2424\x1b\\"), None);
+        assert_eq!(
+            da1_end(b"\x1b]11;rgb:1919/1717/2424\x1b\\\x1b[?62;22c"),
+            Some(33)
+        );
+        assert_eq!(da1_end(b"\x1b[?62;22c"), Some(8));
     }
 
     #[test]
@@ -270,5 +310,207 @@ mod tests {
         assert!(!parse_graphics(b"\x1b_Gi=31;ENOTSUPPORTED\x1b\\\x1b[?62c").kitty);
         assert_eq!(da1_end(b"junk\x1b[?62;4c"), Some(11));
         assert_eq!(da1_end(b"\x1b[?62;4"), None);
+    }
+
+    /// Selects the role a re-invoked test binary plays in
+    /// `background_job_does_not_query`.
+    #[cfg(unix)]
+    const PTY_ROLE: &str = "BASTIAN_TERM_PTY_ROLE";
+    #[cfg(unix)]
+    const PTY_HELPER: &str = "term::tests::pty_helper";
+
+    /// Rerun this test binary as `pty_helper` in `role`.
+    #[cfg(unix)]
+    fn helper(role: &str) -> std::process::Command {
+        let mut cmd = std::process::Command::new(std::env::current_exe().unwrap());
+        cmd.args([PTY_HELPER, "--exact", "--ignored", "--nocapture"])
+            .args(["--test-threads", "1"])
+            .env(PTY_ROLE, role);
+        cmd
+    }
+
+    /// A background job asking the terminal must return without touching it:
+    /// changing the terminal mode from outside the foreground process group
+    /// would stop the job with `SIGTTOU`. Forking inside the multithreaded
+    /// test harness isn't sound, so the test binary is rerun as
+    /// `pty_helper`: a session leader on a fresh pty (the foreground group)
+    /// that starts a second copy in a new, background process group.
+    #[cfg(unix)]
+    #[test]
+    fn background_job_does_not_query() {
+        use std::io::Read;
+        use std::os::fd::{AsRawFd, FromRawFd};
+        use std::os::unix::fs::OpenOptionsExt;
+        use std::os::unix::process::CommandExt;
+
+        // SAFETY: posix_openpt returns a new descriptor we take ownership
+        // of; fcntl, grantpt and unlockpt act on it. ptsname's static buffer
+        // is copied out at once, and no other test calls it.
+        let (master, slave_path) = unsafe {
+            let fd = libc::posix_openpt(libc::O_RDWR | libc::O_NOCTTY);
+            assert!(fd >= 0, "posix_openpt failed");
+            let master = std::fs::File::from_raw_fd(fd);
+            // Keep it out of processes other tests spawn meanwhile.
+            assert_eq!(libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC), 0);
+            assert_eq!(libc::grantpt(fd), 0, "grantpt failed");
+            assert_eq!(libc::unlockpt(fd), 0, "unlockpt failed");
+            let name = libc::ptsname(fd);
+            assert!(!name.is_null(), "ptsname failed");
+            let path = std::ffi::CStr::from_ptr(name).to_str().unwrap().to_owned();
+            (master, path)
+        };
+        // Held open until the master is read, so the pty stays up.
+        let slave = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(libc::O_NOCTTY)
+            .open(&slave_path)
+            .unwrap();
+
+        let mut leader = helper("leader");
+        leader.stdin(slave.try_clone().unwrap());
+        // SAFETY: setsid and ioctl are async-signal-safe and touch only the
+        // child: it leaves our session and takes its stdin, the pty slave, as
+        // its controlling terminal, which puts its group in the foreground.
+        #[allow(
+            clippy::cast_lossless,
+            clippy::unnecessary_cast,
+            reason = "TIOCSCTTY and ioctl's request differ in type on macOS, not on glibc"
+        )]
+        unsafe {
+            leader.pre_exec(|| {
+                if libc::setsid() < 0 || libc::ioctl(0, libc::TIOCSCTTY as _, 0) < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        let mut child = leader
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+
+        // Read what reaches the terminal while the helper runs: a restore
+        // with TCSAFLUSH waits for the output to drain. The master reads
+        // end of file once the session leader exits and hangs up.
+        let mut written = Vec::new();
+        let mut buf = [0u8; 256];
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        let finished = loop {
+            if readable(master.as_raw_fd(), Duration::from_millis(20)) {
+                match (&master).read(&mut buf) {
+                    Ok(n) if n > 0 => written.extend_from_slice(&buf[..n]),
+                    _ => break true,
+                }
+            } else if child.try_wait().unwrap().is_some() {
+                break true;
+            }
+            if std::time::Instant::now() > deadline {
+                child.kill().unwrap();
+                break false;
+            }
+        };
+        let out = child.wait_with_output().unwrap();
+        assert!(
+            finished && out.status.success(),
+            "pty helper {} (terminal got {:?}):\n{}{}",
+            if finished { "failed" } else { "didn't finish" },
+            String::from_utf8_lossy(&written),
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+
+        // Only the foreground leader's control query reached the terminal.
+        let written = String::from_utf8_lossy(&written);
+        assert!(written.contains("FG-QUERY"), "{written:?}");
+        assert!(!written.contains("BG-QUERY"), "{written:?}");
+        drop(slave);
+    }
+
+    /// Run by `background_job_does_not_query` in a child process; a no-op
+    /// otherwise.
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "run by background_job_does_not_query"]
+    fn pty_helper() {
+        match std::env::var(PTY_ROLE).as_deref() {
+            Ok("leader") => pty_leader(),
+            // A timeout well past the leader's deadline: returning in time
+            // means it didn't wait for a reply.
+            Ok("background") => {
+                assert_eq!(ask(b"BG-QUERY", Duration::from_secs(30), |_| false), None);
+            }
+            _ => {}
+        }
+    }
+
+    /// The session leader: start a background job that asks the terminal,
+    /// check it finished without being stopped and left the terminal mode
+    /// alone, then ask from the foreground as a control.
+    #[cfg(unix)]
+    fn pty_leader() {
+        use std::os::fd::AsRawFd;
+        use std::os::unix::process::CommandExt;
+
+        let tty = std::fs::File::open("/dev/tty").unwrap();
+        let attrs = || {
+            // SAFETY: tcgetattr fills a termios we own, on an open fd.
+            let mut t: libc::termios = unsafe { std::mem::zeroed() };
+            assert_eq!(unsafe { libc::tcgetattr(tty.as_raw_fd(), &raw mut t) }, 0);
+            (t.c_iflag, t.c_oflag, t.c_cflag, t.c_lflag, t.c_cc)
+        };
+        let before = attrs();
+
+        let mut job = helper("background");
+        job.process_group(0);
+        // SAFETY: signal is async-signal-safe. Restore SIGTTOU's default
+        // (stop) in case it was inherited as ignored, which would hide a
+        // missing guard.
+        unsafe {
+            job.pre_exec(|| {
+                libc::signal(libc::SIGTTOU, libc::SIG_DFL);
+                Ok(())
+            });
+        }
+        let mut child = job.spawn().unwrap();
+        let pid = libc::pid_t::try_from(child.id()).unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        // Poll with WUNTRACED, which reports the job if it was stopped
+        // rather than exiting; std's wait would block on it forever.
+        let status = loop {
+            let mut status = 0;
+            // SAFETY: waitpid on our own child, with a status int we own.
+            let r = unsafe { libc::waitpid(pid, &raw mut status, libc::WNOHANG | libc::WUNTRACED) };
+            assert!(r >= 0, "waitpid failed");
+            if r == pid {
+                break Some(status);
+            }
+            if std::time::Instant::now() > deadline {
+                break None;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        let Some(status) = status.filter(|&s| !libc::WIFSTOPPED(s)) else {
+            // Stopped or stuck, and not reaped yet.
+            child.kill().unwrap();
+            child.wait().unwrap();
+            match status {
+                Some(s) => panic!("background job stopped by signal {}", libc::WSTOPSIG(s)),
+                None => panic!("background job didn't finish"),
+            }
+        };
+        assert!(
+            libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0,
+            "background job failed: status {status:#x}"
+        );
+        assert!(before == attrs(), "terminal mode changed");
+
+        // The control: from the foreground the query is sent, and with no
+        // one answering it times out with an empty reply.
+        assert_eq!(
+            ask(b"FG-QUERY", Duration::from_millis(50), |_| false),
+            Some(Vec::new())
+        );
     }
 }

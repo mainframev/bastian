@@ -1,15 +1,39 @@
 //! Reading documents from disk: byte-order marks and UTF-16 are handled
 //! here once, for every place bastian opens a file.
 
+use std::io::Read;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 
+/// Largest document bastian reads from disk.
+const MAX_BYTES: u64 = 64 * 1024 * 1024;
+
 /// Read a text file, decoding UTF-8 (with or without a BOM) and UTF-16
 /// files that start with a BOM.
 pub fn read_text(path: &Path) -> Result<String> {
-    let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+    let bytes = read_capped(path, MAX_BYTES)?;
     decode(&bytes).with_context(|| format!("reading {}", path.display()))
+}
+
+/// Read a regular file of at most `max` bytes. Anything else (a FIFO, a
+/// device such as `/dev/zero`) is an error rather than a read that blocks
+/// or never ends.
+pub(crate) fn read_capped(path: &Path, max: u64) -> Result<Vec<u8>> {
+    let context = || format!("reading {}", path.display());
+    // Checked before opening: opening a FIFO blocks until a writer comes.
+    anyhow::ensure!(
+        std::fs::metadata(path).with_context(context)?.is_file(),
+        "{} is not a file",
+        path.display()
+    );
+    let file = std::fs::File::open(path).with_context(context)?;
+    let mut bytes = Vec::new();
+    file.take(max + 1)
+        .read_to_end(&mut bytes)
+        .with_context(context)?;
+    anyhow::ensure!(bytes.len() as u64 <= max, "{} is too large", path.display());
+    Ok(bytes)
 }
 
 /// Decode file bytes; see `read_text`.
@@ -28,7 +52,7 @@ pub fn decode(bytes: &[u8]) -> Result<String> {
 
 /// Like `decode`, but never fails: invalid bytes become U+FFFD. For
 /// best-effort reads such as a title from the start of a file.
-pub fn decode_lossy(bytes: &[u8]) -> String {
+pub(crate) fn decode_lossy(bytes: &[u8]) -> String {
     decode(bytes).unwrap_or_else(|_| String::from_utf8_lossy(bytes).into_owned())
 }
 
@@ -67,6 +91,18 @@ mod tests {
         let be: Vec<u8> = [0xFE, 0xFF, 0x00, b'#', 0x00, b' ', 0x00, b'x'].to_vec();
         assert_eq!(decode(&be).unwrap(), "# x");
         assert_eq!(decode(b"plain").unwrap(), "plain");
+    }
+
+    #[test]
+    fn reads_only_regular_files_up_to_the_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.md");
+        std::fs::write(&file, "12345").unwrap();
+        assert_eq!(read_capped(&file, 5).unwrap(), b"12345");
+        let err = read_capped(&file, 4).unwrap_err().to_string();
+        assert!(err.ends_with("is too large"), "{err}");
+        let err = read_capped(dir.path(), 5).unwrap_err().to_string();
+        assert!(err.ends_with("is not a file"), "{err}");
     }
 
     #[test]

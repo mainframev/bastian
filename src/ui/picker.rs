@@ -11,10 +11,7 @@ use crate::render::theme::{Appearance, Theme};
 pub fn draw(frame: &mut Frame, t: &Theme, p: &ThemePicker) {
     // Leave room for the border and the status bar.
     let rows = frame.area().height.saturating_sub(4).max(1) as usize;
-    let start = p
-        .selected
-        .saturating_sub(rows / 2)
-        .min(p.entries.len().saturating_sub(rows));
+    let start = status::window(p.selected, p.entries.len(), rows, true);
     let name_w = p.entries.iter().map(|e| e.name.len()).max().unwrap_or(0);
     let lines: Vec<Line> = p
         .entries
@@ -25,10 +22,7 @@ pub fn draw(frame: &mut Frame, t: &Theme, p: &ThemePicker) {
         .map(|(i, e)| {
             let selected = i == p.selected;
             let mut spans = vec![
-                Span::styled(
-                    if selected { "▶ " } else { "  " },
-                    Style::default().fg(t.accent),
-                ),
+                status::select_marker(t, selected),
                 Span::styled(
                     format!("{:<name_w$}  ", e.name),
                     status::row_style(t, selected),

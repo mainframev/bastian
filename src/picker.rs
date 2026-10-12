@@ -4,7 +4,7 @@ use std::path::Path;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
-use crate::prompt;
+use crate::nav;
 use crate::render::theme::Theme;
 use crate::themes;
 
@@ -76,7 +76,7 @@ impl ThemePicker {
             .collect();
         let current = entries
             .iter()
-            .position(|e| e.name == themes::canonical(current));
+            .position(|e| e.name == themes::canonical(current, dir));
         Self {
             selected: current.unwrap_or(0),
             current,
@@ -85,29 +85,27 @@ impl ThemePicker {
     }
 
     pub fn on_key(&mut self, key: KeyEvent) -> Event {
-        let last = self.entries.len().saturating_sub(1);
-        let to = match key.code {
-            KeyCode::Char('j') | KeyCode::Down => (self.selected + 1).min(last),
-            KeyCode::Char('n') if prompt::ctrl(&key) => (self.selected + 1).min(last),
-            KeyCode::Char('k') | KeyCode::Up => self.selected.saturating_sub(1),
-            KeyCode::Char('p') if prompt::ctrl(&key) => self.selected.saturating_sub(1),
-            KeyCode::Char('g') | KeyCode::Home => 0,
-            KeyCode::Char('G') | KeyCode::End => last,
-            KeyCode::Enter => {
-                return match &self.entries[self.selected] {
-                    Entry {
-                        name,
-                        theme: Ok(theme),
-                    } => Event::Pick {
-                        name: name.clone(),
-                        theme: theme.clone(),
-                    },
-                    Entry { theme: Err(_), .. } => Event::None,
-                };
-            }
-            KeyCode::Esc | KeyCode::Char('q' | 'T') => return Event::Cancel,
-            _ => return Event::None,
-        };
+        if let Some(motion) = nav::list_motion(&key) {
+            return self.select(nav::step(self.selected, self.entries.len(), motion));
+        }
+        match key.code {
+            KeyCode::Enter => match &self.entries[self.selected] {
+                Entry {
+                    name,
+                    theme: Ok(theme),
+                } => Event::Pick {
+                    name: name.clone(),
+                    theme: theme.clone(),
+                },
+                Entry { theme: Err(_), .. } => Event::None,
+            },
+            KeyCode::Esc | KeyCode::Char('q' | 'T') => Event::Cancel,
+            _ => Event::None,
+        }
+    }
+
+    /// Move the selection to `to`, previewing the theme there.
+    fn select(&mut self, to: usize) -> Event {
         if to == self.selected {
             return Event::None;
         }
@@ -126,6 +124,16 @@ mod tests {
 
     fn key(p: &mut ThemePicker, code: KeyCode) -> Event {
         p.on_key(KeyEvent::new(code, KeyModifiers::NONE))
+    }
+
+    #[test]
+    fn a_user_theme_named_like_an_alias_is_current() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("tokyonight.toml");
+        std::fs::write(file, "extends = \"nord\"\n").unwrap();
+        let p = ThemePicker::new(Some(dir.path()), "tokyonight");
+        let current = p.current.map(|i| p.entries[i].name.as_str());
+        assert_eq!(current, Some("tokyonight"));
     }
 
     #[test]

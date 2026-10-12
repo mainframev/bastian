@@ -1,0 +1,74 @@
+use std::time::Duration;
+
+use anyhow::Result;
+use ratatui::DefaultTerminal;
+use ratatui::crossterm::event::{self, Event, KeyEventKind, MouseEventKind};
+
+use super::App;
+use super::terminal::suspend;
+use crate::ui;
+
+/// Events that change nothing on screen: pointer motion and clicks (only
+/// the wheel scrolls) and key releases.
+pub(super) fn is_ignored(event: &Event) -> bool {
+    match event {
+        Event::Mouse(m) => !matches!(
+            m.kind,
+            MouseEventKind::ScrollDown | MouseEventKind::ScrollUp
+        ),
+        Event::Key(k) => k.kind != KeyEventKind::Press,
+        _ => false,
+    }
+}
+
+/// How often to wake up for process output while waiting for keys.
+pub(super) const TICK: Duration = Duration::from_millis(100);
+
+/// Run the TUI until the user quits. Returns a note to print afterwards.
+pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<Option<String>> {
+    let mut redraw = true;
+    loop {
+        if let Some(r) = &mut app.reader {
+            redraw |= r.tick();
+        }
+        if let Some(b) = &mut app.browser {
+            redraw |= b.tick();
+        }
+        if std::mem::take(&mut redraw) {
+            terminal.draw(|f| {
+                if let Some(r) = &mut app.reader {
+                    ui::reader::draw(f, r);
+                } else if let Some(b) = &mut app.browser {
+                    let s = &app.settings;
+                    let look = ui::browser::Look {
+                        logo: s.logo,
+                        date_format: s.date_format.as_deref(),
+                        scrollbar: s.scrollbar,
+                        selector: s.selector,
+                        layout: s.list_layout,
+                    };
+                    ui::browser::draw(f, b, &s.theme, look);
+                }
+                if let Some((p, _)) = &app.picker {
+                    ui::picker::draw(f, &app.settings.theme, p);
+                }
+            })?;
+        }
+        if event::poll(TICK)? {
+            let event = event::read()?;
+            let ignored = is_ignored(&event);
+            if !app.on_event(&event) {
+                return Ok(app.exit_note.take());
+            }
+            if let Some((path, line)) = app.edit.take() {
+                app.run_editor(terminal, &path, line)?;
+                redraw = true;
+            }
+            if std::mem::take(&mut app.suspend) {
+                suspend(terminal, app.settings.mouse)?;
+                redraw = true;
+            }
+            redraw |= !ignored;
+        }
+    }
+}

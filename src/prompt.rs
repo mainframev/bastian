@@ -51,6 +51,32 @@ impl Prompt {
     }
 }
 
+/// What came of a key typed into an open prompt.
+#[derive(Debug, PartialEq)]
+pub enum Edited {
+    /// The text changed to this.
+    Text(String),
+    /// Esc: the prompt closed and its text should be dropped.
+    Cancelled,
+}
+
+/// Feed `key` to the prompt in `slot`, closing it on Enter or Esc.
+pub fn drive(slot: &mut Option<Prompt>, key: KeyEvent) -> Option<Edited> {
+    let prompt = slot.as_mut()?;
+    match prompt.on_key(key) {
+        PromptEvent::Changed => Some(Edited::Text(prompt.text().to_string())),
+        PromptEvent::Submit => {
+            *slot = None;
+            None
+        }
+        PromptEvent::Cancel => {
+            *slot = None;
+            Some(Edited::Cancelled)
+        }
+        PromptEvent::None => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

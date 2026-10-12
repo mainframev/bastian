@@ -3,6 +3,7 @@ mod logo;
 pub mod picker;
 pub mod reader;
 mod status;
+mod text;
 
 use ratatui::layout::Rect;
 

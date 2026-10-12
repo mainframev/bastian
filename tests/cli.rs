@@ -298,3 +298,37 @@ fn listing_follows_sort_extensions_and_ignore() {
     assert!(!bad.status.success());
     assert!(stderr(&bad).contains("date_format"), "{}", stderr(&bad));
 }
+
+#[cfg(unix)]
+#[test]
+fn a_fifo_is_refused_instead_of_blocking() {
+    let dir = tempfile::tempdir().unwrap();
+    let fifo = dir.path().join("pipe.md");
+    assert!(
+        Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bastian"))
+        .args(["-p", fifo.to_str().unwrap()])
+        .env("XDG_CONFIG_HOME", dir.path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    // Opening a FIFO for reading waits for a writer; don't hang the suite.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while child.try_wait().unwrap().is_none() {
+        if std::time::Instant::now() > deadline {
+            child.kill().unwrap();
+            panic!("bastian blocked reading a FIFO");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let out = child.wait_with_output().unwrap();
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("is not a file"), "{}", stderr(&out));
+}

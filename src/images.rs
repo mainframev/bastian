@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::mpsc::{self, Receiver, Sender};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use image::DynamicImage;
 
 use ratatui_image::FontSize;
@@ -190,7 +190,7 @@ fn drawable(url: &str) -> bool {
 
 fn load(source: &Source) -> Result<DynamicImage> {
     let bytes = match source {
-        Source::File(path) => read_file(path)?,
+        Source::File(path) => crate::text::read_capped(path, MAX_BYTES)?,
         Source::Url(url) => crate::remote::fetch_bytes(url, MAX_BYTES)?,
     };
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format()?;
@@ -201,30 +201,6 @@ fn load(source: &Source) -> Result<DynamicImage> {
     limits.max_alloc = Some(MAX_DECODED);
     reader.limits(limits);
     Ok(reader.decode()?)
-}
-
-/// Read a local image, refusing anything but a regular file: a link to
-/// `/dev/zero` or a FIFO would otherwise read forever.
-fn read_file(path: &std::path::Path) -> Result<Vec<u8>> {
-    use std::io::Read;
-    let context = || format!("reading {}", path.display());
-    // Checked before opening: opening a FIFO blocks until a writer comes.
-    anyhow::ensure!(
-        std::fs::metadata(path).with_context(context)?.is_file(),
-        "{} is not a file",
-        path.display()
-    );
-    let file = std::fs::File::open(path).with_context(context)?;
-    let mut bytes = Vec::new();
-    file.take(MAX_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .with_context(context)?;
-    anyhow::ensure!(
-        bytes.len() as u64 <= MAX_BYTES,
-        "{} is too large",
-        path.display()
-    );
-    Ok(bytes)
 }
 
 /// The best protocol the terminal answered for: kitty graphics, then

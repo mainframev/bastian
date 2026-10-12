@@ -86,7 +86,7 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
     if r.hyperlinks {
         draw_hyperlinks(frame, r, content, end, &focused);
     }
-    for link in &r.rendered.links[focused] {
+    for link in focused.iter().map(|&i| &r.rendered.links[i]) {
         if (r.scroll..end).contains(&link.line) {
             let x = content.x + link.col as u16;
             let width = (link.width as u16).min(content.right().saturating_sub(x));

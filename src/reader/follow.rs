@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::collections::HashMap;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
@@ -118,15 +118,18 @@ impl Reader {
         })
     }
 
-    /// The links focus steps through: ranges of `rendered.links`, one per
-    /// link, joining the pieces of a link that wraps onto further lines.
-    pub fn link_stops(&self) -> Vec<Range<usize>> {
-        let links = &self.rendered.links;
-        let mut stops: Vec<Range<usize>> = Vec::new();
-        for (i, l) in links.iter().enumerate() {
-            match stops.last_mut() {
-                Some(s) if links[i - 1].id == l.id => s.end = i + 1,
-                _ => stops.push(i..i + 1),
+    /// The links focus steps through, in screen order: for each link, the
+    /// indexes of its pieces in `rendered.links` (one per line it's on; in
+    /// a table, other cells' links can come between them).
+    pub fn link_stops(&self) -> Vec<Vec<usize>> {
+        let mut stops: Vec<Vec<usize>> = Vec::new();
+        let mut stop_of: HashMap<usize, usize> = HashMap::new();
+        for (i, l) in self.rendered.links.iter().enumerate() {
+            if let Some(&s) = stop_of.get(&l.id) {
+                stops[s].push(i);
+            } else {
+                stop_of.insert(l.id, stops.len());
+                stops.push(vec![i]);
             }
         }
         stops
@@ -146,28 +149,31 @@ impl Reader {
             self.message = Some("no links in this document".into());
             return;
         }
-        let line = |s: &Range<usize>| self.rendered.links[s.start].line;
+        let links = &self.rendered.links;
+        let first_line = |s: &[usize]| links[s[0]].line;
+        let last_line = |s: &[usize]| links[s[s.len() - 1]].line;
         let next = match (self.link_focus, forward) {
             (Some(i), true) => (i + 1).min(stops.len() - 1),
             (Some(i), false) => i.saturating_sub(1),
+            // The first link with any part in view (or below it).
             (None, true) => stops
                 .iter()
-                .position(|s| line(s) >= self.scroll)
+                .position(|s| last_line(s) >= self.scroll)
                 .unwrap_or(stops.len() - 1),
             (None, false) => stops
                 .iter()
-                .rposition(|s| line(s) < self.scroll + self.height)
+                .rposition(|s| first_line(s) < self.scroll + self.height)
                 .unwrap_or(0),
         };
+        let first = first_line(&stops[next]);
+        let last = last_line(&stops[next]);
+        let url = links[stops[next][0]].url.clone();
         self.focus = None;
         self.link_focus = Some(next);
-        let first = line(&stops[next]);
-        let last = self.rendered.links[stops[next].end - 1].line;
         if first < self.scroll || last >= self.scroll + self.height {
             self.follow = None;
             self.scroll = first.saturating_sub(self.height / 3).min(self.max_scroll());
         }
-        let url = self.rendered.links[stops[next].start].url.clone();
         self.link_preview = self.describe_link(&url);
     }
 
@@ -176,7 +182,7 @@ impl Reader {
         let url = self
             .link_focus
             .and_then(|i| self.link_stops().get(i).cloned())
-            .map(|s| self.rendered.links[s.start].url.clone());
+            .map(|s| self.rendered.links[s[0]].url.clone());
         self.link_focus = None;
         match url {
             Some(url) => self.follow_link(&url),
@@ -248,7 +254,9 @@ fn document_title(path: &std::path::Path) -> Option<String> {
         .take(8 * 1024)
         .read_to_end(&mut head)
         .ok()?;
-    doc::parse(&String::from_utf8_lossy(&head)).title()
+    // The same parser opening it would use (MDX for .mdx); a cut-off MDX
+    // head falls back to plain Markdown.
+    doc::parse_for(&String::from_utf8_lossy(&head), Some(path)).title()
 }
 
 /// The words of `blocks`, on one line.
@@ -259,7 +267,15 @@ fn blocks_text(blocks: &[Block]) -> String {
             parts.push(doc::plain_text(inlines));
         }
         Block::Code(c) => parts.push(c.src.clone()),
-        _ => {}
+        Block::Callout { kind, .. } => parts.push(format!("{}:", kind.title())),
+        Block::Table { header, rows, .. } => {
+            for cell in header.iter().chain(rows.iter().flatten()) {
+                parts.push(doc::plain_text(cell));
+            }
+        }
+        Block::Image { alt, .. } => parts.push(alt.clone()),
+        Block::Label(text) => parts.push(text.clone()),
+        Block::Quote(_) | Block::List { .. } | Block::Footnote { .. } | Block::Rule => {}
     });
     parts
         .join(" ")

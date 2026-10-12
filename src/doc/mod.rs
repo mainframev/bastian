@@ -222,6 +222,10 @@ pub struct InlineStyle {
     pub strike: bool,
     pub code: bool,
     pub link: Option<String>,
+    /// Which link occurrence this text belongs to, numbered through the
+    /// document: the parts of `[the **docs**](x)` share one, while
+    /// `[a](x)[b](x)` are two.
+    pub link_id: Option<usize>,
     /// De-emphasized syntax such as inline JSX tags and expressions.
     pub muted: bool,
     /// A footnote reference, left out of heading anchors.

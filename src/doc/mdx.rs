@@ -84,10 +84,16 @@ pub fn parse(src: &str) -> Option<Document> {
 #[derive(Default)]
 struct Mapper {
     next_code_id: usize,
+    next_link_id: usize,
     footnotes: Footnotes,
 }
 
 impl Mapper {
+    fn next_link_id(&mut self) -> usize {
+        self.next_link_id += 1;
+        self.next_link_id - 1
+    }
+
     fn next_id(&mut self) -> usize {
         self.next_code_id += 1;
         self.next_code_id - 1
@@ -237,10 +243,14 @@ impl Mapper {
             Node::Break(_) => push_inline(out, "\n", style),
             Node::Link(l) => {
                 let url = l.url.clone();
+                let id = self.next_link_id();
                 children(
                     self,
                     &l.children,
-                    &with(&|s| s.link = Some(url.clone())),
+                    &with(&|s| {
+                        s.link = Some(url.clone());
+                        s.link_id = Some(id);
+                    }),
                     out,
                 );
             }
@@ -263,7 +273,9 @@ impl Mapper {
             }
             Node::FootnoteReference(f) => {
                 let label = f.label.as_deref().unwrap_or(&f.identifier);
-                out.push(self.footnotes.reference(label, style));
+                let mut r = self.footnotes.reference(label, style);
+                r.style.link_id = Some(self.next_link_id());
+                out.push(r);
             }
             Node::MdxTextExpression(_) => {}
             // Containers that can't appear inline: render their text.

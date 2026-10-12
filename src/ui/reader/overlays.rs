@@ -109,7 +109,8 @@ pub(super) fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {
 }
 
 /// Ask before handing a non-web link to the system opener. The target is
-/// shown whole, wrapped to the screen, so nothing hides past the edge.
+/// wrapped to the screen; one too long to fit keeps its first and last rows
+/// (scheme and host, file name) with `…` between, and the y/n row stays.
 pub(super) fn draw_open_confirm(frame: &mut Frame, r: &Reader, target: &str) {
     let t = &r.theme;
     let area = frame.area();

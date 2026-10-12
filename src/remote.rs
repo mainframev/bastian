@@ -2,6 +2,7 @@
 //! READMEs. Relative links in a remote document resolve against `base`.
 
 use std::path::Path;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -78,7 +79,7 @@ pub fn fetch(source: &Source) -> Result<RemoteDoc> {
             // it. Links still resolve against the page, so they open as pages
             // in a browser and Markdown ones come back here as raw files.
             let raw = raw_url(url).unwrap_or_else(|| url.clone());
-            let text = get(&agent, raw.as_str(), "text/markdown, text/plain, */*")?;
+            let text = get(agent, raw.as_str(), "text/markdown, text/plain, */*")?;
             Ok(RemoteDoc {
                 name: url.to_string(),
                 base: url.clone(),
@@ -88,7 +89,7 @@ pub fn fetch(source: &Source) -> Result<RemoteDoc> {
         Source::GitHub { owner, repo } => {
             let api = format!("https://api.github.com/repos/{owner}/{repo}/readme");
             let meta: Value =
-                serde_json::from_str(&get(&agent, &api, "application/vnd.github+json")?)
+                serde_json::from_str(&get(agent, &api, "application/vnd.github+json")?)
                     .context("reading GitHub's README metadata")?;
             let raw = meta["download_url"]
                 .as_str()
@@ -97,7 +98,7 @@ pub fn fetch(source: &Source) -> Result<RemoteDoc> {
             let file = meta["name"].as_str().unwrap_or("README");
             Ok(RemoteDoc {
                 name: format!("{owner}/{repo} {file}"),
-                text: get(&agent, raw, "text/plain")?,
+                text: get(agent, raw, "text/plain")?,
                 base,
             })
         }
@@ -106,7 +107,7 @@ pub fn fetch(source: &Source) -> Result<RemoteDoc> {
                 "https://gitlab.com/api/v4/projects/{}",
                 url::form_urlencoded::byte_serialize(project.as_bytes()).collect::<String>()
             );
-            let meta: Value = serde_json::from_str(&get(&agent, &api, "application/json")?)
+            let meta: Value = serde_json::from_str(&get(agent, &api, "application/json")?)
                 .context("reading GitLab's project metadata")?;
             let readme = meta["readme_url"]
                 .as_str()
@@ -119,7 +120,7 @@ pub fn fetch(source: &Source) -> Result<RemoteDoc> {
                 .unwrap_or("README");
             Ok(RemoteDoc {
                 name: format!("{project} {file}"),
-                text: get(&agent, &raw, "text/plain")?,
+                text: get(agent, &raw, "text/plain")?,
                 base,
             })
         }
@@ -156,13 +157,17 @@ fn gitlab_raw(readme_url: &str) -> String {
     readme_url.replacen("/-/blob/", "/-/raw/", 1)
 }
 
-fn agent() -> ureq::Agent {
-    ureq::Agent::new_with_config(
-        ureq::Agent::config_builder()
-            .timeout_global(Some(TIMEOUT))
-            .http_status_as_error(false)
-            .build(),
-    )
+/// The HTTP client, shared so a document's images reuse its connections.
+fn agent() -> &'static ureq::Agent {
+    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
+    AGENT.get_or_init(|| {
+        ureq::Agent::new_with_config(
+            ureq::Agent::config_builder()
+                .timeout_global(Some(TIMEOUT))
+                .http_status_as_error(false)
+                .build(),
+        )
+    })
 }
 
 /// GET `url` as text, with clear errors for HTTP failures and GitHub's rate
@@ -178,7 +183,7 @@ fn get(agent: &ureq::Agent, url: &str, accept: &str) -> Result<String> {
 
 /// GET `url` as raw bytes (e.g. an image), up to `limit` bytes.
 pub(crate) fn fetch_bytes(url: &str, limit: u64) -> Result<Vec<u8>> {
-    respond(&agent(), url, "*/*")?
+    respond(agent(), url, "*/*")?
         .body_mut()
         .with_config()
         .limit(limit)
@@ -232,6 +237,11 @@ pub(crate) fn is_document(url: &Url) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn requests_share_one_agent() {
+        assert!(std::ptr::eq(agent(), agent()));
+    }
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpListener;
 

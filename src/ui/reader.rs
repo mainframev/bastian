@@ -353,7 +353,8 @@ fn draw_hyperlinks(frame: &mut Frame, r: &Reader, content: Rect, end: usize) {
         for span in &line.spans {
             let w = span.width();
             if col + w > link.col && col < link.col + link.width {
-                label.push_str(&span.content);
+                // hyperrat writes the label raw, past ratatui's filter.
+                label.push_str(&crate::render::strip_controls(&span.content));
                 style.get_or_insert(span.style);
             }
             col += w;

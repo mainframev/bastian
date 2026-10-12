@@ -1,5 +1,6 @@
 pub mod app;
 pub mod browser;
+pub mod cli;
 pub mod config;
 pub mod doc;
 pub mod editor;

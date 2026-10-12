@@ -7,6 +7,8 @@ use std::process::{Command, Stdio};
 use anyhow::{Context, Result};
 
 use crate::config::{ColorMode, Setting, Source};
+use crate::doc::Document;
+use crate::render::{self, theme::Theme};
 
 /// Whether printed output should carry ANSI colors.
 ///
@@ -67,6 +69,32 @@ pub fn page(text: &str, pager: &str) -> Result<()> {
     }
     child.wait().context("waiting for pager")?;
     Ok(())
+}
+
+/// How non-interactive output is written.
+pub struct Output {
+    pub width: u16,
+    pub color: bool,
+    /// Pager command when paging, `None` to write to stdout.
+    pub pager: Option<String>,
+}
+
+impl Output {
+    /// Render `doc` and write it out in `theme`.
+    pub fn print(&self, doc: &Document, theme: &Theme, opts: render::Options) -> Result<()> {
+        let rendered = render::render_with(doc, self.width, theme, opts);
+        let text = if self.color {
+            render::to_ansi(&rendered.lines)
+        } else {
+            render::to_plain(&rendered.lines)
+        };
+        if let Some(pager) = &self.pager {
+            page(&format!("{text}\n"), pager)
+        } else {
+            println!("{text}");
+            Ok(())
+        }
+    }
 }
 
 #[cfg(test)]

@@ -71,6 +71,7 @@ pub fn parse(src: &str) -> Option<Document> {
     };
     let root = markdown::to_mdast(src, &options).ok()?;
     if too_deep(&root) {
+        drop_iteratively(root);
         return None;
     }
     let mut m = Mapper::default();
@@ -338,6 +339,16 @@ fn too_deep(root: &Node) -> bool {
     false
 }
 
+/// Drop a tree of any depth: the default drop recurses once per level.
+fn drop_iteratively(root: Node) {
+    let mut stack = vec![root];
+    while let Some(mut node) = stack.pop() {
+        if let Some(children) = node.children_mut() {
+            stack.append(children);
+        }
+    }
+}
+
 /// `{/* ... */}` holds only a comment.
 fn is_comment(expr: &str) -> bool {
     let e = expr.trim();
@@ -571,6 +582,20 @@ Use <Badge>new</Badge> for the inline API and {props.version} too.
         assert!(parse(&format!("{}x\n", "- ".repeat(10_000))).is_none());
         let doc = crate::doc::parse_for(&jsx(1_000), Some(std::path::Path::new("a.mdx")));
         assert!(!doc.blocks.is_empty(), "no blocks parsed");
+    }
+
+    #[test]
+    fn rejected_deep_trees_drop_without_recursion() {
+        // A recursive drop overflows this small stack at this depth; on the
+        // default stack it'd take a depth that parses for seconds.
+        let n = 2_000;
+        let src = format!("{}x\n{}", "<a>\n".repeat(n), "</a>\n".repeat(n));
+        std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(move || assert!(parse(&src).is_none()))
+            .unwrap()
+            .join()
+            .unwrap();
     }
 
     #[test]

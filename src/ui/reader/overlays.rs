@@ -6,8 +6,8 @@ use ratatui::widgets::Clear;
 use unicode_width::UnicodeWidthStr;
 
 use crate::reader::{LinkPicker, Reader};
+use crate::text::{shorten_left, take_width};
 use crate::ui::status::{self, Place};
-use crate::ui::text::{shorten_left, take_width};
 
 /// The outline tree, docked to the right.
 pub(super) fn draw_outline(frame: &mut Frame, r: &mut Reader) {

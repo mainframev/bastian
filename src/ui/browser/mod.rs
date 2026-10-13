@@ -11,10 +11,10 @@ use ratatui::widgets::Paragraph;
 use super::inset;
 use super::logo;
 use super::status;
-use super::text::shorten_left;
 use crate::browser::Browser;
 use crate::config::{ListLayout, Selector};
 use crate::render::theme::Theme;
+use crate::text::shorten_left;
 use rows::{card_lines, compact_line, page_indicator, spinner};
 
 const HELP: &[(&str, &str)] = &[

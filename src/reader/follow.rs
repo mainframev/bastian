@@ -281,7 +281,7 @@ impl Reader {
                 } if doc::footnote_anchor(label) == anchor => {
                     found = Some(format!(
                         "[{number}] {}",
-                        crate::ui::text::shorten_right(&blocks_text(blocks), 60)
+                        crate::text::shorten_right(&blocks_text(blocks), 60)
                     ));
                 }
                 _ => {}

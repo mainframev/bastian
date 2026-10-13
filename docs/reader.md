@@ -28,6 +28,7 @@ its note.
 | `x`                         | stop running blocks                                          |
 | `o`                         | show/hide a block's output                                   |
 | `y`                         | copy the focused block                                       |
+| `d`, `D`                    | focus the next/previous details block (`Enter` opens/closes) |
 | `c`                         | copy the whole document                                      |
 | `e`                         | edit the file at the line you're reading                     |
 | `#`                         | toggle line numbers                                          |
@@ -87,6 +88,15 @@ output keep their alt text.
 `i` turns pictures on and off for the session. `images = false` (or
 `--images off`) starts with them off; `image_height` caps how many rows a
 picture takes (24 by default).
+
+## Details
+
+HTML `<details>` blocks start closed, showing their `<summary>` (or
+"Details") after a `▶`; `<details open>` starts open. `d` and `D` focus the
+next and previous one and `Enter` opens or closes it. Markdown inside is
+rendered when it's separated from the tags by blank lines, as on GitHub.
+Search only finds text in open blocks. Printed output shows every block
+open.
 
 ## Line numbers
 

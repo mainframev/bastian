@@ -51,9 +51,14 @@ pub(super) const SCOPES: &[(&str, &str)] = &[
     ("number", "constant.numeric"),
     (
         "constant",
-        "constant.language, constant.character, support.constant",
+        "constant.language, constant.character, constant.other, support.constant, \
+         variable.language",
     ),
-    ("function", "entity.name.function, support.function"),
+    // Calls are variable.function in most grammars; Rust macros are support.macro.
+    (
+        "function",
+        "entity.name.function, support.function, variable.function, support.macro",
+    ),
     (
         "type",
         "entity.name.type, entity.name.class, entity.name.struct, entity.name.enum, \

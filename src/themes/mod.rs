@@ -207,6 +207,48 @@ mod tests {
         assert_eq!(color_of("Point"), Some(want("type")));
     }
 
+    #[test]
+    fn calls_macros_and_self_are_colored() {
+        let theme = load("kanagawa-wave", None).unwrap();
+        let text = Some(theme.text);
+        let lines = crate::render::code::highlight(
+            "self.go(1);\nprintln!(\"x\");\n",
+            Some("rust"),
+            &theme,
+            4,
+        );
+        let color_of = |line: usize, text: &str| {
+            lines[line]
+                .iter()
+                .find(|s| s.content.contains(text))
+                .unwrap_or_else(|| panic!("no span with {text}: {:?}", lines[line]))
+                .style
+                .fg
+        };
+        assert_ne!(color_of(0, "self"), text);
+        assert_ne!(color_of(0, "go"), text);
+        assert_ne!(color_of(1, "println!"), text);
+    }
+
+    #[test]
+    fn common_languages_beyond_the_syntect_defaults_highlight() {
+        let theme = load("kanagawa-wave", None).unwrap();
+        for (lang, src) in [
+            ("ts", "const x: number = 1;\n"),
+            ("tsx", "const x = <div />;\n"),
+            ("toml", "a = \"b\"\n"),
+            ("dockerfile", "FROM alpine\n"),
+            ("zsh", "echo hi\n"),
+        ] {
+            let lines = crate::render::code::highlight(src, Some(lang), &theme, 4);
+            assert!(
+                lines[0].iter().any(|s| s.style.fg != Some(theme.text)),
+                "{lang} is not highlighted: {:?}",
+                lines[0]
+            );
+        }
+    }
+
     fn theme_dir(files: &[(&str, &str)]) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         for (name, src) in files {

@@ -8,7 +8,9 @@ use syntect::util::LinesWithEndings;
 
 use super::theme::Theme;
 
-static SYNTAXES: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
+// bat's syntax set: syntect's defaults lack TypeScript, TOML, Dockerfile
+// and more, which then showed as plain text.
+static SYNTAXES: LazyLock<SyntaxSet> = LazyLock::new(two_face::syntax::extra_newlines);
 
 /// The syntax token for a file extension, if it names a language the
 /// highlighter knows (e.g. `rs` → `rs`).

@@ -207,6 +207,25 @@ mod tests {
         assert_eq!(color_of("Point"), Some(want("type")));
     }
 
+    #[test]
+    fn common_languages_beyond_the_syntect_defaults_highlight() {
+        let theme = load("kanagawa-wave", None).unwrap();
+        for (lang, src) in [
+            ("ts", "const x: number = 1;\n"),
+            ("tsx", "const x = <div />;\n"),
+            ("toml", "a = \"b\"\n"),
+            ("dockerfile", "FROM alpine\n"),
+            ("zsh", "echo hi\n"),
+        ] {
+            let lines = crate::render::code::highlight(src, Some(lang), &theme, 4);
+            assert!(
+                lines[0].iter().any(|s| s.style.fg != Some(theme.text)),
+                "{lang} is not highlighted: {:?}",
+                lines[0]
+            );
+        }
+    }
+
     fn theme_dir(files: &[(&str, &str)]) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         for (name, src) in files {

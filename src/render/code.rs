@@ -1,22 +1,9 @@
-use std::sync::LazyLock;
-
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 use syntect::easy::HighlightLines;
-use syntect::parsing::SyntaxSet;
 use syntect::util::LinesWithEndings;
 
 use super::theme::Theme;
-
-// bat's syntax set: syntect's defaults lack TypeScript, TOML, Dockerfile
-// and more, which then showed as plain text.
-static SYNTAXES: LazyLock<SyntaxSet> = LazyLock::new(two_face::syntax::extra_newlines);
-
-/// The syntax token for a file extension, if it names a language the
-/// highlighter knows (e.g. `rs` → `rs`).
-pub fn known_extension(ext: &str) -> bool {
-    SYNTAXES.find_syntax_by_extension(ext).is_some()
-}
 
 /// Syntax-highlight `src` into one span list per source line, each tab
 /// as `tab_width` spaces.
@@ -33,7 +20,7 @@ pub fn highlight(
             .collect()
     };
 
-    let ss = &*SYNTAXES;
+    let ss = crate::syntax::set();
     let Some(syntax) = lang.and_then(|l| ss.find_syntax_by_token(l)) else {
         return plain();
     };

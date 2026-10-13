@@ -1084,7 +1084,7 @@ mod tests {
     #[test]
     fn stray_close_tags_and_other_html_are_left_alone() {
         let doc = parse("</details>\n\n<div>hi</div>\n\n<summary>loose</summary>\n");
-        assert!(details(&doc).is_empty());
+        assert_eq!(details(&doc), []);
         let text: Vec<String> = doc
             .blocks
             .iter()

@@ -65,6 +65,11 @@ press `Enter` to jump to a heading, `Esc` to close it.
   `file:` URLs and local files show the target and wait for `y`/`n`. A
   target too long for the screen keeps its start and end, with `…` between.
 
+Wiki links work too: `[[Page]]` opens `Page.md` next to the document,
+`[[notes/Page|text]]` shows "text" and opens `notes/Page.md`, and
+`[[Page#Heading]]` or `[[#Heading]]` scroll to that heading. Pages are found
+by their path from the document, not searched for across folders.
+
 `s` and `S` step through the links in place instead, starting from the ones
 in view. The status bar shows where the focused link leads before you follow
 it: the heading an anchor points to, a footnote's text, a Markdown file's

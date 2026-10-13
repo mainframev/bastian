@@ -208,6 +208,29 @@ mod tests {
     }
 
     #[test]
+    fn calls_macros_and_self_are_colored() {
+        let theme = load("kanagawa-wave", None).unwrap();
+        let text = Some(theme.text);
+        let lines = crate::render::code::highlight(
+            "self.go(1);\nprintln!(\"x\");\n",
+            Some("rust"),
+            &theme,
+            4,
+        );
+        let color_of = |line: usize, text: &str| {
+            lines[line]
+                .iter()
+                .find(|s| s.content.contains(text))
+                .unwrap_or_else(|| panic!("no span with {text}: {:?}", lines[line]))
+                .style
+                .fg
+        };
+        assert_ne!(color_of(0, "self"), text);
+        assert_ne!(color_of(0, "go"), text);
+        assert_ne!(color_of(1, "println!"), text);
+    }
+
+    #[test]
     fn common_languages_beyond_the_syntect_defaults_highlight() {
         let theme = load("kanagawa-wave", None).unwrap();
         for (lang, src) in [

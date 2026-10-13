@@ -17,6 +17,10 @@ lint:
 test:
     cargo test
 
+# Time rendering of generated documents (not run in CI).
+bench:
+    cargo bench
+
 # Lint and test, as CI does.
 check: lint test
 

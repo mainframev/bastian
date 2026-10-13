@@ -315,6 +315,7 @@ fn blocks_text(blocks: &[Block]) -> String {
             }
         }
         Block::Image { alt, .. } => parts.push(alt.clone()),
+        Block::Details { summary, .. } => parts.push(doc::plain_text(summary)),
         Block::Label(text) => parts.push(text.clone()),
         Block::Quote(_) | Block::List { .. } | Block::Footnote { .. } | Block::Rule => {}
     });

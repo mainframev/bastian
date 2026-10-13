@@ -97,6 +97,18 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
             );
         }
     }
+    // The focused details block's summary line.
+    if let Some(span) = r
+        .details_focus
+        .and_then(|id| r.rendered.details.iter().find(|d| d.id == id))
+        && (r.scroll..end).contains(&span.line)
+    {
+        let y = content.y + (span.line - r.scroll) as u16;
+        frame.buffer_mut().set_style(
+            Rect::new(content.x, y, content.width, 1),
+            Style::default().bg(t.current_bg),
+        );
+    }
     draw_images(frame, r, content, end);
     if r.scrollbar {
         status::scrollbar(
@@ -160,6 +172,8 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
     };
     let hint = if r.link_focus.is_some() {
         format!("{}  · enter follow · s/S next/prev", r.link_preview)
+    } else if r.details_focus.is_some() {
+        format!("{}  enter open/close · d/D next/prev", r.name)
     } else if r.focus.is_some() {
         format!("{}  enter run · R all · x stop · y copy · ? more", r.name)
     } else {
@@ -208,6 +222,7 @@ const HELP: &[(&str, &str)] = &[
     ("c", "copy whole document"),
     ("L", "list links"),
     ("s/S", "focus next/previous link; enter follows it"),
+    ("d/D", "focus next/previous details; enter opens/closes it"),
     ("e", "edit at this line in $VISUAL/$EDITOR"),
     ("ctrl-z", "suspend (resume with fg)"),
     ("#", "toggle line numbers"),

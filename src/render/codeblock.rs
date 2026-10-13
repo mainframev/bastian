@@ -120,6 +120,7 @@ impl Renderer<'_> {
             images: Vec::new(),
             block_starts: Vec::new(),
             links: Vec::new(),
+            details: Vec::new(),
             code_blocks: vec![range],
             anchors: src_line
                 .iter()

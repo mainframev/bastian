@@ -17,6 +17,7 @@ pub mod prompt;
 pub mod reader;
 pub mod remote;
 pub mod render;
+pub mod syntax;
 pub mod term;
 pub mod text;
 pub mod themes;

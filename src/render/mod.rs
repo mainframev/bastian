@@ -10,7 +10,6 @@ pub mod theme;
 mod wrap;
 
 pub use ansi::to_ansi;
-pub use code::known_extension;
 pub(crate) use plain::strip_controls;
 pub use plain::{plain, to_plain};
 pub(crate) use run::run_status;

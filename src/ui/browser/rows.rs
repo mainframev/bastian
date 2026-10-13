@@ -5,8 +5,8 @@ use unicode_width::UnicodeWidthStr;
 use crate::browser::{Browser, Entry};
 use crate::config::Selector;
 use crate::render::theme::Theme;
+use crate::text::{shorten_left, shorten_right};
 use crate::ui::status;
-use crate::ui::text::{shorten_left, shorten_right};
 
 /// What goes beside each row of an entry: `first` is its title row.
 pub(super) fn marker(selector: Selector, selected: bool, first: bool, t: &Theme) -> Span<'static> {

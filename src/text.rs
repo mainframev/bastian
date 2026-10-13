@@ -1,10 +1,12 @@
-//! Reading documents from disk: byte-order marks and UTF-16 are handled
-//! here once, for every place bastian opens a file.
+//! Text in and out of documents: reading files from disk (byte-order
+//! marks and UTF-16 handled here once) and fitting strings into a width
+//! of terminal cells.
 
 use std::io::Read;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 /// Largest document bastian reads from disk.
 const MAX_BYTES: u64 = 64 * 1024 * 1024;
@@ -56,6 +58,50 @@ pub(crate) fn decode_lossy(bytes: &[u8]) -> String {
     decode(bytes).unwrap_or_else(|_| String::from_utf8_lossy(bytes).into_owned())
 }
 
+/// Keep the last `max` columns of `s`, marking the cut with `…`.
+pub fn shorten_left(s: &str, max: usize) -> String {
+    if s.width() <= max {
+        return s.to_string();
+    }
+    if max == 0 {
+        return String::new();
+    }
+    let mut keep = Vec::new();
+    let mut w = 0;
+    for c in s.chars().rev() {
+        let cw = c.width().unwrap_or(0);
+        if w + cw + 1 > max {
+            break;
+        }
+        keep.push(c);
+        w += cw;
+    }
+    format!("…{}", keep.iter().rev().collect::<String>())
+}
+
+/// Keep the first `max` columns of `s`, marking the cut with `…`.
+pub fn shorten_right(s: &str, max: usize) -> String {
+    if s.width() <= max {
+        return s.to_string();
+    }
+    if max == 0 {
+        return String::new();
+    }
+    format!("{}…", take_width(s, max - 1))
+}
+
+/// The longest start of `s` that fits in `max` columns.
+pub fn take_width(s: &str, max: usize) -> &str {
+    let mut w = 0;
+    for (i, c) in s.char_indices() {
+        w += c.width().unwrap_or(0);
+        if w > max {
+            return &s[..i];
+        }
+    }
+    s
+}
+
 fn utf8(bytes: &[u8]) -> Result<String> {
     match std::str::from_utf8(bytes) {
         Ok(s) => Ok(s.to_string()),
@@ -75,6 +121,31 @@ fn utf16(bytes: &[u8], unit: fn([u8; 2]) -> u16) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shortens_paths_from_the_left() {
+        assert_eq!(shorten_left("~/code/app", 20), "~/code/app");
+        assert_eq!(shorten_left("~/code/app", 6), "…e/app");
+        assert_eq!(shorten_left("~/code/app", 0), "");
+        // Wide characters count by the columns they take.
+        assert_eq!(shorten_left("日本語/説明書.md", 10), "…説明書.md");
+        assert!(shorten_left("日本語/説明書.md", 10).width() <= 10);
+    }
+
+    #[test]
+    fn shortens_titles_from_the_right() {
+        assert_eq!(shorten_right("Guide", 10), "Guide");
+        assert_eq!(shorten_right("A long title", 6), "A lon…");
+        assert_eq!(shorten_right("Guide", 0), "");
+    }
+
+    #[test]
+    fn takes_whole_characters_within_the_width() {
+        assert_eq!(take_width("abc", 2), "ab");
+        assert_eq!(take_width("日本語", 5), "日本");
+        assert_eq!(take_width("日本語", 1), "");
+        assert_eq!(take_width("ab", 9), "ab");
+    }
 
     fn utf16le(s: &str) -> Vec<u8> {
         let mut out = vec![0xFF, 0xFE];

@@ -2,11 +2,11 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
+use super::Theme;
 use super::file::user_file;
 use super::{Appearance, builtin_names, canonical, load};
 use crate::config::Resolved;
 use crate::paths;
-use crate::render::theme::Theme;
 
 /// One row of `bastian themes`.
 pub struct Listing {

@@ -32,7 +32,7 @@ impl Browser {
             return Action::None;
         }
         let page = self.height as isize;
-        let ctrl = prompt::ctrl(&key);
+        let ctrl = nav::ctrl(&key);
         match key.code {
             KeyCode::Char('d') if ctrl => self.move_by(page / 2),
             KeyCode::Char('u') if ctrl => self.move_by(-page / 2),
@@ -68,7 +68,7 @@ impl Browser {
 /// Keys that move the selection rather than edit filter text. Plain
 /// letters (even `j`/`k`) stay text, and ctrl-u keeps clearing the input.
 fn is_navigation(key: &KeyEvent) -> bool {
-    let ctrl = prompt::ctrl(key);
+    let ctrl = nav::ctrl(key);
     match key.code {
         // ←/→ move the cursor in the filter text instead.
         KeyCode::Up | KeyCode::Down | KeyCode::PageUp | KeyCode::PageDown => true,

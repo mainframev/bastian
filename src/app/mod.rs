@@ -17,9 +17,9 @@ use ratatui::crossterm::execute;
 use crate::browser::{self, Browser};
 use crate::editor;
 use crate::links;
+use crate::nav;
 use crate::paths;
 use crate::picker::{self, ThemePicker};
-use crate::prompt;
 use crate::reader::{self, Reader};
 use crate::render::theme::Theme;
 use terminal::with_terminal_released;
@@ -195,10 +195,10 @@ impl App {
         if key.kind != KeyEventKind::Press {
             return true;
         }
-        if key.code == KeyCode::Char('c') && prompt::ctrl(&key) {
+        if key.code == KeyCode::Char('c') && nav::ctrl(&key) {
             return false;
         }
-        if key.code == KeyCode::Char('z') && prompt::ctrl(&key) {
+        if key.code == KeyCode::Char('z') && nav::ctrl(&key) {
             self.suspend = true;
             return true;
         }

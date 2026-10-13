@@ -72,9 +72,14 @@ fn main() -> Result<()> {
         std::env::var("CLICOLOR_FORCE").ok().as_deref(),
     );
     if list_themes && !pick_theme {
+        let roles = [
+            ("theme", resolved.theme.value.as_str()),
+            ("dark_theme", resolved.dark_theme.value.as_str()),
+            ("light_theme", resolved.light_theme.value.as_str()),
+        ];
         print!(
             "{}",
-            themes::format_list(&resolved, themes_dir.as_deref(), color)
+            themes::format_list(&roles, themes_dir.as_deref(), color)
         );
         return Ok(());
     }

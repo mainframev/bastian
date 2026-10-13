@@ -1,5 +1,5 @@
 use pulldown_cmark::{
-    Alignment, BlockQuoteKind, CodeBlockKind, Event, Options, Parser, Tag, TagEnd,
+    Alignment, BlockQuoteKind, CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd,
 };
 
 use super::{
@@ -14,7 +14,8 @@ pub fn parse(src: &str) -> Document {
         | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
         | Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS
         | Options::ENABLE_GFM
-        | Options::ENABLE_FOOTNOTES;
+        | Options::ENABLE_FOOTNOTES
+        | Options::ENABLE_WIKILINKS;
     let newlines: Vec<usize> = src.match_indices('\n').map(|(i, _)| i).collect();
     let line_of = |offset: usize| newlines.partition_point(|&n| n < offset);
     let mut b = Builder::default();
@@ -233,8 +234,16 @@ impl Builder {
             Tag::Strong => self.set_count(|b| &mut b.strong, 1),
             Tag::Emphasis => self.set_count(|b| &mut b.emphasis, 1),
             Tag::Strikethrough => self.set_count(|b| &mut b.strike, 1),
-            Tag::Link { dest_url, .. } => {
-                self.style.link = Some(dest_url.into_string());
+            Tag::Link {
+                link_type,
+                dest_url,
+                ..
+            } => {
+                let url = match link_type {
+                    LinkType::WikiLink { .. } => wiki_target(&dest_url),
+                    _ => dest_url.into_string(),
+                };
+                self.style.link = Some(url);
                 self.style.link_id = Some(self.next_link_id());
             }
             Tag::Image { dest_url, .. } => {
@@ -675,6 +684,25 @@ fn html_text(html: &str) -> String {
         .replace("&nbsp;", " ")
         .replace("&amp;", "&");
     out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The relative link a wiki link's target stands for: `Page` is
+/// `Page.md` next to the document, and a `#Heading` part becomes that
+/// heading's anchor. Targets with an extension are kept as they are.
+fn wiki_target(target: &str) -> String {
+    let (path, heading) = match target.split_once('#') {
+        Some((path, heading)) => (path.trim(), Some(heading)),
+        None => (target.trim(), None),
+    };
+    let mut url = path.to_string();
+    if !path.is_empty() && std::path::Path::new(path).extension().is_none() {
+        url.push_str(".md");
+    }
+    if let Some(heading) = heading {
+        url.push('#');
+        url.push_str(&crate::links::slug(heading));
+    }
+    url
 }
 
 /// The image block for a paragraph that is nothing but `[image: alt]`
@@ -1145,5 +1173,45 @@ mod tests {
         let doc = parse(&format!("{open}deep\n\n{close}after\n"));
         assert_eq!(details(&doc).len(), MAX_DEPTH);
         assert!(matches!(doc.blocks.last(), Some(Block::Paragraph(i)) if plain_text(i) == "after"));
+    }
+
+    /// Each link's text and target in `src`.
+    fn links(src: &str) -> Vec<(String, String)> {
+        let doc = parse(src);
+        let Block::Paragraph(inlines) = &doc.blocks[0] else {
+            panic!("{:?}", doc.blocks);
+        };
+        inlines
+            .iter()
+            .filter_map(|i| Some((i.text.clone(), i.style.link.clone()?)))
+            .collect()
+    }
+
+    #[test]
+    fn wiki_links_point_at_markdown_files_next_to_the_document() {
+        assert_eq!(
+            links(
+                "[[Other Page]] [[notes/todo|My list]] [[Guide#Getting Started]] [[#Usage]] [[spec.pdf]]"
+            ),
+            [
+                ("Other Page".into(), "Other Page.md".into()),
+                ("My list".into(), "notes/todo.md".into()),
+                (
+                    "Guide#Getting Started".into(),
+                    "Guide.md#getting-started".into()
+                ),
+                ("#Usage".into(), "#usage".into()),
+                ("spec.pdf".into(), "spec.pdf".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn wiki_link_syntax_in_code_stays_text() {
+        let doc = parse("`[[not a link]]`\n");
+        let Block::Paragraph(inlines) = &doc.blocks[0] else {
+            panic!("{:?}", doc.blocks);
+        };
+        assert!(inlines.iter().all(|i| i.style.link.is_none()));
     }
 }

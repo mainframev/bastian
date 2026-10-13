@@ -376,4 +376,28 @@ mod tests {
         press(&mut r, KeyCode::BackTab, KeyModifiers::NONE);
         assert_eq!(selected(&r), 1);
     }
+
+    #[test]
+    fn wiki_links_open_the_page_next_to_the_document() {
+        use crate::reader::Action;
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("Other Page.md"),
+            "# Other\n\n## Getting Started\n",
+        )
+        .unwrap();
+        let mut r = Reader::new(
+            "t".into(),
+            parse("See [[Other Page#Getting Started|it]].\n"),
+            Theme::dark(),
+            80,
+        );
+        r.base_dir = dir.path().to_path_buf();
+        r.layout(80, 20);
+        press(&mut r, KeyCode::Char('s'), KeyModifiers::NONE);
+        assert_eq!(r.link_preview, "→ Other Page.md · Other");
+        let action = r.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(matches!(&action, Action::OpenDocument(p) if p.ends_with("Other Page.md")));
+    }
 }

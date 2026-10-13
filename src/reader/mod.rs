@@ -1,3 +1,4 @@
+mod details;
 mod follow;
 mod keys;
 mod reload;
@@ -109,6 +110,10 @@ pub struct Reader {
     images_requested: bool,
     /// Syntax highlighting per code block, reused across re-renders.
     highlights: Highlights,
+    /// Details blocks opened or closed from how they start.
+    toggled_details: HashSet<usize>,
+    /// Id of the focused details block.
+    pub details_focus: Option<usize>,
     /// Image size and tab width settings.
     pub render_opts: render::Options,
     /// Make links clickable terminal hyperlinks.
@@ -169,6 +174,8 @@ impl Reader {
             images: Images::default(),
             images_requested: false,
             highlights: Highlights::default(),
+            toggled_details: HashSet::new(),
+            details_focus: None,
             render_opts: render::Options::default(),
             hyperlinks: true,
             scrollbar: true,
@@ -244,6 +251,7 @@ impl Reader {
                 interpreters: &self.interpreters,
                 highlights: &self.highlights,
                 images: &images,
+                toggled_details: Some(&self.toggled_details),
                 opts: self.render_opts,
             };
             self.rendered = render::render_with_runs(&self.doc, width, &self.theme, cx);
@@ -253,6 +261,12 @@ impl Reader {
             let stops = self.link_stops().len();
             if self.link_focus.is_some_and(|i| i >= stops) {
                 self.link_focus = None;
+            }
+            // A details block inside one that closed is no longer shown.
+            if let Some(id) = self.details_focus
+                && !self.rendered.details.iter().any(|d| d.id == id)
+            {
+                self.details_focus = None;
             }
         }
         self.height = usize::from(height);

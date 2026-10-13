@@ -57,6 +57,15 @@ enum Frame {
         /// Source line of the definition.
         line: usize,
     },
+    /// An HTML `<details>` element, open until its `</details>`.
+    Details {
+        id: usize,
+        open: bool,
+        summary: Option<Vec<Inline>>,
+        blocks: Vec<Block>,
+        /// Source line of the opening tag.
+        line: usize,
+    },
 }
 
 impl From<BlockQuoteKind> for CalloutKind {
@@ -120,6 +129,11 @@ struct Builder {
     /// Open quotes, lists and items past `MAX_DEPTH`, which get no frame:
     /// their content lands in the deepest frame.
     flattened: u32,
+    /// The HTML block being read, gathered to find `<details>` tags in it.
+    html: Option<String>,
+    next_details_id: usize,
+    /// `<details>` opened past `MAX_DEPTH`, ignored along with their close.
+    skipped_details: u32,
 }
 
 impl Builder {
@@ -144,7 +158,11 @@ impl Builder {
                     style,
                 });
             }
-            Event::Html(t) | Event::InlineHtml(t) => self.push_text(&t),
+            Event::Html(t) => match &mut self.html {
+                Some(buf) => buf.push_str(&t),
+                None => self.push_text(&t),
+            },
+            Event::InlineHtml(t) => self.push_text(&t),
             Event::SoftBreak => self.push_text(" "),
             Event::HardBreak => self.push_text("\n"),
             Event::Rule => {
@@ -222,6 +240,10 @@ impl Builder {
                 self.push_text(super::IMAGE_PREFIX);
             }
             Tag::MetadataBlock(_) => self.metadata = true,
+            Tag::HtmlBlock => {
+                self.flush();
+                self.html = Some(String::new());
+            }
             Tag::FootnoteDefinition(label) => {
                 self.flush();
                 if !self.footnotes.claim(&label) {
@@ -239,6 +261,15 @@ impl Builder {
     }
 
     fn end(&mut self, tag: TagEnd) {
+        // A `<details>` left open inside a container ends with it.
+        if matches!(
+            tag,
+            TagEnd::BlockQuote(_) | TagEnd::Item | TagEnd::FootnoteDefinition
+        ) && self.flattened == 0
+        {
+            self.flush();
+            self.close_open_details();
+        }
         if matches!(tag, TagEnd::BlockQuote(_) | TagEnd::List(_) | TagEnd::Item)
             && self.flattened > 0
         {
@@ -334,6 +365,11 @@ impl Builder {
             }
             TagEnd::Image => self.push_text("]"),
             TagEnd::MetadataBlock(_) => self.metadata = false,
+            TagEnd::HtmlBlock => {
+                if let Some(html) = self.html.take() {
+                    self.html_block(&html);
+                }
+            }
             TagEnd::FootnoteDefinition => {
                 self.flush();
                 if let Some(Frame::Footnote {
@@ -357,7 +393,12 @@ impl Builder {
             || self
                 .stack
                 .iter()
-                .filter(|f| matches!(f, Frame::Quote(..) | Frame::Item(..)))
+                .filter(|f| {
+                    matches!(
+                        f,
+                        Frame::Quote(..) | Frame::Item(..) | Frame::Details { .. }
+                    )
+                })
                 .count()
                 >= MAX_DEPTH
     }
@@ -409,7 +450,10 @@ impl Builder {
     fn push_block(&mut self, block: Block) {
         match self.stack.last_mut() {
             Some(
-                Frame::Quote(_, blocks) | Frame::Item(blocks, _) | Frame::Footnote { blocks, .. },
+                Frame::Quote(_, blocks)
+                | Frame::Item(blocks, _)
+                | Frame::Footnote { blocks, .. }
+                | Frame::Details { blocks, .. },
             ) => blocks.push(block),
             // Blocks never appear directly inside a list, only inside items.
             Some(Frame::List { .. }) | None => {
@@ -419,8 +463,99 @@ impl Builder {
         }
     }
 
+    /// An HTML block: `<details>` and `<summary>` tags open, label and close
+    /// a details block; any other HTML shows as text, as before.
+    fn html_block(&mut self, html: &str) {
+        for part in html_parts(html) {
+            match part {
+                HtmlPart::Text(t) => {
+                    if !t.trim().is_empty() {
+                        self.push_text(t.trim_matches('\n'));
+                    }
+                }
+                HtmlPart::Open { open } => {
+                    self.flush();
+                    if self.too_deep() {
+                        self.skipped_details += 1;
+                        continue;
+                    }
+                    let id = self.next_details_id;
+                    self.next_details_id += 1;
+                    self.stack.push(Frame::Details {
+                        id,
+                        open,
+                        summary: None,
+                        blocks: Vec::new(),
+                        line: self.block_start,
+                    });
+                }
+                HtmlPart::Summary(text) => {
+                    self.flush();
+                    match self.stack.last_mut() {
+                        Some(Frame::Details { summary, .. }) if summary.is_none() => {
+                            *summary = Some(vec![Inline {
+                                text,
+                                style: InlineStyle::default(),
+                            }]);
+                        }
+                        _ => {
+                            self.push_text(&text);
+                            self.flush();
+                        }
+                    }
+                }
+                HtmlPart::Close => {
+                    self.flush();
+                    if self.skipped_details > 0 {
+                        self.skipped_details -= 1;
+                    } else if matches!(self.stack.last(), Some(Frame::Details { .. })) {
+                        self.close_details();
+                    }
+                }
+            }
+        }
+        self.flush();
+    }
+
+    /// Close the `<details>` frame on top of the stack.
+    fn close_details(&mut self) {
+        let Some(Frame::Details {
+            id,
+            open,
+            summary,
+            blocks,
+            line,
+        }) = self.stack.pop()
+        else {
+            return;
+        };
+        let summary = summary.unwrap_or_else(|| {
+            vec![Inline {
+                text: "Details".into(),
+                style: InlineStyle::default(),
+            }]
+        });
+        // At the root, the block belongs to the line of its opening tag.
+        let start = std::mem::replace(&mut self.block_start, line);
+        self.push_block(Block::Details {
+            id,
+            open,
+            summary,
+            blocks,
+        });
+        self.block_start = start;
+    }
+
+    /// Close every `<details>` still open on top of the stack.
+    fn close_open_details(&mut self) {
+        while matches!(self.stack.last(), Some(Frame::Details { .. })) {
+            self.close_details();
+        }
+    }
+
     fn finish(mut self) -> Document {
         self.flush();
+        self.close_open_details();
         std::mem::take(&mut self.footnotes).append_to(&mut self.root, &mut self.lines);
         Document {
             blocks: self.root,
@@ -428,6 +563,97 @@ impl Builder {
             code_file: false,
         }
     }
+}
+
+/// A piece of an HTML block, as `<details>` handling sees it.
+#[derive(Debug, PartialEq)]
+enum HtmlPart<'a> {
+    Text(&'a str),
+    Open { open: bool },
+    Summary(String),
+    Close,
+}
+
+/// Split an HTML block into `<details>`, `<summary>…</summary>` and
+/// `</details>` tags (any case) and the text between them.
+fn html_parts(html: &str) -> Vec<HtmlPart<'_>> {
+    let mut parts = Vec::new();
+    let mut text_start = 0;
+    let mut i = 0;
+    while let Some(off) = html[i..].find('<') {
+        let at = i + off;
+        let rest = &html[at..];
+        let tag = |name: &str| {
+            rest.get(..name.len())
+                .is_some_and(|t| t.eq_ignore_ascii_case(name))
+                && rest[name.len()..]
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c == '>' || c == '/' || c.is_ascii_whitespace())
+        };
+        let end_of_tag = |from: usize| rest[from..].find('>').map(|e| at + from + e + 1);
+        let (part, next) = if tag("<details") {
+            let Some(end) = end_of_tag(8) else { break };
+            let attrs = html[at + 8..end - 1].to_ascii_lowercase();
+            let open = attrs
+                .split(|c: char| c.is_ascii_whitespace() || c == '/')
+                .any(|a| a == "open" || a.starts_with("open="));
+            (HtmlPart::Open { open }, end)
+        } else if tag("</details") {
+            let Some(end) = end_of_tag(9) else { break };
+            (HtmlPart::Close, end)
+        } else if tag("<summary") {
+            let Some(body) = end_of_tag(8) else { break };
+            let lower = html[body..].to_ascii_lowercase();
+            let (inner_end, end) = match lower.find("</summary") {
+                Some(e) => {
+                    let close = body + e;
+                    let end = html[close..]
+                        .find('>')
+                        .map_or(html.len(), |g| close + g + 1);
+                    (close, end)
+                }
+                None => (html.len(), html.len()),
+            };
+            (HtmlPart::Summary(html_text(&html[body..inner_end])), end)
+        } else {
+            i = at + 1;
+            continue;
+        };
+        if text_start < at {
+            parts.push(HtmlPart::Text(&html[text_start..at]));
+        }
+        parts.push(part);
+        text_start = next;
+        i = next;
+    }
+    if text_start < html.len() {
+        parts.push(HtmlPart::Text(&html[text_start..]));
+    }
+    parts
+}
+
+/// The text of an HTML fragment: tags dropped, common entities decoded,
+/// whitespace collapsed.
+fn html_text(html: &str) -> String {
+    let mut out = String::new();
+    let mut in_tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' if in_tag => in_tag = false,
+            _ if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    let out = out
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&");
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// The image block for a paragraph that is nothing but `[image: alt]`
@@ -773,5 +999,109 @@ mod tests {
         assert!(matches!(doc.blocks[2], Block::Paragraph(_)));
         let mdx = crate::doc::parse_for("![Logo](logo.png)\n", Some(std::path::Path::new("x.mdx")));
         assert!(matches!(&mdx.blocks[0], Block::Image { url, .. } if url == "logo.png"));
+    }
+
+    /// The details blocks of `doc`, in document order: (id, open, summary,
+    /// plain text of their direct paragraphs).
+    fn details(doc: &Document) -> Vec<(usize, bool, String, Vec<String>)> {
+        let mut out = Vec::new();
+        crate::doc::visit(&doc.blocks, &mut |b| {
+            if let Block::Details {
+                id,
+                open,
+                summary,
+                blocks,
+            } = b
+            {
+                let paras = blocks
+                    .iter()
+                    .filter_map(|b| match b {
+                        Block::Paragraph(i) => Some(plain_text(i)),
+                        _ => None,
+                    })
+                    .collect();
+                out.push((*id, *open, plain_text(summary), paras));
+            }
+        });
+        out
+    }
+
+    #[test]
+    fn details_hold_their_blocks_and_summary() {
+        let doc = parse(
+            "<details>\n<summary>More <b>info</b> &amp; such</summary>\n\nHidden **text**.\n\n</details>\n\nAfter.\n",
+        );
+        assert_eq!(
+            details(&doc),
+            [(
+                0,
+                false,
+                "More info & such".into(),
+                vec!["Hidden text.".into()]
+            )]
+        );
+        assert!(matches!(&doc.blocks[1], Block::Paragraph(i) if plain_text(i) == "After."));
+        assert_eq!(doc.lines, [0, 7]);
+    }
+
+    #[test]
+    fn details_open_attribute_nesting_and_case() {
+        let doc = parse(
+            "<DETAILS Open><Summary>Outer</Summary>\n\nA\n\n<details>\n<summary>Inner</summary>\n\nB\n\n</details>\n</DETAILS>\n",
+        );
+        assert_eq!(
+            details(&doc),
+            [
+                (0, true, "Outer".into(), vec!["A".into()]),
+                (1, false, "Inner".into(), vec!["B".into()]),
+            ]
+        );
+    }
+
+    #[test]
+    fn details_without_summary_or_blank_lines() {
+        let doc = parse("<details>\nRaw body.\n</details>\n");
+        assert_eq!(
+            details(&doc),
+            [(0, false, "Details".into(), vec!["Raw body.".into()])]
+        );
+    }
+
+    #[test]
+    fn unclosed_details_end_with_their_container() {
+        // Left open at the end of the document.
+        let doc = parse("<details>\n<summary>S</summary>\n\ntail\n");
+        assert_eq!(details(&doc), [(0, false, "S".into(), vec!["tail".into()])]);
+        // Left open inside a list item: closed with it, the list intact.
+        let doc = parse("- <details>\n  <summary>S</summary>\n\n  in\n- next\n");
+        let Block::List { items, .. } = &doc.blocks[0] else {
+            panic!("{:?}", doc.blocks);
+        };
+        assert_eq!(items.len(), 2);
+        assert!(matches!(&items[0][..], [Block::Details { .. }]));
+    }
+
+    #[test]
+    fn stray_close_tags_and_other_html_are_left_alone() {
+        let doc = parse("</details>\n\n<div>hi</div>\n\n<summary>loose</summary>\n");
+        assert!(details(&doc).is_empty());
+        let text: Vec<String> = doc
+            .blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::Paragraph(i) => Some(plain_text(i)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, ["<div>hi</div>", "loose"]);
+    }
+
+    #[test]
+    fn details_past_max_depth_are_flattened() {
+        let open = "<details>\n<summary>s</summary>\n\n".repeat(MAX_DEPTH + 4);
+        let close = "</details>\n\n".repeat(MAX_DEPTH + 4);
+        let doc = parse(&format!("{open}deep\n\n{close}after\n"));
+        assert_eq!(details(&doc).len(), MAX_DEPTH);
+        assert!(matches!(doc.blocks.last(), Some(Block::Paragraph(i)) if plain_text(i) == "after"));
     }
 }

@@ -16,7 +16,7 @@ pub use plain::{plain, to_plain};
 pub(crate) use run::run_status;
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use ratatui::style::{Modifier, Style};
@@ -48,6 +48,16 @@ pub struct Rendered {
     pub block_starts: Vec<usize>,
     /// Rows reserved for pictures, to draw over.
     pub images: Vec<ImageSlot>,
+    /// Summary line of each details block shown, in document order.
+    pub details: Vec<DetailsSpan>,
+}
+
+/// Where a details block's summary landed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DetailsSpan {
+    pub id: usize,
+    /// First line of the summary.
+    pub line: usize,
 }
 
 /// Where a picture goes: `rows` blank lines from `line`, `cols` wide,
@@ -122,6 +132,7 @@ pub fn render_with(doc: &Document, width: u16, theme: &Theme, opts: Options) -> 
         interpreters: &interpreters,
         highlights: &highlights,
         images: &images,
+        toggled_details: None,
         opts,
     };
     render_with_runs(doc, width, theme, cx)
@@ -148,6 +159,9 @@ pub(crate) struct Context<'a> {
     pub highlights: &'a Highlights,
     /// Sizes of the pictures loaded so far.
     pub images: &'a ImageSizes,
+    /// Ids of the details blocks opened or closed from how they start;
+    /// `None` shows them all open, as printed output can't open one.
+    pub toggled_details: Option<&'a HashSet<usize>>,
     pub opts: Options,
 }
 
@@ -180,6 +194,7 @@ pub(crate) fn render_with_runs(doc: &Document, width: u16, theme: &Theme, cx: Co
         anchors,
         code_blocks: out.codes,
         links,
+        details: out.details,
     }
 }
 
@@ -190,6 +205,7 @@ struct Out {
     images: Vec<ImageSlot>,
     /// Rendered line where each block passed to `blocks` begins.
     starts: Vec<usize>,
+    details: Vec<DetailsSpan>,
 }
 
 impl From<Vec<Line<'static>>> for Out {
@@ -224,6 +240,11 @@ impl Out {
                 id: c.id,
                 lines: c.lines.start + offset..c.lines.end + offset,
                 output_end: c.output_end + offset,
+            }));
+        self.details
+            .extend(other.details.into_iter().map(|d| DetailsSpan {
+                line: d.line + offset,
+                ..d
             }));
         // Prefixes are as wide on every line of a block, so either will do.
         let indent: usize = rest.iter().chain(first).map(Span::width).max().unwrap_or(0);
@@ -323,6 +344,12 @@ impl Renderer<'_> {
                 rows,
             } => self.table(align, header, rows, width),
             Block::Image { alt, url } => self.image(alt, url, width),
+            Block::Details {
+                id,
+                open,
+                summary,
+                blocks,
+            } => self.details(*id, *open, summary, blocks, width),
             Block::Rule => Out::from(vec![Line::styled(
                 "─".repeat(width),
                 Style::default().fg(t.muted),
@@ -459,6 +486,48 @@ impl Renderer<'_> {
 
 /// `out`, or a blank line when it has none, so a marker put in front of an
 /// empty list item or footnote still shows.
+impl Renderer<'_> {
+    /// A details block: `▶ summary` when closed, `▼ summary` with its
+    /// blocks indented underneath when open.
+    fn details(
+        &self,
+        id: usize,
+        open: bool,
+        summary: &[Inline],
+        blocks: &[Block],
+        width: usize,
+    ) -> Out {
+        let t = self.theme;
+        let shown = self
+            .cx
+            .toggled_details
+            .is_none_or(|toggled| toggled.contains(&id) != open);
+        let marker = Span::styled(
+            if shown { "▼ " } else { "▶ " },
+            Style::default().fg(t.accent),
+        );
+        let pad = [Span::raw("  ")];
+        let summary = wrap(
+            &self.runs(
+                summary,
+                Style::default().fg(t.text).add_modifier(Modifier::BOLD),
+            ),
+            width.saturating_sub(2).max(1),
+        );
+        let mut out = Out::default();
+        out.append(Out::from(summary), &[marker], &pad);
+        out.details.push(DetailsSpan { id, line: 0 });
+        if shown {
+            out.append(
+                self.blocks(blocks, width.saturating_sub(2), true),
+                &pad,
+                &pad,
+            );
+        }
+        out
+    }
+}
+
 fn non_empty(out: Out) -> Out {
     if out.lines.is_empty() {
         Out::from(vec![Line::default()])
@@ -559,6 +628,7 @@ mod tests {
             interpreters: &interpreters,
             highlights: &highlights,
             images: &sizes,
+            toggled_details: None,
             opts: short,
         };
         let r = render_with_runs(&doc, 80, &Theme::dark(), cx);

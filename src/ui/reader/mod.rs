@@ -14,7 +14,7 @@ use super::text::highlight;
 use crate::picker::ThemePicker;
 use crate::reader::{Overlay, Reader};
 use media::{draw_hyperlinks, draw_images};
-use overlays::{draw_confirm, draw_links, draw_location, draw_open_confirm};
+use overlays::{draw_confirm, draw_history, draw_links, draw_location, draw_open_confirm};
 use toc::draw_toc;
 
 pub fn draw(frame: &mut Frame, r: &mut Reader) {
@@ -250,6 +250,7 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
         Some(Overlay::RunConfirm(ids)) => draw_confirm(frame, main, r, ids),
         Some(Overlay::OpenConfirm(target)) => draw_open_confirm(frame, main, r, target),
         Some(Overlay::Links(picker)) => draw_links(frame, main, r, picker),
+        Some(Overlay::History(picker)) => draw_history(frame, main, r, picker),
         Some(Overlay::Location(location)) => draw_location(frame, main, r, location),
         Some(Overlay::Help(_) | Overlay::Prompt(_) | Overlay::GoTo(_)) | None => {}
     }
@@ -301,7 +302,7 @@ const HELP: &[status::HelpSection] = &[
             ("1-9, 0", "jump to entry 1-10"),
         ],
     ),
-    ("General", &[("T", "pick a theme"), ("q", "quit")]),
+    ("General", &[("T, H", "themes, history"), ("q", "quit")]),
     (
         "Code blocks",
         &[

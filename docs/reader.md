@@ -40,6 +40,7 @@ its note.
 | `#`                         | toggle line numbers                                          |
 | `i`                         | show/hide images                                             |
 | `T`                         | pick a theme                                                 |
+| `H`                         | list the documents opened this session; `Enter` reopens one  |
 | `ctrl-z`                    | suspend; resume with `fg`                                    |
 | `?`                         | key help                                                     |
 | `Esc`                       | clear focus and search; pressed again, back                 |
@@ -144,6 +145,13 @@ diagrams are supported. A diagram that doesn't parse, is another type, is
 wider than the window or takes over 250 ms to lay out shows its source
 instead, and `v` switches the focused block between the two. The feature is
 off by default as it adds about 8 MB to the binary.
+
+## History
+
+`H` lists the documents read this session, most recent first, with the one
+you're reading marked and the one before it selected. `Enter` opens the
+selection, and `Esc` goes back from it as from a followed link. The list isn't
+kept after bastian exits.
 
 ## Line numbers
 

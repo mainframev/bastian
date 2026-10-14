@@ -3,7 +3,6 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use super::{Action, LinkPicker, Reader};
 use crate::links;
 use crate::nav;
-use crate::outline::{self, Outline};
 use crate::prompt::{self, Edited, Prompt};
 
 impl Reader {
@@ -18,17 +17,6 @@ impl Reader {
         }
         if self.location.is_some() {
             return self.on_location_key(key);
-        }
-        if let Some(outline) = &mut self.outline {
-            match outline.on_key(key) {
-                outline::Event::None => {}
-                outline::Event::Close => self.outline = None,
-                outline::Event::Jump(line) => {
-                    self.outline = None;
-                    self.scroll = line.min(self.max_scroll());
-                }
-            }
-            return Action::None;
         }
         if self.confirm.is_some() {
             self.on_confirm_key(key);
@@ -117,12 +105,16 @@ impl Reader {
             KeyCode::Char('?') => self.help.show(),
             KeyCode::Char('T') => return Action::PickTheme,
             KeyCode::Char('i') => return Action::ToggleImages,
-            KeyCode::Char('O') => {
-                self.outline = Outline::new(&self.doc, &self.rendered, self.scroll);
-                if self.outline.is_none() {
-                    self.message = Some("no headings in this document".into());
-                }
+            KeyCode::Char('t') => self.toggle_toc(),
+            KeyCode::Char('<') if self.toc => self.resize_toc(false),
+            KeyCode::Char('>') if self.toc => self.resize_toc(true),
+            KeyCode::Char(c @ '0'..='9') if self.toc => {
+                // `0` is the tenth, as on a keyboard's number row.
+                let n = c.to_digit(10).unwrap_or(0) as usize;
+                self.jump_to_entry(if n == 0 { 10 } else { n });
             }
+            KeyCode::Char('J') => self.step_heading(true),
+            KeyCode::Char('K') => self.step_heading(false),
             KeyCode::Char('#') => self.line_numbers = !self.line_numbers,
             KeyCode::Char('e') if ctrl => match &self.source {
                 Some(path) => return Action::Edit(path.clone(), self.source_line()),

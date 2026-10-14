@@ -1287,50 +1287,147 @@ fn pictures_partly_scrolled_off_show_their_visible_rows() {
 }
 
 #[test]
-fn outline_panel_lists_headings_and_jumps() {
+fn toc_pane_sits_beside_the_document_and_follows_the_scroll() {
+    use bastian::ui::reader::draw;
+    use ratatui::style::Modifier;
+    use ratatui::text::Line;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let long = "word ".repeat(60);
+    let src = std::fs::read_to_string("tests/fixtures/outline.md").unwrap() + "\n" + &long;
+    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
+    let widest = |r: &Reader| r.rendered().lines.iter().map(Line::width).max().unwrap();
+    let mut terminal = Terminal::new(TestBackend::new(70, 12)).unwrap();
+    // Columns `from..to` of each screen row.
+    let cols = |t: &Terminal<TestBackend>, from: u16, to: u16| -> Vec<String> {
+        let buf = t.backend().buffer();
+        (0..12)
+            .map(|y| (from..to).map(|x| buf[(x, y)].symbol()).collect())
+            .collect()
+    };
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    // The document fills the screen less its margins.
+    assert!(widest(&r) > 40, "{}", widest(&r));
+
+    assert!(matches!(key(&mut r, KeyCode::Char('t')), Action::None));
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    // Re-wrapped beside the 30-column pane, within its own margins.
+    assert!(widest(&r) <= 70 - 30 - 4, "{}", widest(&r));
+    let pane = cols(&terminal, 0, 30);
+    assert_eq!(pane[0], " Table of Contents       < > │");
+    assert!(pane[1].contains("────"), "{pane:#?}");
+    // The lone title isn't numbered; its sections are, and deeper
+    // headings indent under them.
+    let entries: Vec<&str> = pane[2..9]
+        .iter()
+        .map(|r| r.trim_end_matches([' ', '│']))
+        .collect();
+    assert_eq!(
+        entries,
+        [
+            " Guide",
+            " 01 Install",
+            "      From source",
+            "      With a package manager",
+            " 02 Usage",
+            "      Skipped a level",
+            " 03 Usage",
+        ]
+    );
+    let doc = cols(&terminal, 30, 70);
+    assert!(doc[1].starts_with("   Guide"), "{doc:#?}");
+
+    // `2` scrolls to the second section, which the pane then highlights.
+    key(&mut r, KeyCode::Char('2'));
+    let top = bastian::render::plain(&r.rendered().lines[r.scroll()]);
+    assert_eq!(top.trim(), "## Usage");
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let pane = cols(&terminal, 0, 30);
+    let row = pane
+        .iter()
+        .position(|r| r.starts_with(" 02 Usage"))
+        .unwrap();
+    let cell = &terminal.backend().buffer()[(4, row as u16)];
+    assert_eq!(cell.fg, Theme::dark().accent);
+    assert!(cell.modifier.contains(Modifier::BOLD));
+    let other = pane
+        .iter()
+        .position(|r| r.starts_with(" 01 Install"))
+        .unwrap();
+    let cell = &terminal.backend().buffer()[(4, other as u16)];
+    assert!(!cell.modifier.contains(Modifier::BOLD));
+
+    // Closed again, the document takes the full width back.
+    key(&mut r, KeyCode::Char('t'));
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    assert!(widest(&r) > 40);
+}
+
+#[test]
+fn toc_pane_keeps_the_same_source_at_the_top() {
     use bastian::ui::reader::draw;
     use ratatui::{Terminal, backend::TestBackend};
 
-    let src = std::fs::read_to_string("tests/fixtures/outline.md").unwrap();
+    // Long paragraphs, so the rendered rows above one change with the width.
+    let src: String = std::iter::once("# Title\n\n".to_string())
+        .chain((0..30).map(|i| format!("p{i} {}\n\n", "word ".repeat(40))))
+        .collect();
     let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
-    let mut terminal = Terminal::new(TestBackend::new(70, 30)).unwrap();
+    let mut terminal = Terminal::new(TestBackend::new(100, 12)).unwrap();
     terminal.draw(|f| draw(f, &mut r)).unwrap();
-    assert!(matches!(key(&mut r, KeyCode::Char('O')), Action::None));
-    terminal.draw(|f| draw(f, &mut r)).unwrap();
-    let screen: String = {
-        let buf = terminal.backend().buffer();
-        (0..30)
-            .map(|y| {
-                (0..70)
-                    .map(|x| buf[(x, y)].symbol().to_string())
-                    .collect::<String>()
-                    + "\n"
-            })
-            .collect()
-    };
-    assert!(screen.contains("outline · enter jump"), "{screen}");
-    for heading in ["Guide", "Install", "From source", "Skipped a level"] {
-        assert!(screen.contains(heading), "{heading} missing:\n{screen}");
+    let top = |r: &Reader| bastian::render::plain(&r.rendered().lines[r.scroll()]);
+    let p20 = r
+        .rendered()
+        .lines
+        .iter()
+        .position(|l| bastian::render::plain(l).trim_start().starts_with("p20 "))
+        .unwrap();
+    r.scroll_by(p20 as isize);
+    assert!(top(&r).trim_start().starts_with("p20 "), "{}", top(&r));
+
+    for _ in 0..2 {
+        key(&mut r, KeyCode::Char('t'));
+        terminal.draw(|f| draw(f, &mut r)).unwrap();
+        assert!(top(&r).trim_start().starts_with("p20 "), "{}", top(&r));
     }
+    // Resizing the open pane keeps it too.
+    key(&mut r, KeyCode::Char('t'));
+    key(&mut r, KeyCode::Char('>'));
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    assert!(top(&r).trim_start().starts_with("p20 "), "{}", top(&r));
+}
 
-    // On a short screen, down to "Install" and jump: it lands at the top
-    // of the view.
-    key(&mut r, KeyCode::Esc);
-    let mut short = Terminal::new(TestBackend::new(70, 8)).unwrap();
-    short.draw(|f| draw(f, &mut r)).unwrap();
-    key(&mut r, KeyCode::Char('O'));
-    short.draw(|f| draw(f, &mut r)).unwrap();
-    key(&mut r, KeyCode::Char('j'));
-    key(&mut r, KeyCode::Enter);
-    assert!(r.outline.is_none());
-    let top = bastian::render::plain(&r.rendered().lines[r.scroll()]);
-    assert_eq!(top.trim(), "## Install");
+#[test]
+fn focused_code_block_frame_follows_the_toc_pane() {
+    use bastian::ui::reader::{MARGIN, draw};
+    use ratatui::{Terminal, backend::TestBackend};
 
-    // A document without headings says so instead.
-    let mut plain = reader("just text\n");
-    key(&mut plain, KeyCode::Char('O'));
-    assert!(plain.outline.is_none());
-    assert_eq!(plain.message(), Some("no headings in this document"));
+    let mut r = Reader::new(
+        Source::in_memory("t.md", parse("# A\n\n```sh\necho hi\n```\n")),
+        &Options::default(),
+    );
+    let mut terminal = Terminal::new(TestBackend::new(80, 12)).unwrap();
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    key(&mut r, KeyCode::Char('t'));
+    key(&mut r, KeyCode::Tab);
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let pane = r.fit_toc(80);
+    assert!(pane > 0);
+
+    let buf = terminal.backend().buffer();
+    let block = &r.rendered().code_blocks[0];
+    let cols = block.frame.clone().unwrap();
+    let theme = Theme::dark();
+    // Below the blank top row, right of the pane.
+    let y = block.lines.start as u16 + 1;
+    let x = |col: usize| pane + MARGIN + col as u16;
+    assert_eq!(buf[(x(cols.start), y)].symbol(), "┌");
+    for col in cols.clone() {
+        assert_eq!(buf[(x(col), y)].fg, theme.accent, "{col}");
+    }
+    assert_eq!(buf[(x(cols.end - 1), y)].symbol(), "┐");
+    // Nothing left of the frame is recolored.
+    assert_ne!(buf[(x(cols.start) - 1, y)].fg, theme.accent);
 }
 
 #[test]

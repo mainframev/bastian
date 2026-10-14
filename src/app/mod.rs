@@ -11,7 +11,9 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::clipboard::CopyToClipboard;
-use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, MouseEventKind};
+use ratatui::crossterm::event::{
+    Event, KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEventKind,
+};
 use ratatui::crossterm::execute;
 
 use crate::browser::{self, Browser};
@@ -183,6 +185,13 @@ impl App {
             let step = match m.kind {
                 MouseEventKind::ScrollDown => 1,
                 MouseEventKind::ScrollUp => -1,
+                MouseEventKind::Down(MouseButton::Left) => {
+                    if let Some(r) = self.reader.as_mut().filter(|_| self.picker.is_none()) {
+                        r.on_click(m.column, m.row);
+                        self.settings.reader.toc_width = r.toc_width();
+                    }
+                    return true;
+                }
                 _ => return true,
             };
             if let Some(r) = &mut self.reader {
@@ -209,6 +218,8 @@ impl App {
 
         if let Some(r) = &mut self.reader {
             let action = r.on_key(key);
+            // Readers opened later start with the table of contents as wide.
+            self.settings.reader.toc_width = r.toc_width();
             return self.on_reader_action(action);
         }
 
@@ -248,6 +259,9 @@ impl App {
                     r.remember_position();
                 }
                 self.reader = self.history.pop();
+                if let Some(r) = &mut self.reader {
+                    r.set_toc_width(self.settings.reader.toc_width);
+                }
                 return self.reader.is_some() || self.browser.is_some();
             }
             reader::Action::OpenDocument { path, anchor } => {

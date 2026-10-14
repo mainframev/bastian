@@ -40,7 +40,6 @@ toml = "1.1.8"
 tui-big-text = "0.8.10"
 tui-input = "0.15"
 tui-scrollbar = "0.2"
-tui-tree-widget = "0.24"
 two-face = "0.5"
 unicode-width = "0.2.2"
 # No gzip: ureq applies body limits before decoding, so a small gzipped

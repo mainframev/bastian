@@ -21,6 +21,12 @@ test:
 bench:
     cargo bench
 
+# Check the release binary against the size budget. CI checks x86_64
+# Linux; binaries for other platforms differ in size.
+size:
+    cargo build --release --locked
+    .github/scripts/size-check.sh target/release/bastian .github/size-budget
+
 # Lint and test, as CI does.
 check: lint test
 

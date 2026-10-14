@@ -6,6 +6,7 @@ use ratatui::widgets::Clear;
 use unicode_width::UnicodeWidthStr;
 
 use crate::reader::{LinkPicker, Location, Reader};
+use crate::render::theme::Theme;
 use crate::text::{shorten_left, take_width};
 use crate::ui::status::{self, Place};
 
@@ -141,60 +142,68 @@ pub(super) fn draw_open_confirm(frame: &mut Frame, r: &Reader, target: &str) {
         "Open with the system opener?",
         Style::default().fg(t.text),
     )];
-    let rows = wrap_width(target, max_w);
-    if rows.len() <= budget {
-        lines.extend(rows.into_iter().map(|row| Line::styled(row, target_style)));
-    } else if budget < 3 {
-        lines.push(Line::styled(elide_middle(target, max_w), target_style));
-    } else {
-        // Keep the start (scheme, host) and the end (file name) in view.
-        let head = (budget - 1).div_ceil(2);
-        let tail = budget - 1 - head;
-        let row = |s: &str| Line::styled(s.to_string(), target_style);
-        lines.extend(rows[..head].iter().map(|s| row(s)));
-        lines.push(Line::styled("…", Style::default().fg(t.subtle)));
-        lines.extend(rows[rows.len() - tail..].iter().map(|s| row(s)));
-    }
+    lines.extend(fit_rows(t, target, target_style, max_w, budget));
     lines.extend([Line::default(), keys]);
     status::modal(frame, t, " open ", lines);
 }
 
 /// Where the document came from, with the keys that copy it. Long paths
-/// wrap to the screen.
+/// wrap to the screen; on a screen too short for them, each keeps its
+/// first and last rows with `…` between, and the labels and keys stay.
 pub(super) fn draw_location(frame: &mut Frame, r: &Reader, location: &Location) {
     let t = r.theme();
+    let area = frame.area();
     // Border and padding, at least one column for the text.
-    let max_w = (frame.area().width.saturating_sub(4) as usize).max(1);
+    let max_w = (area.width.saturating_sub(4) as usize).max(1);
+    // Inside the border; the box can't grow past the screen.
+    let avail = area.height.saturating_sub(2) as usize;
     let label = Style::default().fg(t.muted);
     let value = Style::default().fg(t.accent).bold();
+    let (entries, keys): (Vec<Pair>, &[Pair]) = match location {
+        Location::File { relative, absolute } => (
+            vec![("Relative:", relative), ("Absolute:", absolute)],
+            &[("R", " copy relative · "), ("A", " copy absolute · ")],
+        ),
+        Location::Url(url) => (vec![("URL:", url)], &[("R/A", " copy URL · ")]),
+        Location::Unnamed(_) => (Vec::new(), &[]),
+    };
+    let footer = location_keys(t, keys, max_w);
     let mut lines = Vec::new();
-    let mut entry = |name: &str, text: &str| {
+    if let Location::Unnamed(name) = location {
+        lines.push(Line::styled(
+            format!("({name})"),
+            Style::default().fg(t.text),
+        ));
+        lines.push(Line::styled("no local file", label));
+    }
+    // Rows left for the values beside their labels and the keys, and the
+    // blank row above the keys when there's room for it.
+    let spare = avail.saturating_sub(entries.len() + footer.len());
+    let blank = spare > entries.len();
+    let budgets = share_rows(
+        &entries
+            .iter()
+            .map(|(_, text)| wrap_width(text, max_w).len())
+            .collect::<Vec<_>>(),
+        spare - usize::from(blank),
+    );
+    for ((name, text), budget) in entries.iter().zip(budgets) {
         lines.push(Line::styled(name.to_string(), label));
-        let rows = wrap_width(text, max_w);
-        lines.extend(
-            rows.into_iter()
-                .map(|row| Line::styled(row.to_string(), value)),
-        );
-    };
-    let keys: &[(&str, &str)] = match location {
-        Location::File { relative, absolute } => {
-            entry("Relative:", relative);
-            entry("Absolute:", absolute);
-            &[("R", " copy relative · "), ("A", " copy absolute · ")]
-        }
-        Location::Url(url) => {
-            entry("URL:", url);
-            &[("R/A", " copy URL · ")]
-        }
-        Location::Unnamed(name) => {
-            lines.push(Line::styled(
-                format!("({name})"),
-                Style::default().fg(t.text),
-            ));
-            lines.push(Line::styled("no local file", label));
-            &[]
-        }
-    };
+        lines.extend(fit_rows(t, text, value, max_w, budget));
+    }
+    if blank || entries.is_empty() {
+        lines.push(Line::default());
+    }
+    lines.extend(footer);
+    status::modal(frame, t, " File Path ", lines);
+}
+
+/// A label and its text, or a key and what it does.
+type Pair<'a> = (&'a str, &'a str);
+
+/// The key row of the path popup, or a key per row when it's too narrow
+/// for one.
+fn location_keys<'a>(t: &Theme, keys: &[Pair<'a>], max_w: usize) -> Vec<Line<'a>> {
     let pairs: Vec<[Span; 2]> = keys
         .iter()
         .copied()
@@ -206,18 +215,69 @@ pub(super) fn draw_location(frame: &mut Frame, r: &Reader, location: &Location) 
             ]
         })
         .collect();
-    lines.push(Line::default());
-    let footer: Line = pairs.iter().flatten().cloned().collect();
-    if footer.width() <= max_w {
-        lines.push(footer);
-    } else {
-        // Too narrow for one row: a key per row, without the separators.
-        lines.extend(pairs.into_iter().map(|[key, what]| {
+    let row: Line = pairs.iter().flatten().cloned().collect();
+    if row.width() <= max_w {
+        return vec![row];
+    }
+    // Without the separators.
+    pairs
+        .into_iter()
+        .map(|[key, what]| {
             let what = what.content.trim_end_matches(" · ").to_string();
             Line::from(vec![key, Span::styled(what, Style::default().fg(t.subtle))])
-        }));
+        })
+        .collect()
+}
+
+/// `total` rows shared between values that want `wants` rows each: all
+/// they want when it fits, else an even share, with what one doesn't use
+/// going to the others.
+fn share_rows(wants: &[usize], total: usize) -> Vec<usize> {
+    let mut budgets = vec![0; wants.len()];
+    let mut left = total;
+    // Smallest first, so the rows a short value leaves go to longer ones.
+    let mut order: Vec<usize> = (0..wants.len()).collect();
+    order.sort_by_key(|&i| wants[i]);
+    for (n, &i) in order.iter().enumerate() {
+        let share = left / (wants.len() - n);
+        budgets[i] = wants[i].min(share);
+        left -= budgets[i];
     }
-    status::modal(frame, t, " File Path ", lines);
+    budgets
+}
+
+/// `text` wrapped to `max_w` in at most `budget` rows. Too many rows keep
+/// the first and last (scheme and host, file name) with `…` between; with
+/// fewer than three, one row with its middle elided.
+fn fit_rows<'a>(
+    t: &Theme,
+    text: &'a str,
+    style: Style,
+    max_w: usize,
+    budget: usize,
+) -> Vec<Line<'a>> {
+    let rows = wrap_width(text, max_w);
+    if rows.len() <= budget {
+        return rows
+            .into_iter()
+            .map(|row| Line::styled(row, style))
+            .collect();
+    }
+    match budget {
+        0 => Vec::new(),
+        1 | 2 => vec![Line::styled(elide_middle(text, max_w), style)],
+        _ => {
+            let head = (budget - 1).div_ceil(2);
+            let tail = budget - 1 - head;
+            let row = |s: &&'a str| Line::styled(*s, style);
+            rows[..head]
+                .iter()
+                .map(row)
+                .chain([Line::styled("…", Style::default().fg(t.subtle))])
+                .chain(rows[rows.len() - tail..].iter().map(row))
+                .collect()
+        }
+    }
 }
 
 /// `s` cut into rows of at most `max` columns.

@@ -88,6 +88,7 @@ impl Settings {
                     .value
                     .then(crate::positions::default_store)
                     .flatten(),
+                toc_width: crate::toc::DEFAULT_WIDTH,
             },
             scan,
             date_format,

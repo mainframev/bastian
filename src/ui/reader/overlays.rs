@@ -1,45 +1,12 @@
 use ratatui::Frame;
-use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Clear;
 use unicode_width::UnicodeWidthStr;
 
 use crate::reader::{LinkPicker, Location, Reader};
 use crate::render::theme::Theme;
 use crate::text::{shorten_left, take_width};
 use crate::ui::status::{self, Place};
-
-/// The outline tree, docked to the right.
-pub(super) fn draw_outline(frame: &mut Frame, r: &mut Reader) {
-    let t = r.theme().clone();
-    let Some(outline) = &mut r.outline else {
-        return;
-    };
-    let area = frame.area();
-    // Border and padding around the widest heading, at most half the screen.
-    let title = " outline · enter jump · esc close ";
-    let width = (outline.width.max(title.width()) as u16 + 4)
-        .min(area.width / 2)
-        .max(area.width.min(24));
-    let rect = Rect::new(
-        area.right().saturating_sub(width + 1),
-        area.y + 1,
-        width,
-        area.height.saturating_sub(3),
-    );
-    let tree = tui_tree_widget::Tree::new(&outline.items)
-        .expect("heading ids are unique")
-        .block(status::panel_block(&t, title))
-        .style(Style::default().fg(t.text))
-        .highlight_style(status::row_style(&t, true))
-        .highlight_symbol("▶ ")
-        .node_open_symbol("▾ ")
-        .node_closed_symbol("▸ ")
-        .node_no_children_symbol("  ");
-    frame.render_widget(Clear, rect);
-    frame.render_stateful_widget(tree, rect, &mut outline.state);
-}
 
 pub(super) fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
     let t = r.theme();

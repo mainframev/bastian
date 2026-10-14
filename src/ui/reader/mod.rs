@@ -1,5 +1,6 @@
 mod media;
 mod overlays;
+mod toc;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -12,20 +13,26 @@ use super::status;
 use super::text::highlight;
 use crate::reader::Reader;
 use media::{draw_hyperlinks, draw_images};
-use overlays::{draw_confirm, draw_links, draw_location, draw_open_confirm, draw_outline};
+use overlays::{draw_confirm, draw_links, draw_location, draw_open_confirm};
+use toc::draw_toc;
 
 pub fn draw(frame: &mut Frame, r: &mut Reader) {
+    // The table of contents, when open, takes the left of everything but
+    // the status bar; the document lays out in what's left.
+    let [top, status] =
+        Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
+    let pane = r.fit_toc(top.width);
+    let [toc, main] = Layout::horizontal([Constraint::Length(pane), Constraint::Min(1)]).areas(top);
     // A blank row above the document (the `Find:` line takes it while
     // searching, with its own blank row below) and one above the status
     // bar, so the text never touches either edge.
     let finding = r.prompt.is_some() || r.search.is_some();
-    let [find, body, _, status] = Layout::vertical([
+    let [find, body, _] = Layout::vertical([
         Constraint::Length(if finding { 2 } else { 1 }),
         Constraint::Min(1),
         Constraint::Length(1),
-        Constraint::Length(1),
     ])
-    .areas(frame.area());
+    .areas(main);
     if finding {
         draw_find(frame, r, find);
     }
@@ -171,6 +178,11 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
         }
     }
 
+    // After the layout, so its entries point at the lines just laid out.
+    if pane > 0 {
+        draw_toc(frame, r, toc);
+    }
+
     let pct = if r.max_scroll() == 0 {
         100
     } else {
@@ -202,8 +214,6 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
         draw_open_confirm(frame, r, target);
     } else if let Some(picker) = &r.link_picker {
         draw_links(frame, r, picker);
-    } else if r.outline.is_some() {
-        draw_outline(frame, r);
     } else if let Some(location) = &r.location {
         draw_location(frame, r, location);
     } else if r.help.open {
@@ -232,11 +242,22 @@ const HELP: &[status::HelpSection] = &[
             ("ctrl-d/u", "half page"),
             ("space/b", "page down/up"),
             ("g/G", "top/bottom"),
-            ("O", "jump to a heading"),
+            ("J/K", "next/previous heading"),
             ("Esc, h", "back"),
         ],
     ),
     ("Search", &[("/", "search"), ("n/N", "next/previous match")]),
+    (
+        "Table of contents",
+        &[
+            ("t, </>", "show/hide, narrow/widen"),
+            ("1-9, 0", "jump to entry 1-10"),
+        ],
+    ),
+    (
+        "General",
+        &[("T", "pick a theme"), ("?", "this help"), ("q", "quit")],
+    ),
     (
         "Code blocks",
         &[
@@ -266,10 +287,6 @@ const HELP: &[status::HelpSection] = &[
             ("#", "toggle line numbers"),
             ("i", "show/hide images"),
         ],
-    ),
-    (
-        "General",
-        &[("T", "pick a theme"), ("?", "this help"), ("q", "quit")],
     ),
 ];
 

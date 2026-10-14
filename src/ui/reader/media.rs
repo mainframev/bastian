@@ -7,9 +7,9 @@ use crate::reader::Reader;
 /// off shows its visible rows: the slot-sized picture is cropped from the
 /// top or the bottom.
 pub(super) fn draw_images(frame: &mut Frame, r: &mut Reader, content: Rect, end: usize) {
-    let scroll = r.scroll;
+    let scroll = r.scroll();
     let slots: Vec<_> = r
-        .rendered
+        .rendered()
         .images
         .iter()
         .filter(|s| s.line < end && s.line + usize::from(s.rows) > scroll)
@@ -49,8 +49,8 @@ pub(super) fn draw_hyperlinks(
     end: usize,
     skip: &[usize],
 ) {
-    let first = r.rendered.links.partition_point(|l| l.line < r.scroll);
-    for (i, link) in r.rendered.links[first..]
+    let first = r.rendered().links.partition_point(|l| l.line < r.scroll());
+    for (i, link) in r.rendered().links[first..]
         .iter()
         .enumerate()
         .take_while(|(_, l)| l.line < end)
@@ -65,10 +65,10 @@ pub(super) fn draw_hyperlinks(
         }) {
             continue;
         }
-        let Some(target) = r.hyperlink_target(&link.url) else {
+        let Some(target) = r.hyperlink_targets().get(first + i).cloned().flatten() else {
             continue;
         };
-        let line = &r.rendered.lines[link.line];
+        let line = &r.rendered().lines[link.line];
         let (mut label, mut style, mut col) = (String::new(), None, 0);
         for span in &line.spans {
             let w = span.width();
@@ -81,7 +81,7 @@ pub(super) fn draw_hyperlinks(
         }
         let x = content.x + link.col as u16;
         let width = (link.width as u16).min(content.right().saturating_sub(x));
-        let y = content.y + (link.line - r.scroll) as u16;
+        let y = content.y + (link.line - r.scroll()) as u16;
         let area = Rect::new(x, y, width, 1);
         frame.render_widget(
             hyperrat::Link::new(label, target).style(style.unwrap_or_default()),

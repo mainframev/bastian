@@ -16,7 +16,7 @@ impl Reader {
     /// against its URL and only web targets qualify. In-document `#anchors`,
     /// other schemes and other local files have none; the link picker still
     /// follows them, behind a prompt.
-    pub fn hyperlink_target(&self, url: &str) -> Option<String> {
+    pub(super) fn hyperlink_target(&self, url: &str) -> Option<String> {
         if url.starts_with('#') {
             return None;
         }
@@ -333,8 +333,7 @@ mod tests {
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use crate::doc::parse;
-    use crate::reader::Reader;
-    use crate::render::theme::Theme;
+    use crate::reader::{Options, Reader, Source};
 
     fn press(r: &mut Reader, code: KeyCode, mods: KeyModifiers) {
         r.on_key(KeyEvent::new(code, mods));
@@ -343,7 +342,7 @@ mod tests {
     #[test]
     fn link_picker_takes_the_list_keys() {
         let src = "[a](https://a.dev) [b](https://b.dev) [c](https://c.dev)\n";
-        let mut r = Reader::new("t".into(), parse(src), Theme::dark(), 80);
+        let mut r = Reader::new(Source::in_memory("t", parse(src)), &Options::default());
         r.layout(80, 20);
         press(&mut r, KeyCode::Char('L'), KeyModifiers::NONE);
         let selected = |r: &Reader| r.link_picker.as_ref().unwrap().selected;
@@ -370,13 +369,11 @@ mod tests {
             "# Other\n\nintro\n\n## Getting Started\n\nstep one\n\nstep two\n\nthe end\n",
         )
         .unwrap();
-        let mut r = Reader::new(
-            "t".into(),
-            parse("See [[Other Page#Getting Started|it]].\n"),
-            Theme::dark(),
-            80,
-        );
-        r.base_dir = dir.path().to_path_buf();
+        let source = Source {
+            base_dir: dir.path().to_path_buf(),
+            ..Source::in_memory("t", parse("See [[Other Page#Getting Started|it]].\n"))
+        };
+        let mut r = Reader::new(source, &Options::default());
         r.layout(80, 20);
         press(&mut r, KeyCode::Char('s'), KeyModifiers::NONE);
         assert_eq!(r.link_preview, "→ Other Page.md · Other");
@@ -390,7 +387,10 @@ mod tests {
 
         // The page opens at that heading, not at its top.
         let text = std::fs::read_to_string(&path).unwrap();
-        let mut page = Reader::new("Other Page.md".into(), parse(&text), Theme::dark(), 80);
+        let mut page = Reader::new(
+            Source::in_memory("Other Page.md", parse(&text)),
+            &Options::default(),
+        );
         page.go_to_anchor(anchor.as_deref().unwrap());
         page.layout(80, 2);
         assert_eq!(Some(page.scroll), page.heading_line("getting-started"));

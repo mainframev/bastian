@@ -3,8 +3,7 @@ use std::time::Duration;
 
 use bastian::app::Settings;
 use bastian::doc::parse;
-use bastian::exec::Interpreters;
-use bastian::reader::{Action, Reader};
+use bastian::reader::{Action, Options, Reader, Source};
 use bastian::remote::RemoteDoc;
 use bastian::render::theme::Theme;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -14,7 +13,18 @@ fn key(r: &mut Reader, code: KeyCode) -> Action {
 }
 
 fn reader(src: &str) -> Reader {
-    let mut r = Reader::new("t.md".into(), parse(src), Theme::dark(), 80);
+    let mut r = Reader::new(Source::in_memory("t.md", parse(src)), &Options::default());
+    r.layout(80, 10);
+    r
+}
+
+/// A reader over `src` whose relative links resolve from `base_dir`.
+fn reader_in(src: &str, base_dir: &std::path::Path) -> Reader {
+    let source = Source {
+        base_dir: base_dir.to_path_buf(),
+        ..Source::in_memory("t.md", parse(src))
+    };
+    let mut r = Reader::new(source, &Options::default());
     r.layout(80, 10);
     r
 }
@@ -38,7 +48,7 @@ fn anchor_link_scrolls_to_heading() {
     key(&mut r, KeyCode::Char('L'));
     assert!(r.link_picker.is_some());
     key(&mut r, KeyCode::Enter);
-    let line: String = r.rendered.lines[r.scroll]
+    let line: String = r.rendered().lines[r.scroll()]
         .spans
         .iter()
         .map(|s| s.content.as_ref())
@@ -53,7 +63,7 @@ fn anchor_link_skips_lines_that_only_look_like_the_heading() {
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('L'));
     key(&mut r, KeyCode::Enter);
-    let line = bastian::render::plain(&r.rendered.lines[r.scroll]);
+    let line = bastian::render::plain(&r.rendered().lines[r.scroll()]);
     assert_eq!(line, "## Usage");
 }
 
@@ -64,8 +74,8 @@ fn footnote_reference_scrolls_to_its_note() {
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('L'));
     key(&mut r, KeyCode::Enter);
-    assert!(r.scroll > 0);
-    let shown: Vec<String> = r.rendered.lines[r.scroll..]
+    assert!(r.scroll() > 0);
+    let shown: Vec<String> = r.rendered().lines[r.scroll()..]
         .iter()
         .take(10)
         .map(bastian::render::plain)
@@ -85,7 +95,7 @@ fn footnote_reference_in_a_title_is_listed_and_followed() {
         .expect("the title's reference is listed");
     assert_eq!(picker.links[0].url, "#fn:t");
     key(&mut r, KeyCode::Enter);
-    let shown: Vec<String> = r.rendered.lines[r.scroll..]
+    let shown: Vec<String> = r.rendered().lines[r.scroll()..]
         .iter()
         .take(10)
         .map(bastian::render::plain)
@@ -104,7 +114,7 @@ fn footnote_targets_never_hit_a_heading() {
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('L'));
     key(&mut r, KeyCode::Enter);
-    let shown: Vec<String> = r.rendered.lines[r.scroll..]
+    let shown: Vec<String> = r.rendered().lines[r.scroll()..]
         .iter()
         .take(10)
         .map(bastian::render::plain)
@@ -122,13 +132,22 @@ fn link_focus_steps_previews_and_follows() {
          [next](next.md), [web](https://example.com), [gone](gone.md) and a note[^n].\n\n\
          {filler}## Usage\n\n{filler}[^n]: The footnote text.\n"
     );
-    let mut r = Reader::new("t.md".into(), parse(&src), Theme::dark(), 40);
-    r.base_dir = dir.path().to_path_buf();
+    let source = Source {
+        base_dir: dir.path().to_path_buf(),
+        ..Source::in_memory("t.md", parse(&src))
+    };
+    let mut r = Reader::new(
+        source,
+        &Options {
+            max_width: 40,
+            ..Options::default()
+        },
+    );
     r.layout(40, 10);
 
     // The wrapped link is one stop.
     let stops = r.link_stops();
-    assert_eq!(stops.len(), 5, "{:?}", r.rendered.links);
+    assert_eq!(stops.len(), 5, "{:?}", r.rendered().links);
     assert!(stops[0].len() > 1);
 
     key(&mut r, KeyCode::Char('s'));
@@ -165,7 +184,7 @@ fn link_focus_steps_previews_and_follows() {
     assert!(matches!(key(&mut r, KeyCode::Enter), Action::None));
     assert_eq!(r.link_focus, None);
     assert_eq!(
-        bastian::render::plain(&r.rendered.lines[r.scroll]),
+        bastian::render::plain(&r.rendered().lines[r.scroll()]),
         "## Usage"
     );
     key(&mut r, KeyCode::Char('g'));
@@ -186,13 +205,13 @@ fn link_focus_starts_in_view_and_scrolls_to_far_links() {
     assert_eq!(r.link_focus, Some(0));
     key(&mut r, KeyCode::Char('s'));
     assert_eq!(r.link_focus, Some(1));
-    let line = r.rendered.links[r.link_stops()[1][0]].line;
-    assert!((r.scroll..r.scroll + 10).contains(&line));
+    let line = r.rendered().links[r.link_stops()[1][0]].line;
+    assert!((r.scroll()..r.scroll() + 10).contains(&line));
 
     let mut none = reader("no links here\n");
     key(&mut none, KeyCode::Char('s'));
     assert_eq!(none.link_focus, None);
-    assert_eq!(none.message.as_deref(), Some("no links in this document"));
+    assert_eq!(none.message(), Some("no links in this document"));
 }
 
 #[test]
@@ -203,7 +222,7 @@ fn link_stops_are_links_not_urls() {
     // A link with styled parts is one stop; another link to the same place
     // is another.
     let r = reader("[the **docs**](a.md) [again](a.md) and [b](b.md)\n");
-    assert_eq!(r.link_stops().len(), 3, "{:?}", r.rendered.links);
+    assert_eq!(r.link_stops().len(), 3, "{:?}", r.rendered().links);
 }
 
 #[test]
@@ -211,7 +230,7 @@ fn link_stops_follow_link_occurrences() {
     let urls = |r: &Reader| -> Vec<String> {
         r.link_stops()
             .iter()
-            .map(|s| r.rendered.links[s[0]].url.clone())
+            .map(|s| r.rendered().links[s[0]].url.clone())
             .collect()
     };
     // Two links to one place with nothing between them stay two.
@@ -221,16 +240,17 @@ fn link_stops_follow_link_occurrences() {
     // In a table, a link wrapping in one cell and a link in the next cell
     // keep their own targets, and each is one stop.
     let mut r = Reader::new(
-        "t.md".into(),
-        parse("| a | b |\n|---|---|\n| [a long link that wraps](one.md) | [two](two.md) |\n"),
-        Theme::dark(),
-        80,
+        Source::in_memory(
+            "t.md",
+            parse("| a | b |\n|---|---|\n| [a long link that wraps](one.md) | [two](two.md) |\n"),
+        ),
+        &Options::default(),
     );
     r.layout(22, 10);
     assert_eq!(urls(&r), ["one.md", "two.md"]);
-    assert!(r.link_stops()[0].len() > 1, "{:?}", r.rendered.links);
+    assert!(r.link_stops()[0].len() > 1, "{:?}", r.rendered().links);
     for &i in &r.link_stops()[0] {
-        assert_eq!(r.rendered.links[i].url, "one.md");
+        assert_eq!(r.rendered().links[i].url, "one.md");
     }
 
     // An MDX tag inside a link isn't drawn as a link, and doesn't tie the
@@ -239,7 +259,7 @@ fn link_stops_follow_link_occurrences() {
         "[old](y) [<Badge/>new](x)\n",
         Some(std::path::Path::new("t.mdx")),
     );
-    let mut r = Reader::new("t.mdx".into(), doc, Theme::dark(), 80);
+    let mut r = Reader::new(Source::in_memory("t.mdx", doc), &Options::default());
     r.layout(80, 10);
     assert_eq!(urls(&r), ["y", "x"]);
 }
@@ -248,10 +268,16 @@ fn link_stops_follow_link_occurrences() {
 fn link_focus_starts_with_a_link_wrapping_into_view() {
     let words = "word ".repeat(30);
     let src = format!("[{words}](#x)\n\nafter [b](#b)\n");
-    let mut r = Reader::new("t.md".into(), parse(&src), Theme::dark(), 20);
+    let mut r = Reader::new(
+        Source::in_memory("t.md", parse(&src)),
+        &Options {
+            max_width: 20,
+            ..Options::default()
+        },
+    );
     r.layout(20, 3);
     // Scroll so the link's first line is above the view but its rest shows.
-    r.scroll = 2;
+    r.scroll_to(2);
     key(&mut r, KeyCode::Char('s'));
     assert_eq!(r.link_focus, Some(0));
 }
@@ -266,8 +292,7 @@ fn previews_read_mdx_titles_and_whole_notes() {
     .unwrap();
     let src =
         "[page](page.mdx) and a note[^t].\n\n[^t]: | k | v |\n    |---|---|\n    | key | value |\n";
-    let mut r = reader(src);
-    r.base_dir = dir.path().to_path_buf();
+    let mut r = reader_in(src, dir.path());
     key(&mut r, KeyCode::Char('s'));
     assert_eq!(r.link_preview, "→ page.mdx · Inside JSX");
     key(&mut r, KeyCode::Char('s'));
@@ -289,8 +314,10 @@ fn reload_drops_link_focus() {
 fn relative_markdown_link_opens_document() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("next.md"), "# Next\n").unwrap();
-    let mut r = reader("[next](next.md) and [web](https://example.com) and [gone](gone.md)\n");
-    r.base_dir = dir.path().to_path_buf();
+    let mut r = reader_in(
+        "[next](next.md) and [web](https://example.com) and [gone](gone.md)\n",
+        dir.path(),
+    );
     key(&mut r, KeyCode::Char('L'));
     match key(&mut r, KeyCode::Enter) {
         Action::OpenDocument { path, anchor } => {
@@ -308,7 +335,7 @@ fn relative_markdown_link_opens_document() {
     key(&mut r, KeyCode::Char('j'));
     key(&mut r, KeyCode::Char('j'));
     key(&mut r, KeyCode::Enter);
-    assert!(r.message.as_deref().unwrap_or("").starts_with("not found"));
+    assert!(r.message().unwrap_or("").starts_with("not found"));
 }
 
 #[test]
@@ -316,17 +343,21 @@ fn reloads_when_file_changes() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("doc.md");
     std::fs::write(&path, "# One\n").unwrap();
-    let mut r = reader("# One\n");
-    r.watch(path.clone());
+    let source = Source {
+        file: Some(path.clone()),
+        ..Source::in_memory("t.md", parse("# One\n"))
+    };
+    let mut r = Reader::new(source, &Options::default());
+    r.layout(80, 10);
     // Make sure the new mtime differs even on coarse-grained filesystems.
     thread::sleep(Duration::from_millis(1100));
     std::fs::write(&path, "# Two\n\n```sh\necho x\n```\n").unwrap();
     thread::sleep(Duration::from_millis(600));
     assert!(r.tick());
     r.layout(80, 10);
-    assert_eq!(r.doc.title().as_deref(), Some("Two"));
-    assert_eq!(r.rendered.code_blocks.len(), 1);
-    assert_eq!(r.message.as_deref(), Some("reloaded"));
+    assert_eq!(r.doc().title().as_deref(), Some("Two"));
+    assert_eq!(r.rendered().code_blocks.len(), 1);
+    assert_eq!(r.message(), Some("reloaded"));
 }
 
 #[test]
@@ -342,12 +373,17 @@ fn help_closes_on_any_key() {
 fn edit_needs_a_file() {
     let mut r = reader("text\n");
     assert!(matches!(key(&mut r, KeyCode::Char('e')), Action::None));
-    assert_eq!(r.message.as_deref(), Some("no local file to edit"));
+    assert_eq!(r.message(), Some("no local file to edit"));
 
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("doc.md");
     std::fs::write(&path, "text\n").unwrap();
-    r.watch(path.clone());
+    let source = Source {
+        file: Some(path.clone()),
+        ..Source::in_memory("t.md", parse("text\n"))
+    };
+    let mut r = Reader::new(source, &Options::default());
+    r.layout(80, 10);
     assert!(matches!(key(&mut r, KeyCode::Char('e')), Action::Edit(p, _) if p == path));
 }
 
@@ -367,16 +403,20 @@ fn line_number_gutter_fits_in_terminal() {
     use ratatui::{Terminal, backend::TestBackend};
 
     let src = std::fs::read_to_string("tests/fixtures/sample.md").unwrap();
-    let mut r = Reader::new("t.md".into(), parse(&src), Theme::dark(), 200);
-    r.line_numbers = true;
+    let opts = Options {
+        max_width: 200,
+        line_numbers: true,
+        ..Options::default()
+    };
+    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &opts);
     let (w, h) = (60u16, 20u16);
     let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
     terminal.draw(|f| draw(f, &mut r)).unwrap();
 
-    let gutter = gutter_width(&r, r.rendered.lines.len());
+    let gutter = gutter_width(&r, r.rendered().lines.len());
     assert!(gutter > GUTTER_GAP);
     let content = (w - MARGIN * 2 - gutter) as usize;
-    for line in &r.rendered.lines {
+    for line in &r.rendered().lines {
         assert!(line.width() <= content, "{line:?} wider than {content}");
     }
 
@@ -399,10 +439,8 @@ fn focused_link_is_highlighted_and_previewed() {
     use ratatui::{Terminal, backend::TestBackend};
 
     let mut r = Reader::new(
-        "t.md".into(),
-        parse("See [docs](https://x.dev) here.\n"),
-        Theme::dark(),
-        80,
+        Source::in_memory("t.md", parse("See [docs](https://x.dev) here.\n")),
+        &Options::default(),
     );
     let (w, h) = (60u16, 8u16);
     let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
@@ -431,10 +469,11 @@ fn focused_details_summary_is_highlighted() {
     use ratatui::{Terminal, backend::TestBackend};
 
     let mut r = Reader::new(
-        "t.md".into(),
-        parse("intro\n\n<details>\n<summary>More</summary>\n\nhidden\n\n</details>\n"),
-        Theme::dark(),
-        80,
+        Source::in_memory(
+            "t.md",
+            parse("intro\n\n<details>\n<summary>More</summary>\n\nhidden\n\n</details>\n"),
+        ),
+        &Options::default(),
     );
     let (w, h) = (40u16, 8u16);
     let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
@@ -444,7 +483,7 @@ fn focused_details_summary_is_highlighted() {
 
     let buf = terminal.backend().buffer();
     let theme = Theme::dark();
-    let y = r.rendered.details[0].line as u16 + 1; // below the top padding
+    let y = r.rendered().details[0].line as u16 + 1; // below the top padding
     let focused: Vec<_> = (0..w)
         .map(|x| &buf[(x, y)])
         .filter(|c| c.bg == theme.current_bg)
@@ -470,8 +509,11 @@ fn blocks_remember_their_source_lines() {
 #[test]
 fn edit_opens_at_the_top_visible_source_line() {
     let src: String = (0..60).map(|i| format!("paragraph {i}\n\n")).collect();
-    let mut r = reader(&src);
-    r.source = Some("doc.md".into());
+    let source = Source {
+        file: Some("doc.md".into()),
+        ..Source::in_memory("t.md", parse(&src))
+    };
+    let mut r = Reader::new(source, &Options::default());
     r.layout(80, 10);
     match key(&mut r, KeyCode::Char('e')) {
         Action::Edit(_, line) => assert_eq!(line, Some(1)),
@@ -491,27 +533,29 @@ fn edit_opens_at_the_top_visible_source_line() {
 fn c_copies_the_whole_document() {
     let mut r = reader("# A\n\ntext\n");
     assert!(matches!(key(&mut r, KeyCode::Char('c')), Action::None));
-    assert_eq!(r.message.as_deref(), Some("nothing to copy"));
-    r.text = "# A\n\ntext\n".into();
+    assert_eq!(r.message(), Some("nothing to copy"));
+    let source = Source {
+        text: "# A\n\ntext\n".into(),
+        ..Source::in_memory("t.md", parse("# A\n\ntext\n"))
+    };
+    let mut r = Reader::new(source, &Options::default());
+    r.layout(80, 10);
     match key(&mut r, KeyCode::Char('c')) {
         Action::Copy(t) => assert_eq!(t, "# A\n\ntext\n"),
         _ => panic!("expected copy"),
     }
-    assert_eq!(r.message.as_deref(), Some("copied document (3 lines)"));
+    assert_eq!(r.message(), Some("copied document (3 lines)"));
 }
 
 fn settings(assume_yes: bool, positions: Option<std::path::PathBuf>) -> Settings {
     Settings {
-        theme: Theme::dark(),
-        max_width: 80,
-        assume_yes,
-        interpreters: Interpreters::default(),
-        line_numbers: false,
+        reader: Options {
+            assume_yes,
+            positions,
+            ..Options::default()
+        },
         scan: bastian::browser::Scan::default(),
         date_format: Some(bastian::config::DATE_FORMAT.into()),
-        render: bastian::render::Options::default(),
-        hyperlinks: true,
-        scrollbar: true,
         editor: None,
         mouse: false,
         logo: true,
@@ -519,7 +563,6 @@ fn settings(assume_yes: bool, positions: Option<std::path::PathBuf>) -> Settings
         show_images: false,
         selector: bastian::config::Selector::Bar,
         list_layout: bastian::config::ListLayout::Cards,
-        positions,
     }
 }
 
@@ -536,7 +579,7 @@ fn reopening_a_file_returns_to_where_it_was_left() {
 
     let mut r = s.open(&file, "long.md".into()).unwrap();
     r.layout(80, 10);
-    assert_eq!(r.scroll, 0);
+    assert_eq!(r.scroll(), 0);
     for _ in 0..40 {
         key(&mut r, KeyCode::Char('j'));
     }
@@ -547,24 +590,27 @@ fn reopening_a_file_returns_to_where_it_was_left() {
     // A narrower window still opens at the same block.
     let mut again = s.open(&file, "long.md".into()).unwrap();
     again.layout(60, 10);
-    assert!(again.scroll > 0);
+    assert!(again.scroll() > 0);
     assert_eq!(again.source_line(), left_at);
 
     // Keys that don't move the view keep the restore going; moving ends it.
     key(&mut again, KeyCode::Char('#'));
     again.layout(60, 10);
     assert_eq!(again.source_line(), left_at);
-    assert!(again.restore.is_some());
+    let before = again.scroll();
     key(&mut again, KeyCode::Char('j'));
     again.layout(60, 10);
-    assert_eq!(again.restore, None);
+    // A restore still in force would snap the view back to the block top.
+    assert_eq!(again.scroll(), before + 1);
+    again.layout(60, 10);
+    assert_eq!(again.scroll(), before + 1);
 
     // Back at the top, the position is forgotten.
     key(&mut again, KeyCode::Char('g'));
     again.remember_position();
     let mut third = s.open(&file, "long.md".into()).unwrap();
     third.layout(80, 10);
-    assert_eq!(third.scroll, 0);
+    assert_eq!(third.scroll(), 0);
 
     // Turned off: nothing is restored or saved.
     let off = settings(false, None);
@@ -577,8 +623,7 @@ fn reopening_a_file_returns_to_where_it_was_left() {
 
 /// A reader over one link to `url`, its picker open.
 fn picking(url: &str, base_dir: &std::path::Path) -> Reader {
-    let mut r = reader(&format!("[x]({url})\n"));
-    r.base_dir = base_dir.to_path_buf();
+    let mut r = reader_in(&format!("[x]({url})\n"), base_dir);
     key(&mut r, KeyCode::Char('L'));
     r
 }
@@ -693,12 +738,13 @@ fn open_prompt_elides_the_middle_of_a_long_target() {
 fn remote_documents_resolve_links_and_always_confirm() {
     // Built the way the app builds fetched documents, with --yes on.
     let settings = settings(true, None);
-    let mut r = settings.remote(RemoteDoc {
+    let fetched = RemoteDoc {
         name: "README.md".into(),
         base: url::Url::parse("https://example.com/repo/README.md").unwrap(),
         text: "See [guide](docs/guide.md) and [logo](img/logo.png).\n\n```sh\necho hi\n```\n"
             .into(),
-    });
+    };
+    let mut r = Reader::new(Source::remote(fetched), &settings.reader);
     r.layout(80, 10);
 
     key(&mut r, KeyCode::Char('L'));
@@ -727,11 +773,12 @@ fn remote_markdown_links_with_other_schemes_ask() {
         "vscode://file/a.md",
         "mailto:user@example.md",
     ] {
-        let mut r = settings.remote(RemoteDoc {
+        let fetched = RemoteDoc {
             name: "README.md".into(),
             base: url::Url::parse("https://example.com/repo/README.md").unwrap(),
             text: format!("[x]({target})\n"),
-        });
+        };
+        let mut r = Reader::new(Source::remote(fetched), &settings.reader);
         r.layout(80, 10);
         key(&mut r, KeyCode::Char('L'));
         let action = key(&mut r, KeyCode::Enter);
@@ -774,7 +821,7 @@ fn reload_drops_pending_open_prompt() {
 #[test]
 fn replaced_document_is_highlighted_afresh() {
     let mut r = reader("```sh\necho old\n```\n");
-    let text = |r: &Reader| bastian::render::to_plain(&r.rendered.lines);
+    let text = |r: &Reader| bastian::render::to_plain(&r.rendered().lines);
     assert!(text(&r).contains("echo old"));
     r.replace_doc(parse("```sh\necho new\n```\n"));
     r.layout(80, 10);
@@ -787,10 +834,10 @@ fn scrollbar_shows_only_when_the_document_overflows() {
     use ratatui::{Terminal, backend::TestBackend};
 
     let column = |src: &str, scroll: usize| {
-        let mut r = Reader::new("t.md".into(), parse(src), Theme::dark(), 80);
+        let mut r = Reader::new(Source::in_memory("t.md", parse(src)), &Options::default());
         let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
         terminal.draw(|f| draw(f, &mut r)).unwrap();
-        r.scroll = scroll;
+        r.scroll_to(scroll);
         terminal.draw(|f| draw(f, &mut r)).unwrap();
         let buf = terminal.backend().buffer();
         // Document rows, between the top and bottom padding, in the last column.
@@ -816,15 +863,16 @@ fn links_are_terminal_hyperlinks() {
     use bastian::ui::reader::draw;
     use ratatui::{Terminal, backend::TestBackend};
 
-    let mut r = Reader::new(
-        "t.md".into(),
-        parse("See [docs](https://x.dev/docs) and [guide](guide.md#setup), [top](#top).\n"),
-        Theme::dark(),
-        80,
-    );
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("guide.md"), "# Guide\n").unwrap();
-    r.base_dir = dir.path().to_path_buf();
+    let source = Source {
+        base_dir: dir.path().to_path_buf(),
+        ..Source::in_memory(
+            "t.md",
+            parse("See [docs](https://x.dev/docs) and [guide](guide.md#setup), [top](#top).\n"),
+        )
+    };
+    let mut r = Reader::new(source, &Options::default());
     let mut guide = url::Url::from_file_path(dir.path().join("guide.md")).unwrap();
     guide.set_fragment(Some("setup"));
     let mut terminal = Terminal::new(TestBackend::new(80, 6)).unwrap();
@@ -855,36 +903,24 @@ fn links_are_terminal_hyperlinks() {
         symbols.iter().filter(|s| s.contains("\u{1b}]8;;")).count(),
         2
     );
-    assert_eq!(r.hyperlink_target("#top"), None);
+    assert_eq!(r.hyperlink_targets()[2], None);
 }
 
 #[test]
-fn only_links_that_open_without_asking_are_clickable() {
+fn hyperlink_targets_follow_the_rendered_links() {
     let dir = tempfile::tempdir().unwrap();
     let d = dir.path();
     std::fs::write(d.join("guide.md"), "# Guide\n").unwrap();
     std::fs::write(d.join("setup.command"), "").unwrap();
     std::fs::create_dir(d.join("X.app")).unwrap();
     std::fs::create_dir(d.join("dir.md")).unwrap();
-    let mut r = Reader::new("t.md".into(), parse("x\n"), Theme::dark(), 80);
-    r.base_dir = d.to_path_buf();
     let file = |name: &str| url::Url::from_file_path(d.join(name)).unwrap().to_string();
-
-    assert_eq!(
-        r.hyperlink_target("https://x.dev/a"),
-        Some("https://x.dev/a".into())
-    );
-    assert_eq!(
-        r.hyperlink_target("mailto:a@b.c"),
-        Some("mailto:a@b.c".into())
-    );
-    assert_eq!(r.hyperlink_target("guide.md"), Some(file("guide.md")));
-    assert_eq!(
-        r.hyperlink_target(&file("guide.md")),
-        Some(file("guide.md"))
-    );
-    for url in [
-        "setup.command".to_string(),
+    let urls = [
+        "https://x.dev/a".to_string(),
+        "mailto:a@b.c".into(),
+        "guide.md".into(),
+        file("guide.md"),
+        "setup.command".into(),
         file("setup.command"),
         "X.app".into(),
         file("X.app"),
@@ -895,40 +931,107 @@ fn only_links_that_open_without_asking_are_clickable() {
         "tel:+15551234".into(),
         "dir.md".into(),
         "missing.md".into(),
-    ] {
-        assert_eq!(r.hyperlink_target(&url), None, "{url}");
+    ];
+    let src: String = urls.iter().map(|u| format!("[x]({u})\n\n")).collect();
+    let source = Source {
+        base_dir: d.to_path_buf(),
+        ..Source::in_memory("t.md", parse(&src))
+    };
+    let mut r = Reader::new(source, &Options::default());
+    r.layout(80, 40);
+    assert_eq!(r.rendered().links.len(), urls.len());
+    // Web and mail links, and existing Markdown files, open on a click;
+    // anything that could launch an app or run a script does not.
+    let want = [
+        Some("https://x.dev/a".to_string()),
+        Some("mailto:a@b.c".into()),
+        Some(file("guide.md")),
+        Some(file("guide.md")),
+    ];
+    assert_eq!(&r.hyperlink_targets()[..4], &want);
+    for (url, target) in urls.iter().zip(r.hyperlink_targets()).skip(4) {
+        assert_eq!(*target, None, "{url}");
     }
 
     // In a remote document, only web targets.
-    r.remote_base = Some(url::Url::parse("https://example.com/repo/README.md").unwrap());
-    assert_eq!(
-        r.hyperlink_target("docs/guide.md"),
-        Some("https://example.com/repo/docs/guide.md".into())
+    let src = format!(
+        "[a](docs/guide.md)\n\n[b](vscode://file/etc/hosts)\n\n[c]({})\n",
+        file("guide.md")
     );
-    assert_eq!(r.hyperlink_target("vscode://file/etc/hosts"), None);
-    assert_eq!(r.hyperlink_target(&file("guide.md")), None);
+    let source = Source {
+        remote_base: Some(url::Url::parse("https://example.com/repo/README.md").unwrap()),
+        ..Source::in_memory("t.md", parse(&src))
+    };
+    let mut r = Reader::new(source, &Options::default());
+    r.layout(80, 40);
+    assert_eq!(
+        r.hyperlink_targets(),
+        [
+            Some("https://example.com/repo/docs/guide.md".to_string()),
+            None,
+            None
+        ]
+    );
+
+    // With hyperlinks off, nothing is worked out.
+    let opts = Options {
+        hyperlinks: false,
+        ..Options::default()
+    };
+    let mut r = Reader::new(
+        Source::in_memory("t.md", parse("[x](https://x.dev)\n")),
+        &opts,
+    );
+    r.layout(80, 40);
+    assert_eq!(r.hyperlink_targets(), [] as [Option<String>; 0]);
+}
+
+#[test]
+fn code_files_always_show_line_numbers() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("main.rs"), "fn main() {}\n").unwrap();
+    let opened = bastian::open::open(&dir.path().join("main.rs")).unwrap();
+    let r = Reader::new(Source::file("main.rs".into(), opened), &Options::default());
+    assert!(r.line_numbers);
+    assert_eq!(r.base_dir(), dir.path());
+
+    // A code file fetched over HTTP keeps the configured setting.
+    let fetched = RemoteDoc {
+        name: "main.rs".into(),
+        base: url::Url::parse("https://example.com/x/main.rs").unwrap(),
+        text: "fn main() {}\n".into(),
+    };
+    let r = Reader::new(Source::remote(fetched), &Options::default());
+    assert!(r.doc().code_file && !r.line_numbers);
 }
 
 #[test]
 fn image_sources_resolve_like_links() {
-    use bastian::images::Source;
-    let mut r = Reader::new("t.md".into(), parse("x\n"), Theme::dark(), 80);
-    r.base_dir = std::path::PathBuf::from("/docs");
+    use bastian::images::Source as ImageSource;
+    let source = Source {
+        base_dir: std::path::PathBuf::from("/docs"),
+        ..Source::in_memory("t.md", parse("x\n"))
+    };
+    let r = Reader::new(source, &Options::default());
     assert_eq!(
         r.image_source("img/a.png?raw=1"),
-        Some(Source::File("/docs/img/a.png".into()))
+        Some(ImageSource::File("/docs/img/a.png".into()))
     );
     assert_eq!(
         r.image_source("https://github.com/o/r/blob/main/shot.png"),
-        Some(Source::Url(
+        Some(ImageSource::Url(
             "https://raw.githubusercontent.com/o/r/main/shot.png".into()
         ))
     );
     assert_eq!(r.image_source("data:image/png;base64,AAAA"), None);
-    r.remote_base = Some(url::Url::parse("https://github.com/o/r/blob/main/README.md").unwrap());
+    let source = Source {
+        remote_base: Some(url::Url::parse("https://github.com/o/r/blob/main/README.md").unwrap()),
+        ..Source::in_memory("t.md", parse("x\n"))
+    };
+    let r = Reader::new(source, &Options::default());
     assert_eq!(
         r.image_source("docs/b.png"),
-        Some(Source::Url(
+        Some(ImageSource::Url(
             "https://raw.githubusercontent.com/o/r/main/docs/b.png".into()
         ))
     );
@@ -936,7 +1039,7 @@ fn image_sources_resolve_like_links() {
 
 #[test]
 fn pictures_partly_scrolled_off_show_their_visible_rows() {
-    use bastian::images::{Images, Support};
+    use bastian::images::Support;
     use bastian::ui::reader::draw;
     use ratatui::{Terminal, backend::TestBackend};
     use ratatui_image::picker::Picker;
@@ -947,24 +1050,30 @@ fn pictures_partly_scrolled_off_show_their_visible_rows() {
         .unwrap();
     let tail: String = (0..40).map(|i| format!("line {i}\n\n")).collect();
     let src = format!("intro\n\n![pic](p.png)\n\n{tail}");
-    let mut r = Reader::new("t.md".into(), parse(&src), Theme::dark(), 80);
-    r.base_dir = dir.path().to_path_buf();
-    r.images = Images::new(Some(Support::fixed(Picker::halfblocks())));
+    let source = Source {
+        base_dir: dir.path().to_path_buf(),
+        ..Source::in_memory("t.md", parse(&src))
+    };
+    let opts = Options {
+        images: Some(Support::fixed(Picker::halfblocks())),
+        ..Options::default()
+    };
+    let mut r = Reader::new(source, &opts);
 
     let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    while r.rendered.images.is_empty() {
+    while r.rendered().images.is_empty() {
         terminal.draw(|f| draw(f, &mut r)).unwrap();
         r.tick();
         assert!(std::time::Instant::now() < deadline, "picture did not load");
         thread::sleep(Duration::from_millis(10));
     }
     terminal.draw(|f| draw(f, &mut r)).unwrap();
-    let slot = r.rendered.images[0].clone();
+    let slot = r.rendered().images[0].clone();
     assert!(slot.rows >= 4, "{slot:?}");
 
     // Scroll the top half of the picture off screen.
-    r.scroll = slot.line + usize::from(slot.rows) / 2;
+    r.scroll_to(slot.line + usize::from(slot.rows) / 2);
     let frame = terminal.draw(|f| draw(f, &mut r)).unwrap();
     let visible = usize::from(slot.rows) - usize::from(slot.rows) / 2;
     let x = 2 + slot.col as u16; // after the left margin
@@ -985,7 +1094,7 @@ fn outline_panel_lists_headings_and_jumps() {
     use ratatui::{Terminal, backend::TestBackend};
 
     let src = std::fs::read_to_string("tests/fixtures/outline.md").unwrap();
-    let mut r = Reader::new("t.md".into(), parse(&src), Theme::dark(), 80);
+    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
     let mut terminal = Terminal::new(TestBackend::new(70, 30)).unwrap();
     terminal.draw(|f| draw(f, &mut r)).unwrap();
     assert!(matches!(key(&mut r, KeyCode::Char('O')), Action::None));
@@ -1016,17 +1125,14 @@ fn outline_panel_lists_headings_and_jumps() {
     key(&mut r, KeyCode::Char('j'));
     key(&mut r, KeyCode::Enter);
     assert!(r.outline.is_none());
-    let top = bastian::render::plain(&r.rendered.lines[r.scroll]);
+    let top = bastian::render::plain(&r.rendered().lines[r.scroll()]);
     assert_eq!(top.trim(), "## Install");
 
     // A document without headings says so instead.
     let mut plain = reader("just text\n");
     key(&mut plain, KeyCode::Char('O'));
     assert!(plain.outline.is_none());
-    assert_eq!(
-        plain.message.as_deref(),
-        Some("no headings in this document")
-    );
+    assert_eq!(plain.message(), Some("no headings in this document"));
 }
 
 #[test]
@@ -1037,9 +1143,12 @@ fn hyperlinks_and_scrollbar_can_be_turned_off() {
     let long: String = (0..60)
         .map(|i| format!("[link {i}](https://x.dev/{i})\n\n"))
         .collect();
-    let mut r = Reader::new("t.md".into(), parse(&long), Theme::dark(), 80);
-    r.hyperlinks = false;
-    r.scrollbar = false;
+    let opts = Options {
+        hyperlinks: false,
+        scrollbar: false,
+        ..Options::default()
+    };
+    let mut r = Reader::new(Source::in_memory("t.md", parse(&long)), &opts);
     let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
     let frame = terminal.draw(|f| draw(f, &mut r)).unwrap();
     let buf = frame.buffer;

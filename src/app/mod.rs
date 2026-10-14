@@ -249,8 +249,14 @@ impl App {
                 self.reader = self.history.pop();
                 return self.reader.is_some() || self.browser.is_some();
             }
-            reader::Action::OpenDocument(path) => {
+            reader::Action::OpenDocument { path, anchor } => {
                 let next = self.settings.open(&path, paths::display_name(&path));
+                let next = next.map(|mut r| {
+                    if let Some(anchor) = anchor {
+                        r.go_to_anchor(&anchor);
+                    }
+                    r
+                });
                 self.push_reader(next);
             }
             reader::Action::OpenRemote(url) => {

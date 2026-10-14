@@ -52,8 +52,8 @@ In a document:
 
 - `/` searches, `n/N` jump between matches;
 - `O` opens an outline of the headings to jump through;
-- `L` lists the links to follow, and links are clickable in terminals that
-  support it;
+- `L` lists the links to follow (`[[wiki links]]` included), and links are
+  clickable in terminals that support it;
 - images are drawn as pictures where the terminal can; `i` toggles them;
 - `<details>` blocks fold: `d` focuses one and `Enter` opens or closes it;
 - `#` shows line numbers, `y`/`c` copy a code block or the whole document;

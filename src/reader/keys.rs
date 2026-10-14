@@ -120,7 +120,7 @@ impl Reader {
                 }
             }
             KeyCode::Char('#') => self.line_numbers = !self.line_numbers,
-            KeyCode::Char('e') => match &self.source {
+            KeyCode::Char('e') if ctrl => match &self.source {
                 Some(path) => return Action::Edit(path.clone(), self.source_line()),
                 None => self.message = Some("no local file to edit".into()),
             },

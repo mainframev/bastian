@@ -200,31 +200,73 @@ fn popup_rect(
     }
 }
 
-/// Key reference overlay: `(keys, what they do)` rows in a modal.
-pub fn help(frame: &mut Frame, t: &Theme, keys: &[(&str, &str)]) {
-    let key_w = keys
+/// A titled group of `(keys, what they do)` rows in the key help.
+pub type HelpSection = (&'static str, &'static [(&'static str, &'static str)]);
+
+/// Key reference overlay: the version, then `sections` side by side in
+/// pairs when they fit across the screen, else one under another.
+pub fn help(frame: &mut Frame, t: &Theme, sections: &[HelpSection]) {
+    let key_w = sections
         .iter()
-        .map(|(k, _)| k.chars().count())
+        .flat_map(|(_, keys)| keys.iter())
+        .map(|(k, _)| k.width())
         .max()
         .unwrap_or(0);
-    let mut lines: Vec<Line> = keys
+    let blocks: Vec<Vec<Line>> = sections
         .iter()
-        .map(|(k, what)| {
-            Line::from(vec![
-                Span::styled(
-                    format!("{k:<key_w$}  "),
-                    Style::default().fg(t.accent).bold(),
-                ),
-                Span::styled(what.to_string(), Style::default().fg(t.text)),
-            ])
+        .map(|(title, keys)| {
+            let mut lines = vec![Line::styled(
+                title.to_string(),
+                Style::default().fg(t.heading).bold(),
+            )];
+            lines.extend(keys.iter().map(|(k, what)| {
+                Line::from(vec![
+                    Span::styled(
+                        format!("{k:<key_w$}  "),
+                        Style::default().fg(t.accent).bold(),
+                    ),
+                    Span::styled(what.to_string(), Style::default().fg(t.text)),
+                ])
+            }));
+            lines
         })
         .collect();
-    lines.push(Line::default());
+    let col_w = blocks.iter().flatten().map(Line::width).max().unwrap_or(0);
+    // Border and padding take 4 columns, the gap between columns 3.
+    let two = usize::from(frame.area().width) >= col_w * 2 + 3 + 4;
+
+    let mut lines = vec![
+        Line::styled(
+            format!("bastian {}", env!("CARGO_PKG_VERSION")),
+            Style::default().fg(t.muted),
+        ),
+        Line::default(),
+    ];
+    if two {
+        for pair in blocks.chunks(2) {
+            let rows = pair.iter().map(Vec::len).max().unwrap_or(0);
+            for i in 0..rows {
+                let mut line = pair[0].get(i).cloned().unwrap_or_default();
+                if let Some(right) = pair.get(1).and_then(|b| b.get(i)) {
+                    let pad = col_w + 3 - line.width();
+                    line.spans.push(Span::raw(" ".repeat(pad)));
+                    line.spans.extend(right.spans.iter().cloned());
+                }
+                lines.push(line);
+            }
+            lines.push(Line::default());
+        }
+    } else {
+        for block in blocks {
+            lines.extend(block);
+            lines.push(Line::default());
+        }
+    }
     lines.push(Line::styled(
         "any key to close",
         Style::default().fg(t.muted),
     ));
-    modal(frame, t, " keys ", lines);
+    modal(frame, t, " Help ", lines);
 }
 
 #[cfg(test)]
@@ -239,6 +281,41 @@ mod tests {
         (0..buf.area.height)
             .map(|y| (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect())
             .collect()
+    }
+
+    const SECTIONS: &[HelpSection] = &[
+        ("Move", &[("j/k", "scroll")]),
+        ("Search", &[("/", "search"), ("n/N", "next/previous")]),
+        ("Other", &[("q", "quit")]),
+    ];
+
+    #[test]
+    fn help_shows_the_version_and_pairs_sections() {
+        let mut term = Terminal::new(TestBackend::new(80, 20)).unwrap();
+        term.draw(|f| help(f, &Theme::dark(), SECTIONS)).unwrap();
+        let screen = rows(&term);
+        assert!(screen.iter().any(|r| r.contains(" Help ")), "{screen:#?}");
+        let version = format!("bastian {}", env!("CARGO_PKG_VERSION"));
+        assert!(screen.iter().any(|r| r.contains(&version)), "{screen:#?}");
+        let paired = screen
+            .iter()
+            .any(|r| r.contains("Move") && r.contains("Search"));
+        assert!(paired, "{screen:#?}");
+        assert!(
+            !screen
+                .iter()
+                .any(|r| r.contains("Search") && r.contains("Other"))
+        );
+    }
+
+    #[test]
+    fn narrow_help_stacks_sections() {
+        let mut term = Terminal::new(TestBackend::new(30, 20)).unwrap();
+        term.draw(|f| help(f, &Theme::dark(), SECTIONS)).unwrap();
+        let screen = rows(&term);
+        let move_row = screen.iter().position(|r| r.contains("Move"));
+        let search_row = screen.iter().position(|r| r.contains("Search"));
+        assert!(move_row < search_row, "{screen:#?}");
     }
 
     #[test]

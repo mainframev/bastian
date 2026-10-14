@@ -1,5 +1,6 @@
 mod details;
 mod follow;
+mod goto;
 mod keys;
 mod location;
 mod reload;
@@ -115,6 +116,8 @@ pub enum Overlay {
     OpenConfirm(String),
     /// The search prompt opened with `/`.
     Prompt(Prompt),
+    /// The `Line:` prompt opened with `:`.
+    GoTo(Prompt),
 }
 
 /// The document a reader shows and where it came from. The origin decides
@@ -443,6 +446,14 @@ impl Reader {
     pub fn prompt(&self) -> Option<&Prompt> {
         match &self.overlay {
             Some(Overlay::Prompt(p)) => Some(p),
+            _ => None,
+        }
+    }
+
+    /// The `Line:` prompt, while it's being typed into.
+    pub fn goto(&self) -> Option<&Prompt> {
+        match &self.overlay {
+            Some(Overlay::GoTo(p)) => Some(p),
             _ => None,
         }
     }

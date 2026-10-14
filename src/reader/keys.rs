@@ -23,6 +23,10 @@ impl Reader {
                 return Action::None;
             }
             Some(Overlay::OpenConfirm(_)) => return self.on_open_confirm_key(key),
+            Some(Overlay::GoTo(_)) => {
+                self.on_goto_key(key);
+                return Action::None;
+            }
             Some(Overlay::Prompt(prompt)) => {
                 let event = prompt.on_key(key);
                 let text = prompt.text().to_string();
@@ -62,6 +66,7 @@ impl Reader {
             KeyCode::Char('g') | KeyCode::Home => self.jump_to(0),
             KeyCode::Char('G') | KeyCode::End => self.jump_to(usize::MAX),
             KeyCode::Char('/') => self.overlay = Some(Overlay::Prompt(Prompt::new(""))),
+            KeyCode::Char(':') => self.open_goto(),
             KeyCode::Char('n') => self.step_match(true),
             KeyCode::Char('N') => self.step_match(false),
             KeyCode::Char('s') => {

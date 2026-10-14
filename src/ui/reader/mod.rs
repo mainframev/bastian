@@ -41,7 +41,7 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
     // A blank row above the document (the `Find:` line takes it while
     // searching, with its own blank row below) and one above the status
     // bar, so the text never touches either edge.
-    let finding = r.prompt().is_some() || r.search.is_some();
+    let finding = r.prompt().is_some() || r.search.is_some() || r.goto().is_some();
     let [find, body, _] = Layout::vertical([
         Constraint::Length(if finding { 2 } else { 1 }),
         Constraint::Min(1),
@@ -237,7 +237,11 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
     let left = if picker.is_some() {
         status::Left::Text(&hint)
     } else {
-        status::left(r.prompt().is_some(), r.message(), &hint)
+        status::left(
+            r.prompt().is_some() || r.goto().is_some(),
+            r.message(),
+            &hint,
+        )
     };
     status::draw(frame, status, r.theme(), left, &right);
 
@@ -247,7 +251,7 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
         Some(Overlay::OpenConfirm(target)) => draw_open_confirm(frame, main, r, target),
         Some(Overlay::Links(picker)) => draw_links(frame, main, r, picker),
         Some(Overlay::Location(location)) => draw_location(frame, main, r, location),
-        Some(Overlay::Help(_) | Overlay::Prompt(_)) | None => {}
+        Some(Overlay::Help(_) | Overlay::Prompt(_) | Overlay::GoTo(_)) | None => {}
     }
     // The help keeps its scroll in range while drawing.
     let t = r.theme().clone();
@@ -257,11 +261,11 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
 }
 
 /// Whether a popup is drawn over the document.
-/// The search prompt sits above the document, not over it.
+/// The search and line prompts sit above the document, not over it.
 fn popup_open(r: &Reader) -> bool {
     r.overlay
         .as_ref()
-        .is_some_and(|o| !matches!(o, Overlay::Prompt(_)))
+        .is_some_and(|o| !matches!(o, Overlay::Prompt(_) | Overlay::GoTo(_)))
 }
 
 /// Blank columns between the line numbers and the text.
@@ -283,7 +287,7 @@ const HELP: &[status::HelpSection] = &[
             ("j/k  ↓/↑", "scroll"),
             ("ctrl-d/u", "half page"),
             ("space/b", "page down/up"),
-            ("g/G", "top/bottom"),
+            ("g/G, :", "top/bottom, go to line"),
             ("J/K", "next/previous heading"),
             ("Esc", "clear, then back"),
             ("h", "back"),
@@ -347,6 +351,11 @@ fn draw_find(frame: &mut Frame, r: &Reader, area: Rect) {
         Constraint::Length(count.chars().count() as u16),
     ])
     .areas(area);
+    if let Some(goto) = r.goto() {
+        let line = status::prompt_line(t, "Line: ", goto.text(), Some(goto.cursor()));
+        frame.render_widget(line, area);
+        return;
+    }
     let query = r.search.as_ref().map_or("", |s| s.query.as_str());
     frame.render_widget(status::find_prompt(t, r.prompt(), query), left);
     frame.render_widget(Span::styled(count, Style::default().fg(t.muted)), right);

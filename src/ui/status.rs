@@ -13,6 +13,9 @@ use crate::render::theme::Theme;
 pub enum Left<'a> {
     Text(&'a str),
     Error(&'a str),
+    /// Key hints, `(key, what it does)`, the last one kept however
+    /// narrow the bar gets.
+    Hints(&'a [(&'a str, &'a str)]),
 }
 
 /// Left side of the status bar: prompt keys while typing, else a pending
@@ -35,18 +38,22 @@ pub fn row_style(t: &Theme, selected: bool) -> Style {
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, t: &Theme, left: Left, right: &str) {
+    const NAME: &str = " bastian ";
     let mut spans = vec![Span::styled(
-        " bastian ",
+        NAME,
         Style::default().fg(t.h1_fg).bg(t.accent).bold(),
     )];
-    let (s, fg) = match left {
-        Left::Text(s) => (s, t.text),
-        Left::Error(s) => (s, t.err),
-    };
-    spans.push(Span::styled(format!(" {s}"), Style::default().fg(fg)));
-
     // One column of padding on each side of the right-hand text.
     let right_w = right.width() as u16 + 2;
+    match left {
+        Left::Text(s) => spans.push(Span::styled(format!(" {s}"), Style::default().fg(t.text))),
+        Left::Error(s) => spans.push(Span::styled(format!(" {s}"), Style::default().fg(t.err))),
+        Left::Hints(hints) => {
+            let room = usize::from(area.width.saturating_sub(right_w)).saturating_sub(NAME.width());
+            spans.extend(hint_spans(t, hints, room));
+        }
+    }
+
     let [l, r] = Layout::horizontal([Constraint::Min(1), Constraint::Length(right_w)]).areas(area);
     let bg = Style::default().bg(t.surface);
     frame.render_widget(Paragraph::new(Line::from(spans)).style(bg), l);
@@ -58,6 +65,42 @@ pub fn draw(frame: &mut Frame, area: Rect, t: &Theme, left: Left, right: &str) {
         .style(bg),
         r,
     );
+}
+
+/// `key what · key what` in `width` columns: keys in the accent, what
+/// they do muted. Hints before the last are dropped from the end until
+/// the rest fit.
+fn hint_spans(t: &Theme, hints: &[(&str, &str)], width: usize) -> Vec<Span<'static>> {
+    const SEP: &str = " · ";
+    let Some((last, rest)) = hints.split_last() else {
+        return Vec::new();
+    };
+    let w = |(k, v): &(&str, &str)| k.width() + 1 + v.width();
+    // The leading space, then the last hint.
+    let mut used = 1 + w(last);
+    let mut shown: Vec<&(&str, &str)> = rest
+        .iter()
+        .take_while(|h| {
+            used += w(h) + SEP.width();
+            used <= width
+        })
+        .collect();
+    shown.push(last);
+    let mut spans = vec![Span::raw(" ")];
+    for (i, (key, what)) in shown.into_iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled(SEP, Style::default().fg(t.subtle)));
+        }
+        spans.push(Span::styled(
+            (*key).to_string(),
+            Style::default().fg(t.accent).bold(),
+        ));
+        spans.push(Span::styled(
+            format!(" {what}"),
+            Style::default().fg(t.muted),
+        ));
+    }
+    spans
 }
 
 /// A thin vertical scrollbar in the last column of `area`, drawn only when

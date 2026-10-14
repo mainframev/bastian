@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use bastian::app::Settings;
 use bastian::doc::parse;
-use bastian::reader::{Action, Location, Options, Reader, Source};
+use bastian::reader::{Action, Location, Options, Overlay, Reader, Source};
 use bastian::remote::RemoteDoc;
 use bastian::render::theme::Theme;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -14,6 +14,30 @@ fn key(r: &mut Reader, code: KeyCode) -> Action {
 
 fn ctrl(r: &mut Reader, c: char) -> Action {
     r.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL))
+}
+
+/// The blocks a run confirmation is waiting on.
+fn confirm(r: &Reader) -> Option<&[usize]> {
+    match &r.overlay {
+        Some(Overlay::RunConfirm(ids)) => Some(ids),
+        _ => None,
+    }
+}
+
+/// The target an open-external confirmation is waiting on.
+fn confirm_open(r: &Reader) -> Option<&str> {
+    match &r.overlay {
+        Some(Overlay::OpenConfirm(t)) => Some(t),
+        _ => None,
+    }
+}
+
+/// The location popup's contents.
+fn location(r: &Reader) -> Option<&Location> {
+    match &r.overlay {
+        Some(Overlay::Location(l)) => Some(l),
+        _ => None,
+    }
 }
 
 fn reader(src: &str) -> Reader {
@@ -50,7 +74,7 @@ fn anchor_link_scrolls_to_heading() {
     let src = format!("[jump](#getting-started)\n\n{filler}## Getting Started\n\n{filler}");
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('L'));
-    assert!(r.link_picker.is_some());
+    assert!(matches!(r.overlay, Some(Overlay::Links(_))));
     key(&mut r, KeyCode::Enter);
     let line: String = r.rendered().lines[r.scroll()]
         .spans
@@ -93,10 +117,9 @@ fn footnote_reference_in_a_title_is_listed_and_followed() {
     let src = format!("# Title[^t]\n\n{filler}[^t]: Where the title comes from.\n");
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('L'));
-    let picker = r
-        .link_picker
-        .as_ref()
-        .expect("the title's reference is listed");
+    let Some(Overlay::Links(picker)) = &r.overlay else {
+        panic!("the title's reference is listed");
+    };
     assert_eq!(picker.links[0].url, "#fn:t");
     key(&mut r, KeyCode::Enter);
     let shown: Vec<String> = r.rendered().lines[r.scroll()..]
@@ -365,15 +388,48 @@ fn reloads_when_file_changes() {
 }
 
 #[test]
+fn esc_returns_to_plain_reading_in_one_step() {
+    let mut r = reader("[a](#a) and [b](#b)\n\nmore text here\n");
+    key(&mut r, KeyCode::Char('/'));
+    for c in "text".chars() {
+        key(&mut r, KeyCode::Char(c));
+    }
+    key(&mut r, KeyCode::Enter);
+    key(&mut r, KeyCode::Char('s'));
+    assert!(r.search.is_some() && r.link_focus.is_some());
+    // One Esc drops the search and the focus together...
+    assert!(matches!(key(&mut r, KeyCode::Esc), Action::None));
+    assert!(r.search.is_none() && r.link_focus.is_none());
+    // ...and the next one goes back.
+    assert!(matches!(key(&mut r, KeyCode::Esc), Action::Back));
+}
+
+#[test]
+fn opening_an_overlay_replaces_the_open_one() {
+    let mut r = reader("[a](https://a.dev)\n");
+    key(&mut r, KeyCode::Char('L'));
+    assert!(matches!(r.overlay, Some(Overlay::Links(_))));
+    // The picker owns the keyboard: `?` moves nothing and opens nothing.
+    key(&mut r, KeyCode::Char('?'));
+    assert!(matches!(r.overlay, Some(Overlay::Links(_))));
+    key(&mut r, KeyCode::Esc);
+    assert!(r.overlay.is_none());
+    key(&mut r, KeyCode::Char('?'));
+    assert!(matches!(r.overlay, Some(Overlay::Help(_))));
+}
+
+#[test]
 fn help_scrolls_and_closes_on_any_other_key() {
     let mut r = reader("text\n");
     key(&mut r, KeyCode::Char('?'));
-    assert!(r.help.open);
+    assert!(matches!(r.overlay, Some(Overlay::Help(_))));
     key(&mut r, KeyCode::Char('j'));
-    assert!(r.help.open, "j scrolls the help");
-    assert_eq!(r.help.scroll, 1);
+    assert!(
+        matches!(&r.overlay, Some(Overlay::Help(h)) if h.scroll == 1),
+        "j scrolls the help"
+    );
     key(&mut r, KeyCode::Char('q'));
-    assert!(!r.help.open, "first other key only closes help");
+    assert!(r.overlay.is_none(), "first other key only closes help");
 }
 
 #[test]
@@ -409,7 +465,7 @@ fn p_shows_and_copies_the_file_path() {
     let absolute = std::fs::canonicalize(&path).unwrap().display().to_string();
 
     key(&mut r, KeyCode::Char('p'));
-    assert!(matches!(&r.location, Some(Location::File { .. })));
+    assert!(matches!(location(&r), Some(Location::File { .. })));
     assert!(matches!(key(&mut r, KeyCode::Char('A')), Action::Copy(p) if p == absolute));
     assert_eq!(r.message(), Some("copied absolute path"));
     // Outside the current directory, the relative path is the one opened.
@@ -419,9 +475,9 @@ fn p_shows_and_copies_the_file_path() {
     // Other keys are ignored while it's open; esc, q and p close it.
     assert!(matches!(key(&mut r, KeyCode::Char('j')), Action::None));
     for close in [KeyCode::Esc, KeyCode::Char('q'), KeyCode::Char('p')] {
-        assert!(r.location.is_some());
+        assert!(location(&r).is_some());
         assert!(matches!(key(&mut r, close), Action::None));
-        assert!(r.location.is_none());
+        assert!(location(&r).is_none());
         key(&mut r, KeyCode::Char('p'));
     }
 }
@@ -430,7 +486,7 @@ fn p_shows_and_copies_the_file_path() {
 fn p_without_a_file() {
     let mut r = reader("text\n");
     key(&mut r, KeyCode::Char('p'));
-    assert_eq!(r.location, Some(Location::Unnamed("t.md".into())));
+    assert_eq!(location(&r), Some(&Location::Unnamed("t.md".into())));
     assert!(matches!(key(&mut r, KeyCode::Char('R')), Action::None));
     assert_eq!(r.message(), Some("no file path to copy"));
 
@@ -524,7 +580,7 @@ fn path_popup_names_stdin() {
     let source = Source::in_memory("stdin", parse("text\n"));
     let mut r = Reader::new(source, &Options::default());
     key(&mut r, KeyCode::Char('p'));
-    assert_eq!(r.location, Some(Location::Unnamed("stdin".into())));
+    assert_eq!(location(&r), Some(&Location::Unnamed("stdin".into())));
     let screen = screen_of(&mut r, 40, 12);
     assert!(screen.contains("(stdin)"), "{screen}");
     assert!(screen.contains("no local file"), "{screen}");
@@ -834,7 +890,7 @@ fn web_links_open_without_asking() {
             matches!(key(&mut r, KeyCode::Enter), Action::OpenExternal(t) if t == url),
             "{url}"
         );
-        assert_eq!(r.confirm_open, None);
+        assert_eq!(confirm_open(&r), None);
     }
 }
 
@@ -852,12 +908,12 @@ fn other_links_ask_before_opening() {
     ] {
         let mut r = picking(url, dir.path());
         assert!(matches!(key(&mut r, KeyCode::Enter), Action::None), "{url}");
-        assert_eq!(r.confirm_open.as_deref(), Some(target));
+        assert_eq!(confirm_open(&r), Some(target));
         assert!(
             matches!(key(&mut r, KeyCode::Char('y')), Action::OpenExternal(t) if t == target),
             "{url}"
         );
-        assert_eq!(r.confirm_open, None);
+        assert_eq!(confirm_open(&r), None);
 
         let mut r = picking(url, dir.path());
         key(&mut r, KeyCode::Enter);
@@ -865,7 +921,7 @@ fn other_links_ask_before_opening() {
             matches!(key(&mut r, KeyCode::Char('n')), Action::None),
             "{url}"
         );
-        assert_eq!(r.confirm_open, None);
+        assert_eq!(confirm_open(&r), None);
     }
 }
 
@@ -898,7 +954,7 @@ fn open_prompt_elides_the_middle_of_a_long_target() {
     let target = format!("vscode://host/{}/tail/setup.command", "x".repeat(500));
     let mut r = picking(&target, std::path::Path::new("."));
     key(&mut r, KeyCode::Enter);
-    assert_eq!(r.confirm_open.as_deref(), Some(target.as_str()));
+    assert_eq!(confirm_open(&r), Some(target.as_str()));
     let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
     terminal.draw(|f| draw(f, &mut r)).unwrap();
     let buf = terminal.backend().buffer();
@@ -960,7 +1016,7 @@ fn remote_documents_resolve_links_and_always_confirm() {
     // --yes doesn't skip confirmation for an untrusted document.
     key(&mut r, KeyCode::Tab);
     key(&mut r, KeyCode::Enter);
-    assert_eq!(r.confirm, Some(vec![0]));
+    assert_eq!(confirm(&r), Some(&[0][..]));
 }
 
 #[test]
@@ -984,7 +1040,7 @@ fn remote_markdown_links_with_other_schemes_ask() {
             assert!(matches!(action, Action::OpenExternal(t) if t == target));
         } else {
             assert!(matches!(action, Action::None), "{target}");
-            assert_eq!(r.confirm_open.as_deref(), Some(target));
+            assert_eq!(confirm_open(&r), Some(target));
         }
     }
 }
@@ -994,25 +1050,25 @@ fn reload_with_changed_code_drops_pending_confirmation() {
     let mut r = reader("```sh\necho one\n```\n");
     key(&mut r, KeyCode::Tab);
     key(&mut r, KeyCode::Char('r'));
-    assert_eq!(r.confirm, Some(vec![0]));
+    assert_eq!(confirm(&r), Some(&[0][..]));
 
     // Prose edits keep the prompt: block 0 is still the same code.
     r.replace_doc(parse("intro\n\n```sh\necho one\n```\n"));
-    assert_eq!(r.confirm, Some(vec![0]));
+    assert_eq!(confirm(&r), Some(&[0][..]));
 
     r.replace_doc(parse("```sh\nrm -rf ~\n```\n\n```sh\necho one\n```\n"));
-    assert_eq!(r.confirm, None);
+    assert_eq!(confirm(&r), None);
 }
 
 #[test]
 fn reload_drops_pending_open_prompt() {
     let mut r = picking("vscode://file/etc/hosts", std::path::Path::new("."));
     key(&mut r, KeyCode::Enter);
-    assert_eq!(r.confirm_open.as_deref(), Some("vscode://file/etc/hosts"));
+    assert_eq!(confirm_open(&r), Some("vscode://file/etc/hosts"));
 
     // Even an unchanged link may now sit elsewhere; ask again after a reload.
     r.replace_doc(parse("[x](vscode://file/etc/hosts)\n"));
-    assert_eq!(r.confirm_open, None);
+    assert_eq!(confirm_open(&r), None);
     assert!(matches!(key(&mut r, KeyCode::Char('y')), Action::None));
 }
 

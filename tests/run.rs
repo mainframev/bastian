@@ -3,8 +3,16 @@ use std::time::{Duration, Instant};
 
 use bastian::doc::parse;
 use bastian::exec::Status;
-use bastian::reader::{Match, Options, Reader, Source};
+use bastian::reader::{Match, Options, Overlay, Reader, Source};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+/// The blocks a run confirmation is waiting on.
+fn confirm(r: &Reader) -> Option<&[usize]> {
+    match &r.overlay {
+        Some(Overlay::RunConfirm(ids)) => Some(ids),
+        _ => None,
+    }
+}
 
 fn reader(src: &str) -> Reader {
     reader_with(src, std::env::temp_dir(), false)
@@ -63,7 +71,7 @@ fn output(r: &Reader, id: usize) -> Vec<String> {
 fn confirm_then_run_shows_output() {
     let mut r = reader("```sh\necho hello\n```\n");
     key(&mut r, KeyCode::Enter);
-    assert_eq!(r.confirm, Some(vec![0]));
+    assert_eq!(confirm(&r), Some(&[0][..]));
     key(&mut r, KeyCode::Char('y'));
     settle(&mut r);
     assert!(matches!(r.runs()[&0].status, Status::Ok(_)));
@@ -78,7 +86,7 @@ fn declining_does_not_run() {
     let mut r = reader("```sh\necho hello\n```\n");
     key(&mut r, KeyCode::Enter);
     key(&mut r, KeyCode::Char('n'));
-    assert!(r.confirm.is_none());
+    assert!(confirm(&r).is_none());
     assert!(r.runs().is_empty());
 }
 
@@ -86,11 +94,11 @@ fn declining_does_not_run() {
 fn assume_yes_skips_confirm_except_marked_blocks() {
     let mut r = yes("```sh\necho a\n```\n\n```sh {confirm}\necho b\n```\n");
     key(&mut r, KeyCode::Enter);
-    assert!(r.confirm.is_none());
+    assert!(confirm(&r).is_none());
     settle(&mut r);
     key(&mut r, KeyCode::Tab);
     key(&mut r, KeyCode::Enter);
-    assert_eq!(r.confirm, Some(vec![1]));
+    assert_eq!(confirm(&r), Some(&[1][..]));
 }
 
 #[test]
@@ -154,7 +162,7 @@ fn unrunnable_block_reports_why() {
     let mut r = reader("```rust\nfn main() {}\n```\n");
     key(&mut r, KeyCode::Enter);
     assert_eq!(r.message(), Some("no interpreter for `rust`"));
-    assert!(r.confirm.is_none());
+    assert!(confirm(&r).is_none());
 }
 
 #[test]

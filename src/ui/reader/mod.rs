@@ -261,11 +261,11 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
 }
 
 /// Whether a popup is drawn over the document.
-/// The search prompt sits above the document, not over it.
+/// The search and line prompts sit above the document, not over it.
 fn popup_open(r: &Reader) -> bool {
     r.overlay
         .as_ref()
-        .is_some_and(|o| !matches!(o, Overlay::Prompt(_)))
+        .is_some_and(|o| !matches!(o, Overlay::Prompt(_) | Overlay::GoTo(_)))
 }
 
 /// Blank columns between the line numbers and the text.

@@ -1,8 +1,7 @@
 use std::time::Duration;
 
 use super::*;
-use crate::exec::Interpreters;
-use crate::{doc, render};
+use crate::{doc, reader, render};
 use ratatui::crossterm::event::{KeyModifiers, MouseEvent};
 
 fn wheel(kind: MouseEventKind) -> Event {
@@ -16,16 +15,9 @@ fn wheel(kind: MouseEventKind) -> Event {
 
 fn settings() -> Settings {
     Settings {
-        theme: Theme::dark(),
-        max_width: 80,
-        assume_yes: false,
-        interpreters: Interpreters::default(),
-        line_numbers: false,
+        reader: reader::Options::default(),
         scan: browser::Scan::default(),
         date_format: Some(crate::config::DATE_FORMAT.into()),
-        render: render::Options::default(),
-        hyperlinks: true,
-        scrollbar: true,
         editor: None,
         mouse: true,
         logo: true,
@@ -33,8 +25,16 @@ fn settings() -> Settings {
         show_images: false,
         selector: crate::config::Selector::Bar,
         list_layout: crate::config::ListLayout::Cards,
-        positions: None,
     }
+}
+
+/// A reader over `doc` opened with `s`, with code running in `base_dir`.
+fn reader_in(s: &Settings, doc: doc::Document, base_dir: PathBuf) -> Reader {
+    let source = reader::Source {
+        base_dir,
+        ..reader::Source::in_memory("t", doc)
+    };
+    Reader::new(source, &s.reader)
 }
 
 fn press(app: &mut App, code: KeyCode) -> bool {
@@ -45,12 +45,7 @@ fn press(app: &mut App, code: KeyCode) -> bool {
 /// in `dir`.
 fn reading(dir: &Path, current: &str) -> App {
     let s = settings();
-    let reader = s.reader(
-        "t".into(),
-        doc::parse("# A\n\ntext\n"),
-        String::new(),
-        PathBuf::from("."),
-    );
+    let reader = reader_in(&s, doc::parse("# A\n\ntext\n"), PathBuf::from("."));
     let mut app = App::read(reader, s);
     app.themes = ThemeFiles {
         dir: Some(dir.join("themes")),
@@ -67,18 +62,18 @@ fn theme_picker_previews_and_cancels() {
     // Next in the list is dracula, which looks nothing like nord.
     let mut app = reading(dir.path(), "nord");
     app.apply_theme(crate::themes::load("nord", None).unwrap());
-    let before = app.settings.theme.accent;
+    let before = app.settings.reader.theme.accent;
     assert!(press(&mut app, KeyCode::Char('T')));
     assert!(app.picker.is_some());
     press(&mut app, KeyCode::Char('j'));
     // The whole app previews the highlighted theme...
-    let preview = app.settings.theme.accent;
+    let preview = app.settings.reader.theme.accent;
     assert_ne!(preview, before);
     assert_eq!(app.reader.as_ref().unwrap().theme.accent, preview);
     // ...and Esc puts the old one back without saving anything.
     press(&mut app, KeyCode::Esc);
     assert!(app.picker.is_none());
-    assert_eq!(app.settings.theme.accent, before);
+    assert_eq!(app.settings.reader.theme.accent, before);
     assert_eq!(app.reader.as_ref().unwrap().theme.accent, before);
     assert!(!dir.path().join("config.toml").exists());
 }
@@ -133,12 +128,7 @@ fn bastian_themes_quits_once_a_theme_is_picked() {
 fn mouse_wheel_scrolls_the_reader() {
     let settings = settings();
     let src: String = (0..50).map(|i| format!("line {i}\n\n")).collect();
-    let mut reader = settings.reader(
-        "t".into(),
-        doc::parse(&src),
-        String::new(),
-        PathBuf::from("."),
-    );
+    let mut reader = reader_in(&settings, doc::parse(&src), PathBuf::from("."));
     reader.layout(80, 10);
     let mut app = App::read(reader, settings);
     assert!(app.on_event(&wheel(MouseEventKind::ScrollDown)));
@@ -160,10 +150,10 @@ fn i_toggles_pictures_in_every_reader() {
     let mut s = settings();
     s.images = Some(Support::fixed(Picker::halfblocks()));
     s.show_images = true;
-    let reader = s.reader(
-        "t".into(),
+    s.reader.images = s.image_support();
+    let reader = reader_in(
+        &s,
         doc::parse("![a red square](p.png)\n"),
-        String::new(),
         dir.path().to_path_buf(),
     );
     let mut app = App::read(reader, s);
@@ -197,8 +187,7 @@ fn i_toggles_pictures_in_every_reader() {
     assert_eq!(r.message.as_deref(), Some("images off"));
     // Readers opened afterwards start with pictures off too.
     assert!(
-        !app.settings
-            .reader("u".into(), doc::parse(""), String::new(), dir.path().into())
+        !reader_in(&app.settings, doc::parse(""), dir.path().into())
             .images
             .enabled()
     );

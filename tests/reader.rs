@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use bastian::app::Settings;
 use bastian::doc::parse;
-use bastian::exec::Interpreters;
 use bastian::reader::{Action, Options, Reader, Source};
 use bastian::remote::RemoteDoc;
 use bastian::render::theme::Theme;
@@ -525,16 +524,13 @@ fn c_copies_the_whole_document() {
 
 fn settings(assume_yes: bool, positions: Option<std::path::PathBuf>) -> Settings {
     Settings {
-        theme: Theme::dark(),
-        max_width: 80,
-        assume_yes,
-        interpreters: Interpreters::default(),
-        line_numbers: false,
+        reader: Options {
+            assume_yes,
+            positions,
+            ..Options::default()
+        },
         scan: bastian::browser::Scan::default(),
         date_format: Some(bastian::config::DATE_FORMAT.into()),
-        render: bastian::render::Options::default(),
-        hyperlinks: true,
-        scrollbar: true,
         editor: None,
         mouse: false,
         logo: true,
@@ -542,7 +538,6 @@ fn settings(assume_yes: bool, positions: Option<std::path::PathBuf>) -> Settings
         show_images: false,
         selector: bastian::config::Selector::Bar,
         list_layout: bastian::config::ListLayout::Cards,
-        positions,
     }
 }
 
@@ -716,12 +711,13 @@ fn open_prompt_elides_the_middle_of_a_long_target() {
 fn remote_documents_resolve_links_and_always_confirm() {
     // Built the way the app builds fetched documents, with --yes on.
     let settings = settings(true, None);
-    let mut r = settings.remote(RemoteDoc {
+    let fetched = RemoteDoc {
         name: "README.md".into(),
         base: url::Url::parse("https://example.com/repo/README.md").unwrap(),
         text: "See [guide](docs/guide.md) and [logo](img/logo.png).\n\n```sh\necho hi\n```\n"
             .into(),
-    });
+    };
+    let mut r = Reader::new(Source::remote(fetched), &settings.reader);
     r.layout(80, 10);
 
     key(&mut r, KeyCode::Char('L'));
@@ -750,11 +746,12 @@ fn remote_markdown_links_with_other_schemes_ask() {
         "vscode://file/a.md",
         "mailto:user@example.md",
     ] {
-        let mut r = settings.remote(RemoteDoc {
+        let fetched = RemoteDoc {
             name: "README.md".into(),
             base: url::Url::parse("https://example.com/repo/README.md").unwrap(),
             text: format!("[x]({target})\n"),
-        });
+        };
+        let mut r = Reader::new(Source::remote(fetched), &settings.reader);
         r.layout(80, 10);
         key(&mut r, KeyCode::Char('L'));
         let action = key(&mut r, KeyCode::Enter);

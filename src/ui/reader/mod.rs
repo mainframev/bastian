@@ -12,7 +12,7 @@ use super::status;
 use super::text::highlight;
 use crate::reader::Reader;
 use media::{draw_hyperlinks, draw_images};
-use overlays::{draw_confirm, draw_links, draw_open_confirm, draw_outline};
+use overlays::{draw_confirm, draw_links, draw_location, draw_open_confirm, draw_outline};
 
 pub fn draw(frame: &mut Frame, r: &mut Reader) {
     // A blank row above the document (the `Find:` line takes it while
@@ -204,6 +204,8 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
         draw_links(frame, r, picker);
     } else if r.outline.is_some() {
         draw_outline(frame, r);
+    } else if let Some(location) = &r.location {
+        draw_location(frame, r, location);
     } else if r.help.open {
         let t = r.theme().clone();
         status::help(frame, &t, HELP, &mut r.help.scroll);
@@ -260,6 +262,7 @@ const HELP: &[status::HelpSection] = &[
         &[
             ("ctrl-e", "edit"),
             ("c", "copy whole document"),
+            ("p", "file path"),
             ("#", "toggle line numbers"),
             ("i", "show/hide images"),
         ],

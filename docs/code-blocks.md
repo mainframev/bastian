@@ -17,6 +17,11 @@ Runbooks and setup guides can be run from the page: fenced code blocks in
 | `o`                | show/hide the focused block's output                        |
 | `y`                | copy the focused block                                      |
 
+Each block sits in a frame with its name and language in the top border, and
+`▶` there when bastian can run it. A `┊` on the left marks a long line that
+wrapped. The focused block's frame turns the theme's accent color; `y` copies
+the block's source, never the frame.
+
 bastian asks before each run. `-y` (or `confirm = "never"`) skips the
 question, except for blocks marked `confirm`. Try it on bastian's own README:
 `bastian README.md`, then `Tab` and `Enter`.

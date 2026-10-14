@@ -177,7 +177,7 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
     } else if r.focus.is_some() {
         format!("{}  enter run · R all · x stop · y copy · ? more", r.name)
     } else {
-        format!("{}  e edit · ? more", r.name)
+        format!("{}  ctrl-e edit · ? more", r.name)
     };
     let left = status::left(r.prompt.is_some(), r.message(), &hint);
     status::draw(frame, status, r.theme(), left, &right);
@@ -207,30 +207,52 @@ pub fn gutter_width(r: &Reader, lines: usize) -> u16 {
     lines.max(1).to_string().len() as u16 + GUTTER_GAP
 }
 
-const HELP: &[(&str, &str)] = &[
-    ("j/k  ↓/↑", "scroll"),
-    ("ctrl-d/u", "half page"),
-    ("space/b", "page down/up"),
-    ("g/G", "top/bottom"),
-    ("/  n/N", "search, next/previous match"),
-    ("Tab/S-Tab", "focus next/previous code block"),
-    ("Enter, r", "run focused block"),
-    ("R", "run all blocks from the focused one"),
-    ("x", "stop running blocks"),
-    ("o", "show/hide output"),
-    ("y", "copy focused block"),
-    ("c", "copy whole document"),
-    ("L", "list links"),
-    ("s/S", "focus next/previous link; enter follows it"),
-    ("d/D", "focus next/previous details; enter opens/closes it"),
-    ("e", "edit at this line in $VISUAL/$EDITOR"),
-    ("ctrl-z", "suspend (resume with fg)"),
-    ("#", "toggle line numbers"),
-    ("O", "outline: jump to a heading"),
-    ("i", "show/hide images"),
-    ("T", "pick a theme"),
-    ("Esc, h", "back"),
-    ("q", "quit"),
+const HELP: &[status::HelpSection] = &[
+    (
+        "Navigation",
+        &[
+            ("j/k  ↓/↑", "scroll"),
+            ("ctrl-d/u", "half page"),
+            ("space/b", "page down/up"),
+            ("g/G", "top/bottom"),
+            ("O", "outline: jump to a heading"),
+            ("Esc, h", "back"),
+        ],
+    ),
+    ("Search", &[("/", "search"), ("n/N", "next/previous match")]),
+    (
+        "Code blocks",
+        &[
+            ("Tab/S-Tab", "focus next/previous block"),
+            ("Enter, r", "run focused block"),
+            ("R", "run all from the focused one"),
+            ("x", "stop running blocks"),
+            ("o", "show/hide output"),
+            ("y", "copy focused block"),
+        ],
+    ),
+    (
+        "Links & details",
+        &[
+            ("L", "list links"),
+            ("s/S", "focus next/previous link"),
+            ("d/D", "focus next/previous details"),
+            ("Enter", "follow link, open/close details"),
+        ],
+    ),
+    (
+        "Document",
+        &[
+            ("ctrl-e", "edit"),
+            ("c", "copy whole document"),
+            ("#", "toggle line numbers"),
+            ("i", "show/hide images"),
+        ],
+    ),
+    (
+        "General",
+        &[("T", "pick a theme"), ("?", "this help"), ("q", "quit")],
+    ),
 ];
 
 /// `Find:` line above the document, with the match count on the right.

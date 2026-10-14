@@ -106,7 +106,7 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
         let y = content.y + (span.line - r.scroll) as u16;
         frame.buffer_mut().set_style(
             Rect::new(content.x, y, content.width, 1),
-            Style::default().bg(t.current_bg),
+            Style::default().fg(t.h1_fg).bg(t.current_bg),
         );
     }
     draw_images(frame, r, content, end);

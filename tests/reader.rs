@@ -423,6 +423,36 @@ fn focused_link_is_highlighted_and_previewed() {
 }
 
 #[test]
+fn focused_details_summary_is_highlighted() {
+    use bastian::ui::reader::draw;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let mut r = Reader::new(
+        "t.md".into(),
+        parse("intro\n\n<details>\n<summary>More</summary>\n\nhidden\n\n</details>\n"),
+        Theme::dark(),
+        80,
+    );
+    let (w, h) = (40u16, 8u16);
+    let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    key(&mut r, KeyCode::Char('d'));
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+
+    let buf = terminal.backend().buffer();
+    let theme = Theme::dark();
+    let y = r.rendered.details[0].line as u16 + 1; // below the top padding
+    let focused: Vec<_> = (0..w)
+        .map(|x| &buf[(x, y)])
+        .filter(|c| c.bg == theme.current_bg)
+        .collect();
+    let text: String = focused.iter().map(|c| c.symbol().to_string()).collect();
+    assert!(text.contains("▶ More"), "{text:?}");
+    // The row's text takes the contrasting foreground, as link focus does.
+    assert!(focused.iter().all(|c| c.fg == theme.h1_fg), "{focused:?}");
+}
+
+#[test]
 fn blocks_remember_their_source_lines() {
     let doc = parse("# Title\n\npara one\nstill one\n\n- a\n- b\n\n```sh\nx\n```\n");
     assert_eq!(doc.lines, [0, 2, 5, 8]);

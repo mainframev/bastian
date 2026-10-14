@@ -93,6 +93,7 @@ impl Reader {
                 }
                 None => self.message = Some("focus a block with Tab first".into()),
             },
+            KeyCode::Char('v') => self.toggle_diagram(),
             KeyCode::Char('L') => {
                 let links = links::collect(&self.doc);
                 if links.is_empty() {

@@ -71,6 +71,10 @@ impl Reader {
         // The focused link may now be a different one; Enter mustn't follow
         // a link the preview didn't show.
         self.link_focus = None;
+        // Details are numbered by position, so after an edit the numbers may
+        // name other blocks: forget which were opened and which was focused.
+        self.details_focus = None;
+        self.toggled_details.clear();
         self.focus = self
             .focus
             .and_then(|id| moved.get(id).copied().flatten().or(Some(id)))

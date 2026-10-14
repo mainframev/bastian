@@ -46,14 +46,14 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<Option<String
                     let look = ui::browser::Look {
                         logo: s.logo,
                         date_format: s.date_format.as_deref(),
-                        scrollbar: s.scrollbar,
+                        scrollbar: s.reader.scrollbar,
                         selector: s.selector,
                         layout: s.list_layout,
                     };
-                    ui::browser::draw(f, b, &s.theme, look);
+                    ui::browser::draw(f, b, &s.reader.theme, look);
                 }
                 if let Some((p, _)) = &app.picker {
-                    ui::picker::draw(f, &app.settings.theme, p);
+                    ui::picker::draw(f, &app.settings.reader.theme, p);
                 }
             })?;
         }

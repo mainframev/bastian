@@ -7,6 +7,7 @@ use clap::{CommandFactory, Parser};
 use bastian::app::{self, Settings};
 use bastian::cli::{Cli, Command};
 use bastian::config;
+use bastian::reader::{Reader, Source};
 use bastian::{browser, doc, open, output, paths, remote, text, themes};
 
 fn main() -> Result<()> {
@@ -130,11 +131,9 @@ fn main() -> Result<()> {
     };
 
     if pick_theme {
-        let reader = settings.reader(
-            "theme preview".into(),
-            doc::parse(bastian::picker::SAMPLE),
-            String::new(),
-            PathBuf::from("."),
+        let reader = Reader::new(
+            Source::in_memory("theme preview", doc::parse(bastian::picker::SAMPLE)),
+            &settings.reader,
         );
         let mut app = app::App::read(reader, settings);
         app.themes = theme_files;
@@ -153,9 +152,13 @@ fn main() -> Result<()> {
     let app = if let Some(source) = remote {
         let fetched = remote::fetch(&source)?;
         if !tui {
-            return out.print(&fetched.parse(), &settings.theme, settings.render);
+            return out.print(
+                &fetched.parse(),
+                &settings.reader.theme,
+                settings.reader.render,
+            );
         }
-        let reader = settings.remote(fetched);
+        let reader = Reader::new(Source::remote(fetched), &settings.reader);
         app::App::read(reader, settings)
     } else if path.is_dir() {
         if !tui {
@@ -173,14 +176,18 @@ fn main() -> Result<()> {
         let src = text::decode(&bytes).context("reading stdin")?;
         let doc = doc::parse(&src);
         if !tui {
-            return out.print(&doc, &settings.theme, settings.render);
+            return out.print(&doc, &settings.reader.theme, settings.reader.render);
         }
-        let reader = settings.reader("stdin".into(), doc, src, PathBuf::from("."));
+        let source = Source {
+            text: src,
+            ..Source::in_memory("stdin", doc)
+        };
+        let reader = Reader::new(source, &settings.reader);
         app::App::read(reader, settings)
     } else {
         if !tui {
             let opened = open::open(&path)?;
-            return out.print(&opened.doc, &settings.theme, settings.render);
+            return out.print(&opened.doc, &settings.reader.theme, settings.reader.render);
         }
         let reader = settings.open(&path, path.display().to_string())?;
         app::App::read(reader, settings)

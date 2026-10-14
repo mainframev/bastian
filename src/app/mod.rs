@@ -86,7 +86,7 @@ impl App {
 
     pub fn open_picker(&mut self) {
         let picker = ThemePicker::new(self.themes.dir.as_deref(), &self.themes.current);
-        self.picker = Some((picker, self.settings.theme.clone()));
+        self.picker = Some((picker, self.settings.reader.theme.clone()));
     }
 
     /// Switch pictures on or off in every reader, asking the terminal how
@@ -97,7 +97,8 @@ impl App {
         if s.show_images && s.images.is_none() {
             s.images = Some(crate::images::Support::detect());
         }
-        let support = s.image_support();
+        s.reader.images = s.image_support();
+        let support = s.reader.images.clone();
         for r in self.reader.iter_mut().chain(self.history.iter_mut()) {
             r.set_images(support.clone());
         }
@@ -114,7 +115,7 @@ impl App {
         for r in self.reader.iter_mut().chain(self.history.iter_mut()) {
             r.set_theme(theme.clone());
         }
-        self.settings.theme = theme;
+        self.settings.reader.theme = theme;
     }
 
     /// Returns false when the app should exit.
@@ -261,7 +262,7 @@ impl App {
             }
             reader::Action::OpenRemote(url) => {
                 let next = crate::remote::fetch(&crate::remote::Source::Url(url))
-                    .map(|doc| self.settings.remote(doc));
+                    .map(|doc| Reader::new(reader::Source::remote(doc), &self.settings.reader));
                 self.push_reader(next);
             }
             reader::Action::OpenExternal(target) => {

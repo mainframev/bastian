@@ -79,6 +79,7 @@ impl Settings {
                 render: render::Options {
                     image_rows: r.image_height.value,
                     tab_width: r.tab_width.value,
+                    ..render::Options::default()
                 },
                 hyperlinks: r.hyperlinks.value,
                 scrollbar: r.scrollbar.value,

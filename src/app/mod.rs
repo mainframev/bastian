@@ -41,6 +41,9 @@ pub struct App {
     pub themes: ThemeFiles,
     /// The open theme picker, and the theme to restore if it's cancelled.
     picker: Option<(ThemePicker, Theme)>,
+    /// Columns the theme picker opens with: the last width set with `<`
+    /// and `>`, for the rest of the session.
+    picker_width: u16,
     /// Quit once the picker closes (`bastian themes`).
     pub pick_and_exit: bool,
     /// Shown after the TUI exits, e.g. what `bastian themes` saved.
@@ -81,13 +84,18 @@ impl App {
             suspend: false,
             themes: ThemeFiles::default(),
             picker: None,
+            picker_width: picker::DEFAULT_WIDTH,
             pick_and_exit: false,
             exit_note: None,
         }
     }
 
     pub fn open_picker(&mut self) {
-        let picker = ThemePicker::new(self.themes.dir.as_deref(), &self.themes.current);
+        let picker = ThemePicker::new(
+            self.themes.dir.as_deref(),
+            &self.themes.current,
+            self.picker_width,
+        );
         self.picker = Some((picker, self.settings.reader.theme.clone()));
     }
 
@@ -125,7 +133,9 @@ impl App {
         let Some((picker, _)) = &mut self.picker else {
             return true;
         };
-        match picker.on_key(key) {
+        let event = picker.on_key(key);
+        self.picker_width = picker.width;
+        match event {
             picker::Event::None => {}
             picker::Event::Preview(theme) => self.apply_theme(theme),
             picker::Event::Cancel => {
@@ -186,7 +196,10 @@ impl App {
                 MouseEventKind::ScrollDown => 1,
                 MouseEventKind::ScrollUp => -1,
                 MouseEventKind::Down(MouseButton::Left) => {
-                    if let Some(r) = self.reader.as_mut().filter(|_| self.picker.is_none()) {
+                    if let Some((p, _)) = &mut self.picker {
+                        p.on_click(m.column, m.row);
+                        self.picker_width = p.width;
+                    } else if let Some(r) = &mut self.reader {
                         r.on_click(m.column, m.row);
                         self.settings.reader.toc_width = r.toc_width();
                     }

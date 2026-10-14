@@ -1,4 +1,5 @@
 use super::Reader;
+use crate::pane;
 use crate::toc::{self, Entry};
 
 impl Reader {
@@ -20,9 +21,15 @@ impl Reader {
     /// wide: 0 when it's closed or doesn't fit. Remembers the screen
     /// width, which `<`, `>` and clicks size the pane against.
     pub fn fit_toc(&mut self, screen: u16) -> u16 {
+        self.fit_toc_beside(screen, 0)
+    }
+
+    /// Like `fit_toc`, beside the theme picker `taken` columns wide: left
+    /// out when the document would be too narrow between them.
+    pub fn fit_toc_beside(&mut self, screen: u16, taken: u16) -> u16 {
         self.screen = screen;
         if self.toc {
-            toc::fit(self.toc_width, screen)
+            pane::fit_beside(self.toc_width, screen, taken)
         } else {
             0
         }
@@ -36,16 +43,9 @@ impl Reader {
         }
     }
 
-    /// Narrow or widen the table of contents by `toc::STEP` columns.
+    /// Narrow or widen the table of contents by `pane::STEP` columns.
     pub(super) fn resize_toc(&mut self, wider: bool) {
-        let max = toc::max_width(self.screen);
-        let width = self.toc_width.min(max);
-        let width = if wider {
-            width.saturating_add(toc::STEP)
-        } else {
-            width.saturating_sub(toc::STEP)
-        };
-        self.toc_width = width.clamp(toc::MIN_WIDTH, max);
+        self.toc_width = pane::resize(self.toc_width, self.screen, wider);
     }
 
     /// Scroll to the heading numbered `n` in the table of contents.
@@ -92,7 +92,7 @@ impl Reader {
         if popup || width == 0 || row != 0 {
             return false;
         }
-        let (narrower, wider) = toc::markers(width);
+        let (narrower, wider) = pane::markers(width);
         if column == narrower || column == wider {
             self.resize_toc(column == wider);
             return true;
@@ -105,7 +105,7 @@ impl Reader {
 mod tests {
     use crate::doc::parse;
     use crate::reader::{Options, Reader, Source};
-    use crate::toc;
+    use crate::{pane, toc};
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     fn reader(src: &str) -> Reader {
@@ -196,7 +196,7 @@ mod tests {
         key(&mut r, 't');
         // `<`/`>` only resize while the pane is open; this one is.
         key(&mut r, '>');
-        assert_eq!(r.toc_width(), toc::DEFAULT_WIDTH + toc::STEP);
+        assert_eq!(r.toc_width(), toc::DEFAULT_WIDTH + pane::STEP);
         for _ in 0..20 {
             key(&mut r, '>');
         }
@@ -204,7 +204,7 @@ mod tests {
         for _ in 0..20 {
             key(&mut r, '<');
         }
-        assert_eq!(r.toc_width(), toc::MIN_WIDTH);
+        assert_eq!(r.toc_width(), pane::MIN_WIDTH);
         // On a smaller screen, widening starts from what fits.
         r.set_toc_width(50);
         r.fit_toc(60);
@@ -218,10 +218,10 @@ mod tests {
         assert!(!r.on_click(0, 0), "closed");
         key(&mut r, 't');
         let width = r.fit_toc(100);
-        let (narrower, wider) = toc::markers(width);
+        let (narrower, wider) = pane::markers(width);
         assert!(r.on_click(wider, 0));
-        assert_eq!(r.toc_width(), width + toc::STEP);
-        let (narrower_now, _) = toc::markers(r.toc_width());
+        assert_eq!(r.toc_width(), width + pane::STEP);
+        let (narrower_now, _) = pane::markers(r.toc_width());
         assert!(r.on_click(narrower_now, 0));
         assert_eq!(r.toc_width(), width);
         assert!(!r.on_click(narrower, 1), "only the header row");

@@ -123,19 +123,9 @@ pub fn panel_block<'a>(t: &Theme, title: impl Into<Line<'a>>) -> Block<'a> {
         .style(Style::default().bg(t.surface))
 }
 
-/// Where a popup goes on screen.
-#[derive(Clone, Copy)]
-pub enum Place {
-    /// Centered.
-    Center,
-    /// Against the right edge, below the top row, so the screen behind
-    /// stays visible.
-    Right,
-}
-
 /// A bordered box centered on screen.
 pub fn modal(frame: &mut Frame, t: &Theme, title: &str, lines: Vec<Line>) {
-    let rect = popup_rect(frame.area(), title, &lines, 0, lines.len(), Place::Center);
+    let rect = popup_rect(frame.area(), title, &lines, 0, lines.len());
     frame.render_widget(Clear, rect);
     frame.render_widget(
         Paragraph::new(lines).block(panel_block(t, title.to_string())),
@@ -143,9 +133,8 @@ pub fn modal(frame: &mut Frame, t: &Theme, title: &str, lines: Vec<Line>) {
     );
 }
 
-/// A popup list of `lines` showing at most `rows` of them, with `selected`
-/// marked `▶ ` and kept in view. Right-docked lists keep the selection
-/// mid-list while scrolling; centered lists keep it at the edge.
+/// A centered popup list of `lines` showing at most `rows` of them, with
+/// `selected` marked `▶ ` and kept in view.
 pub fn list_popup(
     frame: &mut Frame,
     t: &Theme,
@@ -153,34 +142,21 @@ pub fn list_popup(
     lines: Vec<Line>,
     selected: usize,
     rows: usize,
-    place: Place,
 ) {
     let marker = Span::styled("▶ ", Style::default().fg(t.accent));
-    let rect = popup_rect(frame.area(), title, &lines, marker.width(), rows, place);
-    let padding = match place {
-        Place::Center => 0,
-        Place::Right => rows / 2,
-    };
+    let rect = popup_rect(frame.area(), title, &lines, marker.width(), rows);
     let list = List::new(lines)
         .block(panel_block(t, title.to_string()))
         .highlight_symbol(marker)
-        .highlight_spacing(HighlightSpacing::Always)
-        .scroll_padding(padding);
+        .highlight_spacing(HighlightSpacing::Always);
     let mut state = ListState::default().with_selected(Some(selected));
     frame.render_widget(Clear, rect);
     frame.render_stateful_widget(list, rect, &mut state);
 }
 
 /// The box for at most `rows` of `lines`, each `extra` columns wider:
-/// border, padding and title, fitted to `area` and put at `place`.
-fn popup_rect(
-    area: Rect,
-    title: &str,
-    lines: &[Line],
-    extra: usize,
-    rows: usize,
-    place: Place,
-) -> Rect {
+/// border, padding and title, fitted to `area` and centered in it.
+fn popup_rect(area: Rect, title: &str, lines: &[Line], extra: usize, rows: usize) -> Rect {
     let inner_w = lines
         .iter()
         .map(|l| l.width() + extra)
@@ -189,15 +165,7 @@ fn popup_rect(
         .unwrap_or(20);
     let width = (inner_w as u16 + 4).min(area.width);
     let height = (lines.len().min(rows) as u16 + 2).min(area.height);
-    match place {
-        Place::Center => area.centered(Constraint::Length(width), Constraint::Length(height)),
-        Place::Right => Rect::new(
-            area.right().saturating_sub(width + 1),
-            area.y + 1,
-            width,
-            height.min(area.height.saturating_sub(2)),
-        ),
-    }
+    area.centered(Constraint::Length(width), Constraint::Length(height))
 }
 
 /// A titled group of `(keys, what they do)` rows in the key help.
@@ -269,7 +237,7 @@ pub fn help(frame: &mut Frame, t: &Theme, sections: &[HelpSection], scroll: &mut
     } else {
         " any key to close "
     };
-    let rect = popup_rect(area, " Help ", &lines, 0, rows, Place::Center);
+    let rect = popup_rect(area, " Help ", &lines, 0, rows);
     let block = panel_block(t, " Help ")
         .title_bottom(Line::styled(hint, Style::default().fg(t.muted)).right_aligned());
     frame.render_widget(Clear, rect);
@@ -358,7 +326,7 @@ mod tests {
         let theme = Theme::dark();
         let lines: Vec<Line> = (0..20).map(|i| Line::raw(format!("item {i}"))).collect();
         let mut term = Terminal::new(TestBackend::new(30, 10)).unwrap();
-        term.draw(|f| list_popup(f, &theme, " t ", lines.clone(), 15, 4, Place::Center))
+        term.draw(|f| list_popup(f, &theme, " t ", lines.clone(), 15, 4))
             .unwrap();
         let screen = rows(&term);
         let marked: Vec<&String> = screen.iter().filter(|r| r.contains('▶')).collect();

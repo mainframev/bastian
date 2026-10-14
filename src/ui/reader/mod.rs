@@ -11,18 +11,33 @@ use ratatui::widgets::Paragraph;
 pub use super::MARGIN;
 use super::status;
 use super::text::highlight;
+use crate::picker::ThemePicker;
 use crate::reader::Reader;
 use media::{draw_hyperlinks, draw_images};
 use overlays::{draw_confirm, draw_links, draw_location, draw_open_confirm};
 use toc::draw_toc;
 
 pub fn draw(frame: &mut Frame, r: &mut Reader) {
+    draw_with(frame, r, None);
+}
+
+/// `draw`, with the theme picker beside the document when it's open.
+pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut ThemePicker>) {
     // The table of contents, when open, takes the left of everything but
-    // the status bar; the document lays out in what's left.
+    // the status bar, and the theme picker the right; the document lays
+    // out in what's left, so the picker previews it as it will read. On a
+    // screen too narrow for the document beside it, the picker covers it.
     let [top, status] =
         Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
-    let pane = r.fit_toc(top.width);
-    let [toc, main] = Layout::horizontal([Constraint::Length(pane), Constraint::Min(1)]).areas(top);
+    let side = picker.as_deref_mut().map_or(0, |p| p.fit(top.width));
+    let docked = if side < top.width { side } else { 0 };
+    let pane = r.fit_toc_beside(top.width, docked);
+    let [toc, main, _] = Layout::horizontal([
+        Constraint::Length(pane),
+        Constraint::Min(1),
+        Constraint::Length(docked),
+    ])
+    .areas(top);
     // A blank row above the document (the `Find:` line takes it while
     // searching, with its own blank row below) and one above the status
     // bar, so the text never touches either edge.
@@ -182,6 +197,14 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
     if pane > 0 {
         draw_toc(frame, r, toc);
     }
+    if let Some(p) = &picker {
+        let area = Rect {
+            x: top.right() - side,
+            width: side,
+            ..top
+        };
+        super::picker::draw(frame, r.theme(), p, area);
+    }
 
     let pct = if r.max_scroll() == 0 {
         100
@@ -196,7 +219,9 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
     } else {
         format!("{} lines  {pct:>3}%", r.rendered().lines.len())
     };
-    let hint = if r.link_focus.is_some() {
+    let hint = if picker.is_some() {
+        super::picker::HINT.to_string()
+    } else if r.link_focus.is_some() {
         format!("{}  · enter follow · s/S next/prev", r.link_preview)
     } else if r.details_focus.is_some() {
         format!("{}  enter open/close · d/D next/prev", r.name)
@@ -205,7 +230,13 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
     } else {
         format!("{}  ctrl-e edit · ? more", r.name)
     };
-    let left = status::left(r.prompt.is_some(), r.message(), &hint);
+    // The picker owns the keys while it's open, so a message (from a
+    // reload, say) can't be cleared and mustn't hide its hint.
+    let left = if picker.is_some() {
+        status::Left::Text(&hint)
+    } else {
+        status::left(r.prompt.is_some(), r.message(), &hint)
+    };
     status::draw(frame, status, r.theme(), left, &right);
 
     if let Some(ids) = &r.confirm {
@@ -348,5 +379,22 @@ mod tests {
         let screen = help_screen(80, 12, &mut scroll);
         assert!(screen.contains("General"), "{screen}");
         assert!(scroll < usize::MAX, "scroll is kept in range");
+    }
+
+    #[test]
+    fn the_picker_hint_shows_over_a_message() {
+        use crate::picker::{DEFAULT_WIDTH, ThemePicker};
+        use crate::reader::{Options, Source};
+
+        let doc = crate::doc::parse("# A\n\ntext\n");
+        let mut r = Reader::new(Source::in_memory("t", doc), &Options::default());
+        r.set_message("reloaded");
+        let mut p = ThemePicker::new(None, "nord", DEFAULT_WIDTH);
+        let mut term = Terminal::new(TestBackend::new(100, 20)).unwrap();
+        term.draw(|f| draw_with(f, &mut r, Some(&mut p))).unwrap();
+        let buf = term.backend().buffer();
+        let status: String = (0..100).map(|x| buf[(x, 19)].symbol()).collect();
+        assert!(status.contains(super::super::picker::HINT), "{status}");
+        assert!(!status.contains("reloaded"), "{status}");
     }
 }

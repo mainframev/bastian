@@ -6,7 +6,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::reader::{LinkPicker, Location, Reader};
 use crate::render::theme::Theme;
 use crate::text::{shorten_left, take_width};
-use crate::ui::status::{self, Place};
+use crate::ui::status;
 
 pub(super) fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
     let t = r.theme();
@@ -36,15 +36,7 @@ pub(super) fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
         picker.selected + 1,
         picker.links.len()
     );
-    status::list_popup(
-        frame,
-        t,
-        &title,
-        lines,
-        picker.selected,
-        rows,
-        Place::Center,
-    );
+    status::list_popup(frame, t, &title, lines, picker.selected, rows);
 }
 
 pub(super) fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {

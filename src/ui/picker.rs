@@ -183,4 +183,18 @@ mod tests {
         let rows = pane(&p, DEFAULT_WIDTH, 10);
         assert!(rows[2].contains(&p.entries[0].name), "{rows:#?}");
     }
+
+    #[test]
+    fn the_count_keeps_the_title_in_the_accent() {
+        let t = Theme::dark();
+        let p = ThemePicker::new(None, "nord", DEFAULT_WIDTH);
+        let mut term = Terminal::new(TestBackend::new(DEFAULT_WIDTH, 30)).unwrap();
+        term.draw(|f| draw(f, &t, &p, f.area())).unwrap();
+        let buf = term.backend().buffer();
+        let row: String = (0..DEFAULT_WIDTH).map(|x| buf[(x, 0)].symbol()).collect();
+        let title = row.find("Themes").unwrap() as u16;
+        assert_eq!(buf[(title, 0)].fg, t.accent);
+        let count = row.find(&format!("/{}", p.entries.len())).unwrap() as u16;
+        assert_eq!(buf[(count, 0)].fg, t.muted);
+    }
 }

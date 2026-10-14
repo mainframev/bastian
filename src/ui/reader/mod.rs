@@ -230,7 +230,13 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
     } else {
         format!("{}  ctrl-e edit · ? more", r.name)
     };
-    let left = status::left(r.prompt.is_some(), r.message(), &hint);
+    // The picker owns the keys while it's open, so a message (from a
+    // reload, say) can't be cleared and mustn't hide its hint.
+    let left = if picker.is_some() {
+        status::Left::Text(&hint)
+    } else {
+        status::left(r.prompt.is_some(), r.message(), &hint)
+    };
     status::draw(frame, status, r.theme(), left, &right);
 
     if let Some(ids) = &r.confirm {
@@ -373,5 +379,22 @@ mod tests {
         let screen = help_screen(80, 12, &mut scroll);
         assert!(screen.contains("General"), "{screen}");
         assert!(scroll < usize::MAX, "scroll is kept in range");
+    }
+
+    #[test]
+    fn the_picker_hint_shows_over_a_message() {
+        use crate::picker::{DEFAULT_WIDTH, ThemePicker};
+        use crate::reader::{Options, Source};
+
+        let doc = crate::doc::parse("# A\n\ntext\n");
+        let mut r = Reader::new(Source::in_memory("t", doc), &Options::default());
+        r.set_message("reloaded");
+        let mut p = ThemePicker::new(None, "nord", DEFAULT_WIDTH);
+        let mut term = Terminal::new(TestBackend::new(100, 20)).unwrap();
+        term.draw(|f| draw_with(f, &mut r, Some(&mut p))).unwrap();
+        let buf = term.backend().buffer();
+        let status: String = (0..100).map(|x| buf[(x, 19)].symbol()).collect();
+        assert!(status.contains(super::super::picker::HINT), "{status}");
+        assert!(!status.contains("reloaded"), "{status}");
     }
 }

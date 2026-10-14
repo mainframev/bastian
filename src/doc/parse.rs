@@ -132,8 +132,10 @@ struct Builder {
     /// The HTML block being read, gathered to find `<details>` tags in it.
     html: Option<String>,
     next_details_id: usize,
-    /// `<details>` opened past `MAX_DEPTH`, ignored along with their close.
-    skipped_details: u32,
+    /// Depth (frames plus flattened containers) at which each `<details>`
+    /// past `MAX_DEPTH` was opened. It gets no frame and its close tag is
+    /// ignored; it's forgotten when the container it was opened in ends.
+    skipped_details: Vec<usize>,
 }
 
 impl Builder {
@@ -275,6 +277,7 @@ impl Builder {
         {
             self.flush();
             self.flattened -= 1;
+            self.drop_skipped_details();
             return;
         }
         match tag {
@@ -383,6 +386,24 @@ impl Builder {
             }
             _ => {}
         }
+        if matches!(
+            tag,
+            TagEnd::BlockQuote(_) | TagEnd::List(_) | TagEnd::Item | TagEnd::FootnoteDefinition
+        ) {
+            self.drop_skipped_details();
+        }
+    }
+
+    /// Containers open, with or without a frame.
+    fn depth(&self) -> usize {
+        self.stack.len() + self.flattened as usize
+    }
+
+    /// Forget skipped `<details>` opened inside a container that has ended:
+    /// their close tags, if they ever come, belong to no block.
+    fn drop_skipped_details(&mut self) {
+        let depth = self.depth();
+        self.skipped_details.retain(|&d| d <= depth);
     }
 
     /// Whether a new quote, list or item would nest past `MAX_DEPTH`. Lists
@@ -476,7 +497,7 @@ impl Builder {
                 HtmlPart::Open { open } => {
                     self.flush();
                     if self.too_deep() {
-                        self.skipped_details += 1;
+                        self.skipped_details.push(self.depth());
                         continue;
                     }
                     let id = self.next_details_id;
@@ -506,9 +527,9 @@ impl Builder {
                 }
                 HtmlPart::Close => {
                     self.flush();
-                    if self.skipped_details > 0 {
-                        self.skipped_details -= 1;
-                    } else if matches!(self.stack.last(), Some(Frame::Details { .. })) {
+                    if self.skipped_details.pop().is_none()
+                        && matches!(self.stack.last(), Some(Frame::Details { .. }))
+                    {
                         self.close_details();
                     }
                 }
@@ -1094,6 +1115,27 @@ mod tests {
             })
             .collect();
         assert_eq!(text, ["<div>hi</div>", "loose"]);
+    }
+
+    #[test]
+    fn skipped_details_end_with_their_container() {
+        // A quote holding more details than fit: the last gets no frame and
+        // is left unclosed. Once the quote ends, its missing close tag must
+        // not be paid for with the close of a later, valid details block.
+        let inner = "> <details>\n> <summary>s</summary>\n>\n".repeat(MAX_DEPTH);
+        let doc = parse(&format!(
+            "{inner}\n<details>\n<summary>valid</summary>\n\nbody\n\n</details>\n\nafter\n"
+        ));
+        let last = details(&doc).pop().unwrap();
+        assert_eq!(
+            (last.2.as_str(), last.3),
+            ("valid", vec!["body".to_string()])
+        );
+        assert!(
+            matches!(doc.blocks.last(), Some(Block::Paragraph(i)) if plain_text(i) == "after"),
+            "{:?}",
+            doc.blocks.last()
+        );
     }
 
     #[test]

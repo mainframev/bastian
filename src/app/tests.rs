@@ -198,3 +198,29 @@ fn i_toggles_pictures_in_every_reader() {
     assert_eq!(r.rendered().images.len(), 1);
     assert_eq!(r.message(), Some("images on"));
 }
+
+#[test]
+fn toc_width_carries_to_readers_opened_later() {
+    let mut app = reading(Path::new("."), "nord");
+    let r = app.reader.as_mut().unwrap();
+    r.layout(80, 10);
+    r.fit_toc(100);
+    press(&mut app, KeyCode::Char('t'));
+    press(&mut app, KeyCode::Char('>'));
+    let wider = crate::toc::DEFAULT_WIDTH + crate::toc::STEP;
+    assert_eq!(app.settings.reader.toc_width, wider);
+    let next = reader_in(&app.settings, doc::parse("# B\n"), PathBuf::from("."));
+    assert_eq!(next.toc_width(), wider);
+
+    // Narrowed in the next one, the previous one comes back as narrow.
+    app.push_reader(Ok(next));
+    let r = app.reader.as_mut().unwrap();
+    r.layout(80, 10);
+    r.fit_toc(100);
+    press(&mut app, KeyCode::Char('t'));
+    press(&mut app, KeyCode::Char('<'));
+    press(&mut app, KeyCode::Char('<'));
+    press(&mut app, KeyCode::Esc);
+    let narrower = crate::toc::DEFAULT_WIDTH - crate::toc::STEP;
+    assert_eq!(app.reader.as_ref().unwrap().toc_width(), narrower);
+}

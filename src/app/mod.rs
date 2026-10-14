@@ -209,6 +209,8 @@ impl App {
 
         if let Some(r) = &mut self.reader {
             let action = r.on_key(key);
+            // Readers opened later start with the table of contents as wide.
+            self.settings.reader.toc_width = r.toc_width();
             return self.on_reader_action(action);
         }
 
@@ -248,6 +250,9 @@ impl App {
                     r.remember_position();
                 }
                 self.reader = self.history.pop();
+                if let Some(r) = &mut self.reader {
+                    r.set_toc_width(self.settings.reader.toc_width);
+                }
                 return self.reader.is_some() || self.browser.is_some();
             }
             reader::Action::OpenDocument { path, anchor } => {

@@ -6,6 +6,7 @@ mod reload;
 mod run;
 mod scroll;
 mod search;
+mod toc;
 
 pub use location::Location;
 pub use search::{Match, Search};
@@ -19,7 +20,6 @@ use crate::exec::{BlockRun, Interpreters, Runner};
 use crate::images::{Images, Source as ImageSource};
 use crate::links::Link;
 use crate::nav;
-use crate::outline::Outline;
 use crate::prompt::Prompt;
 use crate::render::theme::Theme;
 use crate::render::{self, Highlights, Rendered};
@@ -140,6 +140,9 @@ pub struct Options {
     pub images: Option<crate::images::Support>,
     /// Where reading positions are remembered; `None` doesn't.
     pub positions: Option<PathBuf>,
+    /// Columns the table of contents opens with. The app keeps it at the
+    /// last width set with `<` and `>`, for the rest of the session.
+    pub toc_width: u16,
 }
 
 impl Default for Options {
@@ -155,6 +158,7 @@ impl Default for Options {
             scrollbar: true,
             images: None,
             positions: None,
+            toc_width: crate::toc::DEFAULT_WIDTH,
         }
     }
 }
@@ -187,10 +191,15 @@ pub struct Reader {
     /// Skip confirmation, except for blocks marked `confirm`.
     assume_yes: bool,
     pub link_picker: Option<LinkPicker>,
-    /// The heading outline opened with `O`.
-    pub outline: Option<Outline>,
     /// Where the document came from, shown with `p`.
     pub location: Option<Location>,
+    /// The table of contents is shown beside the document (`t`).
+    pub toc: bool,
+    /// Columns asked for the table of contents; `<` and `>` change it.
+    toc_width: u16,
+    /// Width of the screen at the last draw, which the table of contents
+    /// is sized against.
+    screen: u16,
     pub help: nav::Help,
     /// Draw a gutter of rendered line numbers.
     pub line_numbers: bool,
@@ -288,8 +297,10 @@ impl Reader {
             // Untrusted source: every run asks first, even with `--yes`.
             assume_yes: opts.assume_yes && remote_base.is_none(),
             link_picker: None,
-            outline: None,
             location: None,
+            toc: false,
+            toc_width: opts.toc_width,
+            screen: 0,
             help: nav::Help::default(),
             // Source files read from disk always show their line numbers.
             line_numbers: opts.line_numbers || (file.is_some() && code_file),

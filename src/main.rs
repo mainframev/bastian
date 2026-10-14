@@ -7,7 +7,7 @@ use clap::{CommandFactory, Parser};
 use bastian::app::{self, Settings};
 use bastian::cli::{Cli, Command};
 use bastian::config;
-use bastian::{browser, doc, output, paths, remote, text, themes};
+use bastian::{browser, doc, open, output, paths, remote, text, themes};
 
 fn main() -> Result<()> {
     // Exit quietly when a reader such as `head` closes our output, like
@@ -179,12 +179,8 @@ fn main() -> Result<()> {
         app::App::read(reader, settings)
     } else {
         if !tui {
-            let src = text::read_text(&path)?;
-            return out.print(
-                &doc::parse_for(&src, Some(&path)),
-                &settings.theme,
-                settings.render,
-            );
+            let opened = open::open(&path)?;
+            return out.print(&opened.doc, &settings.theme, settings.render);
         }
         let reader = settings.open(&path, path.display().to_string())?;
         app::App::read(reader, settings)

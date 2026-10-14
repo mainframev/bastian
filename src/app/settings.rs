@@ -4,9 +4,8 @@ use anyhow::Result;
 
 use crate::browser;
 use crate::config::{self, Confirm};
-use crate::doc::{self, Document};
+use crate::doc::Document;
 use crate::exec::Interpreters;
-use crate::paths;
 use crate::reader::Reader;
 use crate::render::{self, theme::Theme};
 use crate::term::{self, Background};
@@ -147,10 +146,9 @@ impl Settings {
 
     /// Open a file in a reader that reloads when the file changes.
     pub fn open(&self, path: &Path, name: String) -> Result<Reader> {
-        let src = crate::text::read_text(path)?;
-        let doc = doc::parse_for(&src, Some(path));
-        let code_file = doc.code_file;
-        let mut r = self.reader(name, doc, src, paths::base_dir(path));
+        let opened = crate::open::open(path)?;
+        let code_file = opened.doc.code_file;
+        let mut r = self.reader(name, opened.doc, opened.text, opened.base_dir);
         // Source files always show their line numbers.
         r.line_numbers |= code_file;
         r.watch(path.to_path_buf());

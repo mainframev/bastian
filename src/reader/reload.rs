@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
 
 use super::{Reader, collect_code};
-use crate::doc::{self, CodeBlock, Document};
+use crate::doc::{CodeBlock, Document};
 
 impl Reader {
     /// Watch `path` and reload the document when it changes on disk.
@@ -26,10 +26,10 @@ impl Reader {
             return false;
         }
         self.modified = modified;
-        match crate::text::read_text(path) {
-            Ok(src) => {
-                self.replace_doc(doc::parse_for(&src, Some(path)));
-                self.text = src;
+        match crate::open::open(path) {
+            Ok(opened) => {
+                self.replace_doc(opened.doc);
+                self.text = opened.text;
                 self.message = Some("reloaded".into());
             }
             Err(e) => self.message = Some(format!("reload failed: {e}")),

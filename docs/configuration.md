@@ -44,7 +44,7 @@ logo = true           # the logo at the top (--no-logo)
 color = "auto"        # printed output: "auto", "always" or "never" (--color)
 pager = false         # show documents in $PAGER instead of the TUI (--pager)
 confirm = "always"    # "never" runs code blocks without asking, like --yes
-# editor = "nvim"     # for `e` and `bastian config`, before $VISUAL and $EDITOR
+# editor = "nvim"     # for `e`, `ctrl-e` and `bastian config`, before $VISUAL and $EDITOR
 
 [interpreters]
 # Command lines for code block languages; the source is appended last.

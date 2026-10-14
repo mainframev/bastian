@@ -17,19 +17,31 @@ use crate::render::theme::Theme;
 use crate::text::shorten_left;
 use rows::{card_lines, compact_line, page_indicator, spinner};
 
-const HELP: &[(&str, &str)] = &[
-    ("j/k  ↓/↑", "move (ctrl-j/k also while filtering)"),
-    ("h/l  ←/→", "previous/next page"),
-    ("ctrl-d/u", "half page"),
-    ("ctrl-f/b", "full page"),
-    ("g/G", "first/last"),
-    ("/", "filter"),
-    ("Enter", "open"),
-    ("e", "edit in $VISUAL/$EDITOR"),
-    ("r", "rescan for files"),
-    ("T", "pick a theme"),
-    ("Esc", "clear filter"),
-    ("q", "quit"),
+const HELP: &[status::HelpSection] = &[
+    (
+        "Navigation",
+        &[
+            ("j/k  ↓/↑", "move (ctrl-j/k also while filtering)"),
+            ("h/l  ←/→", "previous/next page"),
+            ("ctrl-d/u", "half page"),
+            ("ctrl-f/b", "full page"),
+            ("g/G", "first/last"),
+        ],
+    ),
+    (
+        "Files",
+        &[
+            ("/", "filter"),
+            ("Esc", "clear filter"),
+            ("Enter", "open"),
+            ("e", "edit in $VISUAL/$EDITOR"),
+            ("r", "rescan for files"),
+        ],
+    ),
+    (
+        "General",
+        &[("T", "pick a theme"), ("?", "this help"), ("q", "quit")],
+    ),
 ];
 
 /// Rows per card at most: title, path, date, gap. Pages hold as many
@@ -193,8 +205,8 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, look: Look) {
     };
     status::draw(frame, status, t, left, &right);
 
-    if b.help {
-        status::help(frame, t, HELP);
+    if b.help.open {
+        status::help(frame, t, HELP, &mut b.help.scroll);
     }
 }
 

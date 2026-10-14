@@ -77,7 +77,7 @@ pub const TEMPLATE: &str = r#"# bastian configuration. Every key is optional; co
 #                       # escape codes instead)
 # scrollbar = true      # show scrollbars
 # remember_position = true  # reopen files where you left off
-# editor = "nvim"       # used by `e`, before $VISUAL and $EDITOR
+# editor = "nvim"       # used by `e`/`ctrl-e`, before $VISUAL and $EDITOR
 
 # [interpreters]
 # The block source is appended as the last argument.

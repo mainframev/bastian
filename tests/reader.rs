@@ -12,6 +12,10 @@ fn key(r: &mut Reader, code: KeyCode) -> Action {
     r.on_key(KeyEvent::new(code, KeyModifiers::NONE))
 }
 
+fn ctrl(r: &mut Reader, c: char) -> Action {
+    r.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL))
+}
+
 fn reader(src: &str) -> Reader {
     let mut r = Reader::new(Source::in_memory("t.md", parse(src)), &Options::default());
     r.layout(80, 10);
@@ -361,18 +365,21 @@ fn reloads_when_file_changes() {
 }
 
 #[test]
-fn help_closes_on_any_key() {
+fn help_scrolls_and_closes_on_any_other_key() {
     let mut r = reader("text\n");
     key(&mut r, KeyCode::Char('?'));
-    assert!(r.help);
+    assert!(r.help.open);
+    key(&mut r, KeyCode::Char('j'));
+    assert!(r.help.open, "j scrolls the help");
+    assert_eq!(r.help.scroll, 1);
     key(&mut r, KeyCode::Char('q'));
-    assert!(!r.help, "first key only closes help");
+    assert!(!r.help.open, "first other key only closes help");
 }
 
 #[test]
 fn edit_needs_a_file() {
     let mut r = reader("text\n");
-    assert!(matches!(key(&mut r, KeyCode::Char('e')), Action::None));
+    assert!(matches!(ctrl(&mut r, 'e'), Action::None));
     assert_eq!(r.message(), Some("no local file to edit"));
 
     let dir = tempfile::tempdir().unwrap();
@@ -384,7 +391,11 @@ fn edit_needs_a_file() {
     };
     let mut r = Reader::new(source, &Options::default());
     r.layout(80, 10);
-    assert!(matches!(key(&mut r, KeyCode::Char('e')), Action::Edit(p, _) if p == path));
+    assert!(
+        matches!(key(&mut r, KeyCode::Char('e')), Action::None),
+        "only ctrl-e edits"
+    );
+    assert!(matches!(ctrl(&mut r, 'e'), Action::Edit(p, _) if p == path));
 }
 
 #[test]
@@ -569,7 +580,7 @@ fn edit_opens_at_the_top_visible_source_line() {
     };
     let mut r = Reader::new(source, &Options::default());
     r.layout(80, 10);
-    match key(&mut r, KeyCode::Char('e')) {
+    match ctrl(&mut r, 'e') {
         Action::Edit(_, line) => assert_eq!(line, Some(1)),
         _ => panic!("expected edit"),
     }
@@ -577,7 +588,7 @@ fn edit_opens_at_the_top_visible_source_line() {
     for _ in 0..40 {
         key(&mut r, KeyCode::Char('j'));
     }
-    match key(&mut r, KeyCode::Char('e')) {
+    match ctrl(&mut r, 'e') {
         Action::Edit(_, line) => assert_eq!(line, Some(41)),
         _ => panic!("expected edit"),
     }

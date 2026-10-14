@@ -1,0 +1,35 @@
+# High Contrast
+# White text and saturated colors, for a black background.
+appearance = "dark"
+
+[ui]
+text = "#ffffff"
+muted = "#c0c0c0"
+subtle = "#e0e0e0"
+surface = "#1a1a1a"
+accent = "#ffff00"
+h1_fg = "#000000"
+h1_bg = "#ffff00"
+heading = "#ffff00"
+link = "#00ffff"
+code = "#ff9e3d"
+match_bg = "#5c4b00"
+current_bg = "#ffff00"
+err = "#ff5555"
+ok = "#00ff7f"
+warn = "#ffff00"
+
+[syntax]
+comment = "#b0b0b0"
+keyword = "#ff80ff"
+string = "#00ff7f"
+number = "#ffff00"
+constant = "#ff9e3d"
+function = "#00ffff"
+type = "#80bfff"
+operator = "#ffffff"
+punctuation = "#ffffff"
+tag = "#80bfff"
+attribute = "#ffff00"
+inserted = "#00ff7f"
+deleted = "#ff5555"

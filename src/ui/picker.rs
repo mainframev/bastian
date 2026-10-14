@@ -27,6 +27,7 @@ pub fn draw(frame: &mut Frame, t: &Theme, p: &ThemePicker) {
                     let kind = match theme.appearance {
                         Appearance::Dark => "dark ",
                         Appearance::Light => "light",
+                        Appearance::Any => "any  ",
                     };
                     spans.push(Span::styled(kind, Style::default().fg(t.muted)));
                     spans.push(Span::raw("  "));

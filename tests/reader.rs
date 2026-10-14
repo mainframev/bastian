@@ -173,7 +173,7 @@ fn link_focus_steps_previews_and_follows() {
     key(&mut r, KeyCode::Char('s'));
     assert!(matches!(
         key(&mut r, KeyCode::Enter),
-        Action::OpenDocument(p) if p.ends_with("next.md")
+        Action::OpenDocument { path, .. } if path.ends_with("next.md")
     ));
 }
 
@@ -293,7 +293,10 @@ fn relative_markdown_link_opens_document() {
     r.base_dir = dir.path().to_path_buf();
     key(&mut r, KeyCode::Char('L'));
     match key(&mut r, KeyCode::Enter) {
-        Action::OpenDocument(p) => assert_eq!(p, dir.path().join("next.md")),
+        Action::OpenDocument { path, anchor } => {
+            assert_eq!(path, dir.path().join("next.md"));
+            assert_eq!(anchor, None);
+        }
         _ => panic!("expected OpenDocument"),
     }
     key(&mut r, KeyCode::Char('L'));

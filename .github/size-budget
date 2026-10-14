@@ -1,0 +1,4 @@
+# Largest allowed size, in bytes, of the x86_64 Linux release binary
+# (`cargo build --release --locked` on ubuntu-latest). CI fails above it.
+# Raise it in its own reviewed change, saying what the extra size buys.
+17000000

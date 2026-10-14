@@ -32,6 +32,7 @@ its note.
 | `o`                         | show/hide a block's output                                   |
 | `y`                         | copy the focused block                                       |
 | `d`, `D`                    | focus the next/previous details block (`Enter` opens/closes) |
+| `v`                         | show the focused diagram as source or drawing                |
 | `c`                         | copy the whole document                                      |
 | `p`                         | show the file path; `R`/`A` copy it relative/absolute        |
 | `ctrl-e`                    | edit the file at the line you're reading                     |
@@ -122,6 +123,16 @@ next and previous one and `Enter` opens or closes it. Markdown inside is
 rendered when it's separated from the tags by blank lines, as on GitHub.
 Search only finds text in open blocks. Printed output shows every block
 open.
+
+## Diagrams
+
+Built with the `mermaid` feature (`cargo install --locked bastian --features
+mermaid`), ` ```mermaid ` blocks are drawn as box-drawing diagrams, in the
+reader and in printed output. Flowcharts, sequence, state, class and ER
+diagrams are supported. A diagram that doesn't parse, is another type, is
+wider than the window or takes over 250 ms to lay out shows its source
+instead, and `v` switches the focused block between the two. The feature is
+off by default as it adds about 8 MB to the binary.
 
 ## Line numbers
 

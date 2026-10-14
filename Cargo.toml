@@ -17,6 +17,10 @@ pkg-url = "{ repo }/releases/download/v{ version }/{ name }-v{ version }-{ targe
 bin-dir = "{ name }-v{ version }-{ target }/{ bin }{ binary-ext }"
 pkg-fmt = "tgz"
 
+[features]
+# Draw ```mermaid blocks as diagrams.
+mermaid = ["dep:merman"]
+
 [dependencies]
 anyhow = "1.0.104"
 clap = { version = "4.6.7", features = ["derive"] }
@@ -29,6 +33,16 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 jiff = "0.2.38"
 libc = "0.2.190"
 markdown = "1"
+# Text rendering of Mermaid diagrams; behind the `mermaid` feature as it
+# adds about 8 MB to the binary.
+merman = { version = "0.9", optional = true, default-features = false, features = [
+  "ascii",
+  "diagram-class",
+  "diagram-er",
+  "diagram-flowchart",
+  "diagram-sequence",
+  "diagram-state",
+] }
 nucleo-matcher = "0.3.1"
 pulldown-cmark = { version = "0.13.4", default-features = false }
 ratatui = "0.30.2"

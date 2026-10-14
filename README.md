@@ -37,7 +37,9 @@ cargo binstall bastian                   # prebuilt binary, no compiling
 
 Homebrew also installs the shell completions. With Cargo
 ([rustup](https://rustup.rs)), the latest unreleased version is
-`cargo install --locked --git https://github.com/mainframev/bastian`.
+`cargo install --locked --git https://github.com/mainframev/bastian`. Add
+`--features mermaid` to draw Mermaid diagrams (see
+[diagrams](docs/reader.md#diagrams)).
 
 ## The TUI
 

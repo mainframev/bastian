@@ -138,6 +138,27 @@ impl Reader {
         }
     }
 
+    /// Switch the focused diagram block between the drawing and its source.
+    pub(super) fn toggle_diagram(&mut self) {
+        let Some(c) = self.focus.and_then(|id| self.code(id)) else {
+            self.message = Some("focus a block with Tab first".into());
+            return;
+        };
+        if !render::is_mermaid(c.lang.as_deref()) {
+            self.message = Some(format!("{} is not a diagram", self.label(c.id)));
+            return;
+        }
+        if !cfg!(feature = "mermaid") {
+            self.message = Some("diagrams need bastian built with --features mermaid".into());
+            return;
+        }
+        let id = c.id;
+        if !self.as_source.remove(&id) {
+            self.as_source.insert(id);
+        }
+        self.dirty = true;
+    }
+
     pub fn is_running(&self) -> bool {
         self.runs.values().any(BlockRun::is_running)
     }
@@ -287,4 +308,65 @@ pub(super) fn collect_code(blocks: &[Block]) -> Vec<CodeBlock> {
         }
     });
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    use crate::doc::parse;
+    use crate::reader::{Options, Reader, Source};
+    use crate::render::to_plain;
+
+    const SRC: &str =
+        "```mermaid\nflowchart TD\n  A[Start] --> B[Done]\n```\n\n```sh\necho hi\n```\n";
+
+    fn press(r: &mut Reader, code: KeyCode) {
+        r.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+        r.layout(80, 40);
+    }
+
+    fn text(r: &Reader) -> String {
+        to_plain(&r.rendered().lines)
+    }
+
+    #[test]
+    fn v_needs_a_focused_diagram() {
+        let mut r = Reader::new(Source::in_memory("t", parse(SRC)), &Options::default());
+        r.layout(80, 40);
+        press(&mut r, KeyCode::Char('v'));
+        assert_eq!(r.message(), Some("focus a block with Tab first"));
+        press(&mut r, KeyCode::Tab);
+        press(&mut r, KeyCode::Tab);
+        press(&mut r, KeyCode::Char('v'));
+        assert_eq!(r.message(), Some("block 2 is not a diagram"));
+    }
+
+    #[cfg(feature = "mermaid")]
+    #[test]
+    fn v_switches_a_diagram_to_its_source_and_back() {
+        let mut r = Reader::new(Source::in_memory("t", parse(SRC)), &Options::default());
+        r.layout(80, 40);
+        assert!(!text(&r).contains("-->"), "{}", text(&r));
+        press(&mut r, KeyCode::Tab);
+        press(&mut r, KeyCode::Char('v'));
+        assert!(text(&r).contains("A[Start] --> B[Done]"), "{}", text(&r));
+        press(&mut r, KeyCode::Char('v'));
+        assert!(!text(&r).contains("-->"), "{}", text(&r));
+    }
+
+    #[cfg(not(feature = "mermaid"))]
+    #[test]
+    fn without_the_feature_diagrams_stay_source() {
+        let mut r = Reader::new(Source::in_memory("t", parse(SRC)), &Options::default());
+        r.layout(80, 40);
+        assert!(text(&r).contains("A[Start] --> B[Done]"), "{}", text(&r));
+        press(&mut r, KeyCode::Tab);
+        press(&mut r, KeyCode::Char('v'));
+        assert!(
+            r.message
+                .as_deref()
+                .is_some_and(|m| m.contains("--features mermaid"))
+        );
+    }
 }

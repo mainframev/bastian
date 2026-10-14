@@ -39,10 +39,7 @@ const HELP: &[status::HelpSection] = &[
             ("r", "rescan for files"),
         ],
     ),
-    (
-        "General",
-        &[("T", "pick a theme"), ("?", "this help"), ("q", "quit")],
-    ),
+    ("General", &[("T", "pick a theme"), ("q", "quit")]),
 ];
 
 /// Rows per card at most: title, path, date, gap. Pages hold as many

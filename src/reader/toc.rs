@@ -48,11 +48,27 @@ impl Reader {
         self.toc_width = pane::resize(self.toc_width, self.screen, wider);
     }
 
+    /// The line the table of contents marks the section of: the heading
+    /// last jumped to while the view hasn't moved since, else the top.
+    pub fn toc_line(&self) -> usize {
+        match self.toc_jump {
+            Some((line, at)) if at == self.scroll => line,
+            _ => self.scroll,
+        }
+    }
+
+    /// Scroll `line` to the top, or as near as the end allows, and
+    /// remember it as the heading jumped to.
+    fn jump_to_heading(&mut self, line: usize) {
+        self.jump_to(line);
+        self.toc_jump = Some((line, self.scroll));
+    }
+
     /// Scroll to the heading numbered `n` in the table of contents.
     pub(super) fn jump_to_entry(&mut self, n: usize) {
         let entries = self.toc_entries();
         match entries.iter().find(|e| e.number == Some(n)) {
-            Some(e) => self.jump_to(e.line),
+            Some(e) => self.jump_to_heading(e.line),
             None if entries.iter().all(|e| e.number.is_none()) => {
                 self.message = Some("no numbered headings".into());
             }
@@ -64,13 +80,15 @@ impl Reader {
     /// above it.
     pub(super) fn step_heading(&mut self, forward: bool) {
         let entries = self.toc_entries();
+        // From the heading last jumped to, which may sit below the top.
+        let from = self.toc_line();
         let line = if forward {
-            entries.iter().map(|e| e.line).find(|&l| l > self.scroll)
+            entries.iter().map(|e| e.line).find(|&l| l > from)
         } else {
-            entries.iter().map(|e| e.line).rfind(|&l| l < self.scroll)
+            entries.iter().map(|e| e.line).rfind(|&l| l < from)
         };
         match line {
-            Some(line) => self.jump_to(line),
+            Some(line) => self.jump_to_heading(line),
             None if entries.is_empty() => {
                 self.message = Some("no headings in this document".into());
             }
@@ -226,5 +244,35 @@ mod tests {
         assert!(!r.on_click(narrower, 1), "only the header row");
         assert!(!r.on_click(1, 0));
         assert_eq!(r.toc_width(), width);
+    }
+
+    #[test]
+    fn jumps_near_the_end_mark_the_heading_they_aimed_at() {
+        // Short last sections: their headings can't scroll to the top.
+        let filler: String = (0..30).map(|i| format!("para {i}\n\n")).collect();
+        let mut r = reader(&format!(
+            "# A\n\n{filler}# B\n\nb\n\n# C\n\nc\n\n# D\n\nd\n"
+        ));
+        r.layout(60, 20);
+        key(&mut r, 't');
+        let current = |r: &Reader| {
+            let e = r.toc_entries();
+            toc::current(&e, r.toc_line()).map(|i| e[i].text.clone())
+        };
+        key(&mut r, '3');
+        assert_eq!(r.scroll(), r.max_scroll(), "the end stops it short");
+        assert_eq!(current(&r).as_deref(), Some("C"));
+        key(&mut r, '4');
+        assert_eq!(current(&r).as_deref(), Some("D"));
+        // J and K step on from the heading jumped to, not the top line.
+        key(&mut r, 'K');
+        assert_eq!(current(&r).as_deref(), Some("C"));
+        key(&mut r, 'K');
+        assert_eq!(current(&r).as_deref(), Some("B"));
+        key(&mut r, 'J');
+        assert_eq!(current(&r).as_deref(), Some("C"));
+        // Scrolling away drops the mark.
+        key(&mut r, 'g');
+        assert_eq!(current(&r).as_deref(), Some("A"));
     }
 }

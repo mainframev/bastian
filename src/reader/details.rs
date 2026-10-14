@@ -87,8 +87,8 @@ mod tests {
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use crate::doc::parse;
-    use crate::reader::{Action, Reader};
-    use crate::render::{theme::Theme, to_plain};
+    use crate::reader::{Action, Options, Reader, Source};
+    use crate::render::to_plain;
 
     const SRC: &str = "\
 <details>
@@ -111,7 +111,7 @@ shown two
 ";
 
     fn reader() -> Reader {
-        let mut r = Reader::new("t".into(), parse(SRC), Theme::dark(), 80);
+        let mut r = Reader::new(Source::in_memory("t", parse(SRC)), &Options::default());
         r.layout(80, 40);
         r
     }
@@ -190,7 +190,7 @@ shown two
     fn pictures_in_closed_details_load_once_opened() {
         use std::time::{Duration, Instant};
 
-        use crate::images::{Images, Support};
+        use crate::images::Support;
         use ratatui_image::picker::Picker;
 
         let dir = tempfile::tempdir().unwrap();
@@ -200,9 +200,15 @@ shown two
                 .unwrap();
         }
         let src = "![a](shown.png)\n\n<details>\n<summary>S</summary>\n\n![b](hidden.png)\n\n</details>\n";
-        let mut r = Reader::new("t".into(), parse(src), Theme::dark(), 80);
-        r.base_dir = dir.path().to_path_buf();
-        r.images = Images::new(Some(Support::fixed(Picker::halfblocks())));
+        let source = Source {
+            base_dir: dir.path().to_path_buf(),
+            ..Source::in_memory("t", parse(src))
+        };
+        let opts = Options {
+            images: Some(Support::fixed(Picker::halfblocks())),
+            ..Options::default()
+        };
+        let mut r = Reader::new(source, &opts);
         let loaded = |r: &mut Reader, key: &str| {
             let deadline = Instant::now() + Duration::from_secs(5);
             while !r.images.sizes().contains_key(key) {
@@ -221,7 +227,7 @@ shown two
 
     #[test]
     fn without_details_d_says_so() {
-        let mut r = Reader::new("t".into(), parse("text\n"), Theme::dark(), 80);
+        let mut r = Reader::new(Source::in_memory("t", parse("text\n")), &Options::default());
         r.layout(80, 40);
         press(&mut r, KeyCode::Char('d'));
         assert_eq!(r.message.as_deref(), Some("no details blocks"));

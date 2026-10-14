@@ -11,7 +11,7 @@ use crate::ui::status::{self, Place};
 
 /// The outline tree, docked to the right.
 pub(super) fn draw_outline(frame: &mut Frame, r: &mut Reader) {
-    let t = r.theme.clone();
+    let t = r.theme().clone();
     let Some(outline) = &mut r.outline else {
         return;
     };
@@ -41,7 +41,7 @@ pub(super) fn draw_outline(frame: &mut Frame, r: &mut Reader) {
 }
 
 pub(super) fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
-    let t = &r.theme;
+    let t = r.theme();
     let area = frame.area();
     // Leave room for the border and a margin around the box.
     let rows = area.height.saturating_sub(6).max(1) as usize;
@@ -80,14 +80,14 @@ pub(super) fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
 }
 
 pub(super) fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {
-    let t = &r.theme;
+    let t = r.theme();
     let what = match ids {
         [id] => r.label(*id),
         _ => format!("{} blocks, in order", ids.len()),
     };
     let cwd = ids
         .first()
-        .map_or_else(|| r.base_dir.clone(), |&id| r.cwd(id))
+        .map_or_else(|| r.base_dir().to_path_buf(), |&id| r.cwd(id))
         .display()
         .to_string();
     let lines = vec![
@@ -112,7 +112,7 @@ pub(super) fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {
 /// wrapped to the screen; one too long to fit keeps its first and last rows
 /// (scheme and host, file name) with `…` between, and the y/n row stays.
 pub(super) fn draw_open_confirm(frame: &mut Frame, r: &Reader, target: &str) {
-    let t = &r.theme;
+    let t = r.theme();
     let area = frame.area();
     // Border and padding, at least one column for the text.
     let max_w = (area.width.saturating_sub(4) as usize).max(1);

@@ -97,7 +97,7 @@ pub fn find(rendered: &Rendered, query: &str) -> Vec<Match> {
 mod tests {
     use super::*;
     use crate::doc::parse;
-    use crate::reader::Reader;
+    use crate::reader::{Options, Reader, Source};
     use crate::render::theme::Theme;
 
     fn rendered(src: &str) -> Rendered {
@@ -127,7 +127,7 @@ mod tests {
     #[test]
     fn search_jumps_and_cycles() {
         let src: String = (0..100).map(|i| format!("line {i}\n\n")).collect();
-        let mut r = Reader::new("t".into(), parse(&src), Theme::dark(), 80);
+        let mut r = Reader::new(Source::in_memory("t", parse(&src)), &Options::default());
         r.layout(80, 10);
         r.set_query("line 50");
         assert!(

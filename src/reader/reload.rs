@@ -1,17 +1,10 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
 
 use super::{Reader, collect_code};
 use crate::doc::{CodeBlock, Document};
 
 impl Reader {
-    /// Watch `path` and reload the document when it changes on disk.
-    pub fn watch(&mut self, path: PathBuf) {
-        self.modified = mtime(&path);
-        self.source = Some(path);
-    }
-
     /// Re-read the source file if its modification time moved.
     pub(super) fn check_reload(&mut self) -> bool {
         if self.last_check.elapsed() < RELOAD_CHECK {
@@ -125,12 +118,14 @@ mod tests {
 
     use crate::doc::parse;
     use crate::exec::Status;
-    use crate::reader::Reader;
-    use crate::render::theme::Theme;
+    use crate::reader::{Options, Reader, Source};
 
     fn reader(src: &str) -> Reader {
-        let mut r = Reader::new("t".into(), parse(src), Theme::dark(), 80);
-        r.assume_yes = true;
+        let opts = Options {
+            assume_yes: true,
+            ..Options::default()
+        };
+        let mut r = Reader::new(Source::in_memory("t", parse(src)), &opts);
         r.layout(80, 40);
         r
     }

@@ -10,7 +10,7 @@ use crate::ui;
 
 /// Events that change nothing on screen: pointer motion, clicks other than
 /// the left button (the wheel scrolls, a left click may resize the table of
-/// contents) and key releases.
+/// contents or the theme picker) and key releases.
 pub(super) fn is_ignored(event: &Event) -> bool {
     match event {
         Event::Mouse(m) => !matches!(

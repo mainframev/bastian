@@ -110,6 +110,21 @@ impl ThemePicker {
         }
     }
 
+    /// A left click at `column`, `row` of the screen: the `<` and `>`
+    /// markers on the pane's header resize it. Returns whether it hit one.
+    pub fn on_click(&mut self, column: u16, row: u16) -> bool {
+        let width = self.fit(self.screen);
+        let Some(col) = column.checked_sub(self.screen - width) else {
+            return false;
+        };
+        let (narrower, wider) = pane::markers(width);
+        if width == 0 || row != 0 || (col != narrower && col != wider) {
+            return false;
+        }
+        self.width = pane::resize(self.width, self.screen, col == wider);
+        true
+    }
+
     pub fn on_key(&mut self, key: KeyEvent) -> Event {
         if let Some(motion) = nav::list_motion(&key) {
             return self.select(nav::step(self.selected, self.entries.len(), motion));
@@ -207,6 +222,24 @@ mod tests {
         assert_eq!(p.width, pane::MIN_WIDTH);
         // Resizing moves nothing.
         assert_eq!(p.selected, p.current.unwrap());
+    }
+
+    #[test]
+    fn clicks_on_the_markers_resize() {
+        let mut p = ThemePicker::new(None, "nord", DEFAULT_WIDTH);
+        let width = p.fit(100);
+        let (narrower, wider) = pane::markers(width);
+        let (narrower, wider) = (100 - width + narrower, 100 - width + wider);
+        assert!(p.on_click(wider, 0));
+        assert_eq!(p.width, width + pane::STEP);
+        // The pane grows to the left: its markers stay at the screen's edge.
+        p.fit(100);
+        assert!(p.on_click(narrower, 0));
+        assert_eq!(p.width, width);
+        assert!(!p.on_click(narrower, 1), "only the header row");
+        assert!(!p.on_click(narrower + 1, 0));
+        assert!(!p.on_click(0, 0), "left of the pane");
+        assert_eq!(p.width, width);
     }
 
     #[test]

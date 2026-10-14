@@ -264,3 +264,21 @@ fn clicking_the_toc_markers_resizes_it() {
     assert!(app.on_event(&click));
     assert_eq!(app.settings.reader.toc_width, width + crate::pane::STEP);
 }
+
+#[test]
+fn clicking_the_theme_picker_markers_resizes_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = reading(dir.path(), "nord");
+    press(&mut app, KeyCode::Char('T'));
+    let width = app.picker.as_mut().unwrap().0.fit(100);
+    let (_, wider) = crate::pane::markers(width);
+    let click = Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 100 - width + wider,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    });
+    assert!(app.on_event(&click));
+    assert_eq!(app.picker_width, width + crate::pane::STEP);
+    assert!(app.picker.is_some());
+}

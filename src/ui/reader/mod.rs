@@ -239,17 +239,18 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
     };
     status::draw(frame, status, r.theme(), left, &right);
 
+    // Popups center on the document, beside the table of contents.
     if let Some(ids) = &r.confirm {
-        draw_confirm(frame, r, ids);
+        draw_confirm(frame, main, r, ids);
     } else if let Some(target) = &r.confirm_open {
-        draw_open_confirm(frame, r, target);
+        draw_open_confirm(frame, main, r, target);
     } else if let Some(picker) = &r.link_picker {
-        draw_links(frame, r, picker);
+        draw_links(frame, main, r, picker);
     } else if let Some(location) = &r.location {
-        draw_location(frame, r, location);
+        draw_location(frame, main, r, location);
     } else if r.help.open {
         let t = r.theme().clone();
-        status::help(frame, &t, HELP, &mut r.help.scroll);
+        status::help(frame, &t, main, HELP, &mut r.help.scroll);
     }
 }
 
@@ -353,7 +354,7 @@ mod tests {
 
     fn help_screen(w: u16, h: u16, scroll: &mut usize) -> String {
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
-        term.draw(|f| status::help(f, &Theme::dark(), HELP, scroll))
+        term.draw(|f| status::help(f, &Theme::dark(), f.area(), HELP, scroll))
             .unwrap();
         let buf = term.backend().buffer();
         (0..h)

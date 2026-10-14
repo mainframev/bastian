@@ -105,7 +105,9 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
         .link_focus
         .and_then(|i| r.link_stops().get(i).cloned())
         .unwrap_or_default();
-    if r.hyperlinks {
+    // A hyperlink's first cell holds its whole label, which the terminal
+    // prints over whatever a popup put in the cells after it.
+    if r.hyperlinks && !popup_open(r) {
         draw_hyperlinks(frame, r, content, end, &focused);
     }
     for link in focused.iter().map(|&i| &r.rendered().links[i]) {
@@ -252,6 +254,14 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
     if let Some(Overlay::Help(help)) = &mut r.overlay {
         status::help(frame, &t, main, HELP, &mut help.scroll);
     }
+}
+
+/// Whether a popup is drawn over the document.
+/// The search prompt sits above the document, not over it.
+fn popup_open(r: &Reader) -> bool {
+    r.overlay
+        .as_ref()
+        .is_some_and(|o| !matches!(o, Overlay::Prompt(_)))
 }
 
 /// Blank columns between the line numbers and the text.

@@ -106,13 +106,12 @@ impl Reader {
 mod tests {
     use crate::doc::parse;
     use crate::positions::Position;
-    use crate::reader::Reader;
-    use crate::render::theme::Theme;
+    use crate::reader::{Options, Reader, Source};
 
     #[test]
     fn restore_near_the_end_survives_re_renders() {
         let src: String = (0..50).map(|i| format!("para {i}\n\n")).collect();
-        let mut r = Reader::new("t".into(), parse(&src), Theme::dark(), 80);
+        let mut r = Reader::new(Source::in_memory("t", parse(&src)), &Options::default());
         // The last paragraph: its block can't reach the top of the view.
         r.restore = Some(Position {
             line: 99,
@@ -131,14 +130,14 @@ mod tests {
     fn position_inside_a_long_block_survives_a_new_width() {
         let items: String = (0..60).map(|i| format!("- item {i}\n")).collect();
         let src = format!("intro\n\n{items}\nafter\n");
-        let mut r = Reader::new("t".into(), parse(&src), Theme::dark(), 80);
+        let mut r = Reader::new(Source::in_memory("t", parse(&src)), &Options::default());
         r.layout(80, 10);
         // Deep inside the one list block.
         r.scroll = 2 + 40;
         let p = r.position().unwrap();
         assert_eq!(p.line, 3);
         assert!(p.within > 0.6 && p.within < 0.7, "{p:?}");
-        let mut again = Reader::new("t".into(), parse(&src), Theme::dark(), 80);
+        let mut again = Reader::new(Source::in_memory("t", parse(&src)), &Options::default());
         again.restore = Some(p);
         again.layout(80, 10);
         assert_eq!(
@@ -150,7 +149,7 @@ mod tests {
     #[test]
     fn restore_finds_the_closest_block_in_any_order() {
         let src: String = (0..50).map(|i| format!("para {i}\n\n")).collect();
-        let mut r = Reader::new("t".into(), parse(&src), Theme::dark(), 80);
+        let mut r = Reader::new(Source::in_memory("t", parse(&src)), &Options::default());
         r.layout(80, 10);
         // As with footnotes: a block drawn last that starts early in the
         // source.

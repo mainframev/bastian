@@ -6,7 +6,7 @@ use crate::browser;
 use crate::config::{self, Confirm};
 use crate::doc::Document;
 use crate::exec::Interpreters;
-use crate::reader::Reader;
+use crate::reader::{self, Reader, Source};
 use crate::render::{self, theme::Theme};
 use crate::term::{self, Background};
 use crate::{images, themes};
@@ -112,20 +112,31 @@ impl Settings {
         Ok((settings, name))
     }
 
+    /// What every reader opened with these settings gets.
+    pub fn options(&self) -> reader::Options {
+        reader::Options {
+            theme: self.theme.clone(),
+            max_width: self.max_width,
+            assume_yes: self.assume_yes,
+            interpreters: self.interpreters.clone(),
+            line_numbers: self.line_numbers,
+            render: self.render,
+            hyperlinks: self.hyperlinks,
+            scrollbar: self.scrollbar,
+            images: self.image_support(),
+            positions: self.positions.clone(),
+        }
+    }
+
     /// A reader for `doc`, parsed from `text`, with code that runs in
     /// `base_dir`.
     pub fn reader(&self, name: String, doc: Document, text: String, base_dir: PathBuf) -> Reader {
-        let mut r = Reader::new(name, doc, self.theme.clone(), self.max_width);
-        r.text = text;
-        r.base_dir = base_dir;
-        r.assume_yes = self.assume_yes;
-        r.interpreters = self.interpreters.clone();
-        r.line_numbers = self.line_numbers;
-        r.render_opts = self.render;
-        r.hyperlinks = self.hyperlinks;
-        r.scrollbar = self.scrollbar;
-        r.images = images::Images::new(self.image_support());
-        r
+        let source = Source {
+            text,
+            base_dir,
+            ..Source::in_memory(name, doc)
+        };
+        Reader::new(source, &self.options())
     }
 
     /// The support readers draw pictures with: `None` while they're off.
@@ -133,29 +144,14 @@ impl Settings {
         self.images.clone().filter(|_| self.show_images)
     }
 
-    /// A reader for a fetched document. Its code blocks run in the current
-    /// directory and always ask first; it has no file to watch or edit.
+    /// A reader for a fetched document.
     pub fn remote(&self, doc: crate::remote::RemoteDoc) -> Reader {
-        let parsed = doc.parse();
-        let mut r = self.reader(doc.name, parsed, doc.text, PathBuf::from("."));
-        r.remote_base = Some(doc.base);
-        // Untrusted source: every run asks first, even with `--yes`.
-        r.assume_yes = false;
-        r
+        Reader::new(Source::remote(doc), &self.options())
     }
 
     /// Open a file in a reader that reloads when the file changes.
     pub fn open(&self, path: &Path, name: String) -> Result<Reader> {
         let opened = crate::open::open(path)?;
-        let code_file = opened.doc.code_file;
-        let mut r = self.reader(name, opened.doc, opened.text, opened.base_dir);
-        // Source files always show their line numbers.
-        r.line_numbers |= code_file;
-        r.watch(path.to_path_buf());
-        if let Some(store) = self.positions.as_ref().filter(|_| !code_file) {
-            r.restore = crate::positions::load(store, path);
-            r.positions = Some(store.clone());
-        }
-        Ok(r)
+        Ok(Reader::new(Source::file(name, opened), &self.options()))
     }
 }

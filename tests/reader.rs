@@ -4,7 +4,7 @@ use std::time::Duration;
 use bastian::app::Settings;
 use bastian::doc::parse;
 use bastian::exec::Interpreters;
-use bastian::reader::{Action, Reader};
+use bastian::reader::{Action, Options, Reader, Source};
 use bastian::remote::RemoteDoc;
 use bastian::render::theme::Theme;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -14,7 +14,7 @@ fn key(r: &mut Reader, code: KeyCode) -> Action {
 }
 
 fn reader(src: &str) -> Reader {
-    let mut r = Reader::new("t.md".into(), parse(src), Theme::dark(), 80);
+    let mut r = Reader::new(Source::in_memory("t.md", parse(src)), &Options::default());
     r.layout(80, 10);
     r
 }
@@ -122,8 +122,17 @@ fn link_focus_steps_previews_and_follows() {
          [next](next.md), [web](https://example.com), [gone](gone.md) and a note[^n].\n\n\
          {filler}## Usage\n\n{filler}[^n]: The footnote text.\n"
     );
-    let mut r = Reader::new("t.md".into(), parse(&src), Theme::dark(), 40);
-    r.base_dir = dir.path().to_path_buf();
+    let source = Source {
+        base_dir: dir.path().to_path_buf(),
+        ..Source::in_memory("t.md", parse(&src))
+    };
+    let mut r = Reader::new(
+        source,
+        &Options {
+            max_width: 40,
+            ..Options::default()
+        },
+    );
     r.layout(40, 10);
 
     // The wrapped link is one stop.
@@ -221,10 +230,11 @@ fn link_stops_follow_link_occurrences() {
     // In a table, a link wrapping in one cell and a link in the next cell
     // keep their own targets, and each is one stop.
     let mut r = Reader::new(
-        "t.md".into(),
-        parse("| a | b |\n|---|---|\n| [a long link that wraps](one.md) | [two](two.md) |\n"),
-        Theme::dark(),
-        80,
+        Source::in_memory(
+            "t.md",
+            parse("| a | b |\n|---|---|\n| [a long link that wraps](one.md) | [two](two.md) |\n"),
+        ),
+        &Options::default(),
     );
     r.layout(22, 10);
     assert_eq!(urls(&r), ["one.md", "two.md"]);
@@ -239,7 +249,7 @@ fn link_stops_follow_link_occurrences() {
         "[old](y) [<Badge/>new](x)\n",
         Some(std::path::Path::new("t.mdx")),
     );
-    let mut r = Reader::new("t.mdx".into(), doc, Theme::dark(), 80);
+    let mut r = Reader::new(Source::in_memory("t.mdx", doc), &Options::default());
     r.layout(80, 10);
     assert_eq!(urls(&r), ["y", "x"]);
 }
@@ -248,7 +258,13 @@ fn link_stops_follow_link_occurrences() {
 fn link_focus_starts_with_a_link_wrapping_into_view() {
     let words = "word ".repeat(30);
     let src = format!("[{words}](#x)\n\nafter [b](#b)\n");
-    let mut r = Reader::new("t.md".into(), parse(&src), Theme::dark(), 20);
+    let mut r = Reader::new(
+        Source::in_memory("t.md", parse(&src)),
+        &Options {
+            max_width: 20,
+            ..Options::default()
+        },
+    );
     r.layout(20, 3);
     // Scroll so the link's first line is above the view but its rest shows.
     r.scroll = 2;
@@ -316,8 +332,12 @@ fn reloads_when_file_changes() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("doc.md");
     std::fs::write(&path, "# One\n").unwrap();
-    let mut r = reader("# One\n");
-    r.watch(path.clone());
+    let source = Source {
+        file: Some(path.clone()),
+        ..Source::in_memory("t.md", parse("# One\n"))
+    };
+    let mut r = Reader::new(source, &Options::default());
+    r.layout(80, 10);
     // Make sure the new mtime differs even on coarse-grained filesystems.
     thread::sleep(Duration::from_millis(1100));
     std::fs::write(&path, "# Two\n\n```sh\necho x\n```\n").unwrap();
@@ -347,7 +367,7 @@ fn edit_needs_a_file() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("doc.md");
     std::fs::write(&path, "text\n").unwrap();
-    r.watch(path.clone());
+    r.source = Some(path.clone());
     assert!(matches!(key(&mut r, KeyCode::Char('e')), Action::Edit(p, _) if p == path));
 }
 
@@ -367,8 +387,12 @@ fn line_number_gutter_fits_in_terminal() {
     use ratatui::{Terminal, backend::TestBackend};
 
     let src = std::fs::read_to_string("tests/fixtures/sample.md").unwrap();
-    let mut r = Reader::new("t.md".into(), parse(&src), Theme::dark(), 200);
-    r.line_numbers = true;
+    let opts = Options {
+        max_width: 200,
+        line_numbers: true,
+        ..Options::default()
+    };
+    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &opts);
     let (w, h) = (60u16, 20u16);
     let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
     terminal.draw(|f| draw(f, &mut r)).unwrap();
@@ -399,10 +423,8 @@ fn focused_link_is_highlighted_and_previewed() {
     use ratatui::{Terminal, backend::TestBackend};
 
     let mut r = Reader::new(
-        "t.md".into(),
-        parse("See [docs](https://x.dev) here.\n"),
-        Theme::dark(),
-        80,
+        Source::in_memory("t.md", parse("See [docs](https://x.dev) here.\n")),
+        &Options::default(),
     );
     let (w, h) = (60u16, 8u16);
     let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
@@ -431,10 +453,11 @@ fn focused_details_summary_is_highlighted() {
     use ratatui::{Terminal, backend::TestBackend};
 
     let mut r = Reader::new(
-        "t.md".into(),
-        parse("intro\n\n<details>\n<summary>More</summary>\n\nhidden\n\n</details>\n"),
-        Theme::dark(),
-        80,
+        Source::in_memory(
+            "t.md",
+            parse("intro\n\n<details>\n<summary>More</summary>\n\nhidden\n\n</details>\n"),
+        ),
+        &Options::default(),
     );
     let (w, h) = (40u16, 8u16);
     let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
@@ -787,7 +810,7 @@ fn scrollbar_shows_only_when_the_document_overflows() {
     use ratatui::{Terminal, backend::TestBackend};
 
     let column = |src: &str, scroll: usize| {
-        let mut r = Reader::new("t.md".into(), parse(src), Theme::dark(), 80);
+        let mut r = Reader::new(Source::in_memory("t.md", parse(src)), &Options::default());
         let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
         terminal.draw(|f| draw(f, &mut r)).unwrap();
         r.scroll = scroll;
@@ -816,15 +839,16 @@ fn links_are_terminal_hyperlinks() {
     use bastian::ui::reader::draw;
     use ratatui::{Terminal, backend::TestBackend};
 
-    let mut r = Reader::new(
-        "t.md".into(),
-        parse("See [docs](https://x.dev/docs) and [guide](guide.md#setup), [top](#top).\n"),
-        Theme::dark(),
-        80,
-    );
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("guide.md"), "# Guide\n").unwrap();
-    r.base_dir = dir.path().to_path_buf();
+    let source = Source {
+        base_dir: dir.path().to_path_buf(),
+        ..Source::in_memory(
+            "t.md",
+            parse("See [docs](https://x.dev/docs) and [guide](guide.md#setup), [top](#top).\n"),
+        )
+    };
+    let mut r = Reader::new(source, &Options::default());
     let mut guide = url::Url::from_file_path(dir.path().join("guide.md")).unwrap();
     guide.set_fragment(Some("setup"));
     let mut terminal = Terminal::new(TestBackend::new(80, 6)).unwrap();
@@ -866,8 +890,11 @@ fn only_links_that_open_without_asking_are_clickable() {
     std::fs::write(d.join("setup.command"), "").unwrap();
     std::fs::create_dir(d.join("X.app")).unwrap();
     std::fs::create_dir(d.join("dir.md")).unwrap();
-    let mut r = Reader::new("t.md".into(), parse("x\n"), Theme::dark(), 80);
-    r.base_dir = d.to_path_buf();
+    let source = Source {
+        base_dir: d.to_path_buf(),
+        ..Source::in_memory("t.md", parse("x\n"))
+    };
+    let mut r = Reader::new(source, &Options::default());
     let file = |name: &str| url::Url::from_file_path(d.join(name)).unwrap().to_string();
 
     assert_eq!(
@@ -911,16 +938,19 @@ fn only_links_that_open_without_asking_are_clickable() {
 
 #[test]
 fn image_sources_resolve_like_links() {
-    use bastian::images::Source;
-    let mut r = Reader::new("t.md".into(), parse("x\n"), Theme::dark(), 80);
-    r.base_dir = std::path::PathBuf::from("/docs");
+    use bastian::images::Source as ImageSource;
+    let source = Source {
+        base_dir: std::path::PathBuf::from("/docs"),
+        ..Source::in_memory("t.md", parse("x\n"))
+    };
+    let mut r = Reader::new(source, &Options::default());
     assert_eq!(
         r.image_source("img/a.png?raw=1"),
-        Some(Source::File("/docs/img/a.png".into()))
+        Some(ImageSource::File("/docs/img/a.png".into()))
     );
     assert_eq!(
         r.image_source("https://github.com/o/r/blob/main/shot.png"),
-        Some(Source::Url(
+        Some(ImageSource::Url(
             "https://raw.githubusercontent.com/o/r/main/shot.png".into()
         ))
     );
@@ -928,7 +958,7 @@ fn image_sources_resolve_like_links() {
     r.remote_base = Some(url::Url::parse("https://github.com/o/r/blob/main/README.md").unwrap());
     assert_eq!(
         r.image_source("docs/b.png"),
-        Some(Source::Url(
+        Some(ImageSource::Url(
             "https://raw.githubusercontent.com/o/r/main/docs/b.png".into()
         ))
     );
@@ -936,7 +966,7 @@ fn image_sources_resolve_like_links() {
 
 #[test]
 fn pictures_partly_scrolled_off_show_their_visible_rows() {
-    use bastian::images::{Images, Support};
+    use bastian::images::Support;
     use bastian::ui::reader::draw;
     use ratatui::{Terminal, backend::TestBackend};
     use ratatui_image::picker::Picker;
@@ -947,9 +977,15 @@ fn pictures_partly_scrolled_off_show_their_visible_rows() {
         .unwrap();
     let tail: String = (0..40).map(|i| format!("line {i}\n\n")).collect();
     let src = format!("intro\n\n![pic](p.png)\n\n{tail}");
-    let mut r = Reader::new("t.md".into(), parse(&src), Theme::dark(), 80);
-    r.base_dir = dir.path().to_path_buf();
-    r.images = Images::new(Some(Support::fixed(Picker::halfblocks())));
+    let source = Source {
+        base_dir: dir.path().to_path_buf(),
+        ..Source::in_memory("t.md", parse(&src))
+    };
+    let opts = Options {
+        images: Some(Support::fixed(Picker::halfblocks())),
+        ..Options::default()
+    };
+    let mut r = Reader::new(source, &opts);
 
     let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
@@ -985,7 +1021,7 @@ fn outline_panel_lists_headings_and_jumps() {
     use ratatui::{Terminal, backend::TestBackend};
 
     let src = std::fs::read_to_string("tests/fixtures/outline.md").unwrap();
-    let mut r = Reader::new("t.md".into(), parse(&src), Theme::dark(), 80);
+    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
     let mut terminal = Terminal::new(TestBackend::new(70, 30)).unwrap();
     terminal.draw(|f| draw(f, &mut r)).unwrap();
     assert!(matches!(key(&mut r, KeyCode::Char('O')), Action::None));
@@ -1037,9 +1073,12 @@ fn hyperlinks_and_scrollbar_can_be_turned_off() {
     let long: String = (0..60)
         .map(|i| format!("[link {i}](https://x.dev/{i})\n\n"))
         .collect();
-    let mut r = Reader::new("t.md".into(), parse(&long), Theme::dark(), 80);
-    r.hyperlinks = false;
-    r.scrollbar = false;
+    let opts = Options {
+        hyperlinks: false,
+        scrollbar: false,
+        ..Options::default()
+    };
+    let mut r = Reader::new(Source::in_memory("t.md", parse(&long)), &opts);
     let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
     let frame = terminal.draw(|f| draw(f, &mut r)).unwrap();
     let buf = frame.buffer;

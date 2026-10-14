@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime};
 
-use super::{Reader, collect_code};
+use super::{Overlay, Reader, collect_code};
 use crate::doc::{CodeBlock, Document};
 
 impl Reader {
@@ -40,11 +40,18 @@ impl Reader {
         let same = codes.len() == self.codes.len()
             && moved.iter().enumerate().all(|(i, &to)| to == Some(i));
         if !same {
-            self.confirm = None;
             self.queue.clear();
         }
-        // The link may be gone or point elsewhere now.
-        self.confirm_open = None;
+        // The link may be gone or point elsewhere now, and a changed block
+        // list makes a pending run confirmation name the wrong blocks.
+        let stale = match &self.overlay {
+            Some(Overlay::OpenConfirm(_)) => true,
+            Some(Overlay::RunConfirm(_)) => !same,
+            _ => false,
+        };
+        if stale {
+            self.overlay = None;
+        }
         // Run state belongs to code, not to a position: follow each block to
         // its new place, and drop what ran code that's gone or changed.
         let mut runs = HashMap::new();

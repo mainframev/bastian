@@ -1,48 +1,58 @@
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
-use super::{Action, LinkPicker, Reader};
+use super::{Action, LinkPicker, Overlay, Reader};
 use crate::links;
 use crate::nav;
-use crate::prompt::{self, Edited, Prompt};
+use crate::prompt::{Prompt, PromptEvent};
 
 impl Reader {
     pub fn on_key(&mut self, key: KeyEvent) -> Action {
         self.message = None;
-        if self.help.open {
-            self.help.on_key(&key);
-            return Action::None;
-        }
-        if self.link_picker.is_some() {
-            return self.on_link_key(key);
-        }
-        if self.location.is_some() {
-            return self.on_location_key(key);
-        }
-        if self.confirm.is_some() {
-            self.on_confirm_key(key);
-            return Action::None;
-        }
-        if self.confirm_open.is_some() {
-            return self.on_open_confirm_key(key);
-        }
-        if self.prompt.is_some() {
-            match prompt::drive(&mut self.prompt, key) {
-                Some(Edited::Text(q)) => self.set_query(&q),
-                Some(Edited::Cancelled) => self.search = None,
-                None => {}
+        match &mut self.overlay {
+            Some(Overlay::Help(help)) => {
+                help.on_key(&key);
+                if !help.open {
+                    self.overlay = None;
+                }
+                return Action::None;
             }
-            return Action::None;
+            Some(Overlay::Links(_)) => return self.on_link_key(key),
+            Some(Overlay::Location(_)) => return self.on_location_key(key),
+            Some(Overlay::RunConfirm(_)) => {
+                self.on_confirm_key(key);
+                return Action::None;
+            }
+            Some(Overlay::OpenConfirm(_)) => return self.on_open_confirm_key(key),
+            Some(Overlay::Prompt(prompt)) => {
+                let event = prompt.on_key(key);
+                let text = prompt.text().to_string();
+                match event {
+                    PromptEvent::Changed => self.set_query(&text),
+                    PromptEvent::Submit => self.overlay = None,
+                    PromptEvent::Cancel => {
+                        self.overlay = None;
+                        self.search = None;
+                    }
+                    PromptEvent::None => {}
+                }
+                return Action::None;
+            }
+            None => {}
         }
 
         let page = self.height.max(1) as isize;
         let ctrl = nav::ctrl(&key);
         match key.code {
             KeyCode::Char('q') => return Action::Quit,
-            KeyCode::Esc if self.link_focus.is_some() => self.link_focus = None,
-            KeyCode::Esc if self.details_focus.is_some() => self.details_focus = None,
-            KeyCode::Esc if self.search.is_some() => self.search = None,
-            KeyCode::Esc if self.focus.is_some() => self.focus = None,
-            KeyCode::Esc | KeyCode::Char('h') | KeyCode::Left => return Action::Back,
+            // Esc returns to plain reading in one step; a second one goes back.
+            KeyCode::Esc if self.reading_plainly() => return Action::Back,
+            KeyCode::Esc => {
+                self.link_focus = None;
+                self.details_focus = None;
+                self.search = None;
+                self.focus = None;
+            }
+            KeyCode::Char('h') | KeyCode::Left => return Action::Back,
             KeyCode::Char('d') if ctrl => self.scroll_by(page / 2),
             KeyCode::Char('u') if ctrl => self.scroll_by(-page / 2),
             KeyCode::Char('j') | KeyCode::Down => self.scroll_by(1),
@@ -51,7 +61,7 @@ impl Reader {
             KeyCode::Char('b') | KeyCode::PageUp => self.scroll_by(-page),
             KeyCode::Char('g') | KeyCode::Home => self.jump_to(0),
             KeyCode::Char('G') | KeyCode::End => self.jump_to(usize::MAX),
-            KeyCode::Char('/') => self.prompt = Some(Prompt::new("")),
+            KeyCode::Char('/') => self.overlay = Some(Overlay::Prompt(Prompt::new(""))),
             KeyCode::Char('n') => self.step_match(true),
             KeyCode::Char('N') => self.step_match(false),
             KeyCode::Char('s') => {
@@ -99,11 +109,15 @@ impl Reader {
                 if links.is_empty() {
                     self.message = Some("no links in this document".into());
                 } else {
-                    self.link_picker = Some(LinkPicker { links, selected: 0 });
+                    self.overlay = Some(Overlay::Links(LinkPicker { links, selected: 0 }));
                 }
             }
             KeyCode::Char('p') => self.open_location(),
-            KeyCode::Char('?') => self.help.show(),
+            KeyCode::Char('?') => {
+                let mut help = nav::Help::default();
+                help.show();
+                self.overlay = Some(Overlay::Help(help));
+            }
             KeyCode::Char('T') => return Action::PickTheme,
             KeyCode::Char('i') => return Action::ToggleImages,
             KeyCode::Char('t') => self.toggle_toc(),
@@ -133,5 +147,13 @@ impl Reader {
             _ => {}
         }
         Action::None
+    }
+
+    /// Nothing focused and no search: Esc has nothing left to dismiss.
+    fn reading_plainly(&self) -> bool {
+        self.link_focus.is_none()
+            && self.details_focus.is_none()
+            && self.search.is_none()
+            && self.focus.is_none()
     }
 }

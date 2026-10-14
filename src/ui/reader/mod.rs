@@ -12,7 +12,7 @@ pub use super::MARGIN;
 use super::status;
 use super::text::highlight;
 use crate::picker::ThemePicker;
-use crate::reader::Reader;
+use crate::reader::{Overlay, Reader};
 use media::{draw_hyperlinks, draw_images};
 use overlays::{draw_confirm, draw_links, draw_location, draw_open_confirm};
 use toc::draw_toc;
@@ -41,7 +41,7 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
     // A blank row above the document (the `Find:` line takes it while
     // searching, with its own blank row below) and one above the status
     // bar, so the text never touches either edge.
-    let finding = r.prompt.is_some() || r.search.is_some();
+    let finding = r.prompt().is_some() || r.search.is_some();
     let [find, body, _] = Layout::vertical([
         Constraint::Length(if finding { 2 } else { 1 }),
         Constraint::Min(1),
@@ -235,22 +235,22 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
     let left = if picker.is_some() {
         status::Left::Text(&hint)
     } else {
-        status::left(r.prompt.is_some(), r.message(), &hint)
+        status::left(r.prompt().is_some(), r.message(), &hint)
     };
     status::draw(frame, status, r.theme(), left, &right);
 
     // Popups center on the document, beside the table of contents.
-    if let Some(ids) = &r.confirm {
-        draw_confirm(frame, main, r, ids);
-    } else if let Some(target) = &r.confirm_open {
-        draw_open_confirm(frame, main, r, target);
-    } else if let Some(picker) = &r.link_picker {
-        draw_links(frame, main, r, picker);
-    } else if let Some(location) = &r.location {
-        draw_location(frame, main, r, location);
-    } else if r.help.open {
-        let t = r.theme().clone();
-        status::help(frame, &t, main, HELP, &mut r.help.scroll);
+    match &r.overlay {
+        Some(Overlay::RunConfirm(ids)) => draw_confirm(frame, main, r, ids),
+        Some(Overlay::OpenConfirm(target)) => draw_open_confirm(frame, main, r, target),
+        Some(Overlay::Links(picker)) => draw_links(frame, main, r, picker),
+        Some(Overlay::Location(location)) => draw_location(frame, main, r, location),
+        Some(Overlay::Help(_) | Overlay::Prompt(_)) | None => {}
+    }
+    // The help keeps its scroll in range while drawing.
+    let t = r.theme().clone();
+    if let Some(Overlay::Help(help)) = &mut r.overlay {
+        status::help(frame, &t, main, HELP, &mut help.scroll);
     }
 }
 
@@ -337,7 +337,7 @@ fn draw_find(frame: &mut Frame, r: &Reader, area: Rect) {
     ])
     .areas(area);
     let query = r.search.as_ref().map_or("", |s| s.query.as_str());
-    frame.render_widget(status::find_prompt(t, r.prompt.as_ref(), query), left);
+    frame.render_widget(status::find_prompt(t, r.prompt(), query), left);
     frame.render_widget(Span::styled(count, Style::default().fg(t.muted)), right);
 }
 

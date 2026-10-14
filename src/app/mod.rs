@@ -288,7 +288,7 @@ impl App {
 
     fn set_message(&mut self, msg: String) {
         if let Some(r) = &mut self.reader {
-            r.message = Some(msg);
+            r.set_message(msg);
         } else if let Some(b) = &mut self.browser {
             b.message = Some(msg);
         }

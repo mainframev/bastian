@@ -8,6 +8,7 @@ pub mod exec;
 pub mod images;
 pub mod links;
 pub mod nav;
+pub mod open;
 pub mod outline;
 pub mod output;
 pub mod paths;

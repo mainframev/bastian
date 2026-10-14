@@ -27,6 +27,7 @@ impl Reader {
                 self.on_goto_key(key);
                 return Action::None;
             }
+            Some(Overlay::History(_)) => return self.on_history_key(key),
             Some(Overlay::Prompt(prompt)) => {
                 let event = prompt.on_key(key);
                 let text = prompt.text().to_string();
@@ -118,6 +119,7 @@ impl Reader {
                 }
             }
             KeyCode::Char('p') => self.open_location(),
+            KeyCode::Char('H') => return Action::ShowHistory,
             KeyCode::Char('?') => {
                 let mut help = nav::Help::default();
                 help.show();

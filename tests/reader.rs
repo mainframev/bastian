@@ -365,12 +365,15 @@ fn reloads_when_file_changes() {
 }
 
 #[test]
-fn help_closes_on_any_key() {
+fn help_scrolls_and_closes_on_any_other_key() {
     let mut r = reader("text\n");
     key(&mut r, KeyCode::Char('?'));
-    assert!(r.help);
+    assert!(r.help.open);
+    key(&mut r, KeyCode::Char('j'));
+    assert!(r.help.open, "j scrolls the help");
+    assert_eq!(r.help.scroll, 1);
     key(&mut r, KeyCode::Char('q'));
-    assert!(!r.help, "first key only closes help");
+    assert!(!r.help.open, "first other key only closes help");
 }
 
 #[test]

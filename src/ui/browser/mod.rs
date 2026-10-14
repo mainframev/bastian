@@ -205,8 +205,8 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, look: Look) {
     };
     status::draw(frame, status, t, left, &right);
 
-    if b.help {
-        status::help(frame, t, HELP);
+    if b.help.open {
+        status::help(frame, t, HELP, &mut b.help.scroll);
     }
 }
 

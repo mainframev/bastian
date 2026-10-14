@@ -41,6 +41,31 @@ pub fn step(selected: usize, len: usize, motion: Motion) -> usize {
     }
 }
 
+/// The key help overlay: whether it's open and how far it's scrolled.
+#[derive(Debug, Default)]
+pub struct Help {
+    pub open: bool,
+    /// First row shown; drawing keeps it in range.
+    pub scroll: usize,
+}
+
+impl Help {
+    pub fn show(&mut self) {
+        *self = Help {
+            open: true,
+            scroll: 0,
+        };
+    }
+
+    /// List motions scroll the help; any other key closes it.
+    pub fn on_key(&mut self, key: &KeyEvent) {
+        match list_motion(key) {
+            Some(motion) => self.scroll = step(self.scroll, usize::MAX, motion),
+            None => self.open = false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

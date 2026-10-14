@@ -1,0 +1,35 @@
+# Neutral Light
+# Plain grays with blue headings, for a light background.
+appearance = "light"
+
+[ui]
+text = "#1f1f1f"
+muted = "#6e6e6e"
+subtle = "#3b3b3b"
+surface = "#f0f0f0"
+accent = "#0451a5"
+h1_fg = "#ffffff"
+h1_bg = "#0451a5"
+heading = "#0451a5"
+link = "#0070c1"
+code = "#a31515"
+match_bg = "#dcdcdc"
+current_bg = "#9a5b00"
+err = "#cd3131"
+ok = "#008000"
+warn = "#bf8803"
+
+[syntax]
+comment = "#008000"
+keyword = "#0000ff"
+string = "#a31515"
+number = "#098658"
+constant = "#0070c1"
+function = "#795e26"
+type = "#267f99"
+operator = "#1f1f1f"
+punctuation = "#1f1f1f"
+tag = "#800000"
+attribute = "#e50000"
+inserted = "#008000"
+deleted = "#cd3131"

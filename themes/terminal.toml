@@ -1,0 +1,36 @@
+# Terminal
+# The terminal's own 16 ANSI colors, so it matches the terminal's palette
+# on a dark or a light background.
+appearance = "any"
+
+[ui]
+text = "default"
+muted = "bright-black"
+subtle = "default"
+surface = "default"
+accent = "blue"
+h1_fg = "black"
+h1_bg = "blue"
+heading = "blue"
+link = "cyan"
+code = "magenta"
+match_bg = "bright-black"
+current_bg = "yellow"
+err = "red"
+ok = "green"
+warn = "yellow"
+
+[syntax]
+comment = "bright-black"
+keyword = "magenta"
+string = "green"
+number = "yellow"
+constant = "yellow"
+function = "blue"
+type = "cyan"
+operator = "default"
+punctuation = "default"
+tag = "blue"
+attribute = "yellow"
+inserted = "green"
+deleted = "red"

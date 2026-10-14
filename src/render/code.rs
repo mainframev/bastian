@@ -1,4 +1,4 @@
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::Span;
 use syntect::easy::HighlightLines;
 use syntect::util::LinesWithEndings;
@@ -34,7 +34,7 @@ pub fn highlight(
             regions
                 .into_iter()
                 .map(|(s, text)| {
-                    let fg = Color::Rgb(s.foreground.r, s.foreground.g, s.foreground.b);
+                    let fg = crate::themes::from_syntect(s.foreground);
                     Span::styled(
                         text.trim_end_matches(['\n', '\r']).to_string(),
                         Style::default().fg(fg),

@@ -83,6 +83,9 @@ pub struct Options {
     pub image_rows: u16,
     /// Columns a tab in code takes up.
     pub tab_width: u16,
+    /// Pad inline code into a chip. Off for plain text, where the padding
+    /// has no background and reads as doubled spaces.
+    pub chips: bool,
 }
 
 impl Default for Options {
@@ -90,6 +93,7 @@ impl Default for Options {
         Self {
             image_rows: 24,
             tab_width: 4,
+            chips: true,
         }
     }
 }
@@ -479,7 +483,7 @@ impl Renderer<'_> {
 
     /// Styled text of `inlines`, with inline code padded into a chip.
     fn runs(&self, inlines: &[Inline], base: Style) -> Vec<(String, Style)> {
-        self.styled_runs(inlines, base, true)
+        self.styled_runs(inlines, base, self.cx.opts.chips)
     }
 
     /// Styled text of `inlines`. With `chips`, inline code gets a space of
@@ -797,6 +801,28 @@ mod tests {
             .collect();
         assert_eq!(lines[..3], ["☐", "☑", "• c"], "{lines:?}");
         assert_eq!(lines.last().map(String::as_str), Some("[1]"), "{lines:?}");
+    }
+
+    #[test]
+    fn chips_can_be_left_off_for_plain_text() {
+        let doc = parse("Run `cargo build` now.\n");
+        let text = |chips| {
+            let opts = Options {
+                chips,
+                ..Options::default()
+            };
+            to_plain(&render_with(&doc, 40, &Theme::dark(), opts).lines)
+        };
+        assert!(
+            text(true).contains("Run  cargo build  now."),
+            "{}",
+            text(true)
+        );
+        assert!(
+            text(false).contains("Run cargo build now."),
+            "{}",
+            text(false)
+        );
     }
 
     #[test]

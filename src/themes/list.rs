@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 
 use super::Theme;
+use super::build::ansi_index;
 use super::file::user_file;
 use super::{Appearance, builtin_names, canonical, load};
 use crate::paths;
@@ -70,7 +71,11 @@ pub fn format_list(roles: &[(&str, &str)], dir: Option<&Path>, color: bool) -> S
     let w = rows.iter().map(|l| l.name.len()).max().unwrap_or(0);
     let swatch = |c: Color| match c {
         Color::Rgb(r, g, b) => format!("\x1b[38;2;{r};{g};{b}m██\x1b[0m"),
-        _ => String::new(),
+        // ANSI colors by palette index, so they show in the terminal's own.
+        c => match ansi_index(c) {
+            Some(i) => format!("\x1b[38;5;{i}m██\x1b[0m"),
+            None => "██".to_string(),
+        },
     };
     let mut out = String::new();
     for l in rows {
@@ -89,6 +94,7 @@ pub fn format_list(roles: &[(&str, &str)], dir: Option<&Path>, color: bool) -> S
                 let appearance = match t.appearance {
                     Appearance::Dark => "dark",
                     Appearance::Light => "light",
+                    Appearance::Any => "any",
                 };
                 let colors: String = [t.accent, t.heading, t.link, t.code, t.ok, t.warn, t.err]
                     .into_iter()

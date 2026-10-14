@@ -129,11 +129,86 @@ pub(super) fn rgb(s: &str) -> Option<(u8, u8, u8)> {
     Some(((n >> 16) as u8, (n >> 8) as u8, n as u8))
 }
 
+/// The 16 ANSI colors by name, in palette order. They show in whatever
+/// colors the terminal's own palette gives them.
+const ANSI: [(&str, Color); 16] = [
+    ("black", Color::Black),
+    ("red", Color::Red),
+    ("green", Color::Green),
+    ("yellow", Color::Yellow),
+    ("blue", Color::Blue),
+    ("magenta", Color::Magenta),
+    ("cyan", Color::Cyan),
+    ("white", Color::Gray),
+    ("bright-black", Color::DarkGray),
+    ("bright-red", Color::LightRed),
+    ("bright-green", Color::LightGreen),
+    ("bright-yellow", Color::LightYellow),
+    ("bright-blue", Color::LightBlue),
+    ("bright-magenta", Color::LightMagenta),
+    ("bright-cyan", Color::LightCyan),
+    ("bright-white", Color::White),
+];
+
+/// `default` is the terminal's own foreground or background.
+const DEFAULT: &str = "default";
+
+/// Parse `#rrggbb`, an ANSI color name or `default`.
 pub(super) fn color(s: &str, section: &str, key: &str, origin: &str) -> Result<Color> {
+    if s == DEFAULT {
+        return Ok(Color::Reset);
+    }
+    if let Some((_, c)) = ANSI.iter().find(|(name, _)| *name == s) {
+        return Ok(*c);
+    }
     let (r, g, b) = rgb(s).ok_or_else(|| {
-        anyhow!("theme {origin}: `{section}.{key}` = {s:?} is not a #rrggbb color")
+        anyhow!(
+            "theme {origin}: `{section}.{key}` = {s:?} is not a #rrggbb color, \
+             an ANSI color name or \"default\""
+        )
     })?;
     Ok(Color::Rgb(r, g, b))
+}
+
+/// `s` as a highlighter color. Highlighter colors are RGBA, so like bat an
+/// alpha of 0 marks an ANSI color (its index in `r`) and 1 the default.
+fn to_syntect(
+    s: &str,
+    section: &str,
+    key: &str,
+    origin: &str,
+) -> Result<syntect::highlighting::Color> {
+    use syntect::highlighting::Color as C;
+    let c = match color(s, section, key, origin)? {
+        Color::Rgb(r, g, b) => C { r, g, b, a: 0xff },
+        Color::Reset => C {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 1,
+        },
+        ansi => C {
+            r: ansi_index(ansi).expect("an ANSI color"),
+            g: 0,
+            b: 0,
+            a: 0,
+        },
+    };
+    Ok(c)
+}
+
+/// Palette index (0–15) of an ANSI color.
+pub(super) fn ansi_index(c: Color) -> Option<u8> {
+    ANSI.iter().position(|(_, a)| *a == c).map(|i| i as u8)
+}
+
+/// The terminal color a highlighter color stands for; see `to_syntect`.
+pub fn from_syntect(c: syntect::highlighting::Color) -> Color {
+    match c.a {
+        0 => ANSI.get(usize::from(c.r)).map_or(Color::Reset, |(_, c)| *c),
+        1 => Color::Reset,
+        _ => Color::Rgb(c.r, c.g, c.b),
+    }
 }
 
 /// A highlighter theme mapping the `[syntax]` colors onto `TextMate` scopes.
@@ -146,18 +221,13 @@ pub(super) fn syntax_theme(
     use std::str::FromStr;
     use syntect::highlighting::{ScopeSelectors, StyleModifier, ThemeItem};
 
-    let to_syntect = |s: &str, key: &str| {
-        let (r, g, b) = rgb(s)
-            .ok_or_else(|| anyhow!("theme {origin}: `{key}` = {s:?} is not a #rrggbb color"))?;
-        Ok::<_, anyhow::Error>(syntect::highlighting::Color { r, g, b, a: 0xff })
-    };
     let mut theme = syntect::highlighting::Theme::default();
-    theme.settings.foreground = Some(to_syntect(text, "ui.text")?);
+    theme.settings.foreground = Some(to_syntect(text, "ui", "text", origin)?);
     for (key, scopes) in SCOPES {
         theme.scopes.push(ThemeItem {
             scope: ScopeSelectors::from_str(scopes).expect("valid scope selector"),
             style: StyleModifier {
-                foreground: Some(to_syntect(&colors[*key], &format!("syntax.{key}"))?),
+                foreground: Some(to_syntect(&colors[*key], "syntax", key, origin)?),
                 background: None,
                 font_style: None,
             },

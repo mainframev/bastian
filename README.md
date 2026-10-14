@@ -57,7 +57,7 @@ In a document:
 - images are drawn as pictures where the terminal can; `i` toggles them;
 - `<details>` blocks fold: `d` focuses one and `Enter` opens or closes it;
 - `#` shows line numbers, `y`/`c` copy a code block or the whole document;
-- `e` opens your editor at the line you're reading, and the document reloads
+- `ctrl-e` opens your editor at the line you're reading, and the document reloads
   when the file changes;
 - `T` switches the theme;
 - `?` shows every key, `Esc` goes back, `q` quits.

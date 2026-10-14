@@ -28,7 +28,7 @@ use crate::doc::{Block, CalloutKind, Document, Inline, plain_text};
 use crate::exec::{BlockRun, Interpreters};
 use links::{LinkRun, is_link_style, locate_links};
 use theme::Theme;
-use wrap::wrap;
+use wrap::{PAD, wrap};
 
 /// A document laid out for a given width.
 #[derive(Debug, Default)]
@@ -475,48 +475,70 @@ impl Renderer<'_> {
         out
     }
 
+    /// Styled text of `inlines`, with inline code padded into a chip.
     fn runs(&self, inlines: &[Inline], base: Style) -> Vec<(String, Style)> {
+        self.styled_runs(inlines, base, true)
+    }
+
+    /// Styled text of `inlines`. With `chips`, inline code gets a space of
+    /// its background on each side; `wrap` keeps that padding with the code.
+    fn styled_runs(&self, inlines: &[Inline], base: Style, chips: bool) -> Vec<(String, Style)> {
         let t = self.theme;
-        inlines
-            .iter()
-            .map(|i| {
-                let mut s = base;
-                if i.style.strong {
-                    s = s.add_modifier(Modifier::BOLD);
-                }
-                if i.style.emphasis {
-                    s = s.add_modifier(Modifier::ITALIC);
-                }
-                if i.style.strike {
-                    s = s.add_modifier(Modifier::CROSSED_OUT);
-                }
-                if i.style.code {
-                    s = s.fg(t.code).bg(t.surface);
-                }
-                if i.style.link.is_some() {
-                    s = s.fg(t.link).add_modifier(Modifier::UNDERLINED);
-                }
-                if i.style.muted {
-                    s = s.fg(t.muted);
-                }
-                if let (Some(url), Some(id)) = (&i.style.link, i.style.link_id)
-                    && is_link_style(s, t)
-                {
-                    let chars = i.text.chars().filter(|c| !c.is_whitespace()).count();
-                    let mut link_runs = self.link_runs.borrow_mut();
-                    // `[the **docs**](url)` is several inlines but one link.
-                    match link_runs.last_mut() {
-                        Some(run) if run.id == id => run.chars += chars,
-                        _ => link_runs.push(LinkRun {
-                            url: url.clone(),
-                            chars,
-                            id,
-                        }),
-                    }
-                }
-                (i.text.clone(), s)
-            })
-            .collect()
+        let mut out = Vec::with_capacity(inlines.len());
+        for i in inlines {
+            let (text, s) = self.styled(i, base);
+            if chips && i.style.code {
+                // Not underlined or struck, so a link's padding isn't part
+                // of the link.
+                let pad = (PAD.to_string(), Style::default().bg(t.surface));
+                out.push(pad.clone());
+                out.push((text, s));
+                out.push(pad);
+            } else {
+                out.push((text, s));
+            }
+        }
+        out
+    }
+
+    /// One inline's text and style; records the link it belongs to, if any.
+    fn styled(&self, i: &Inline, base: Style) -> (String, Style) {
+        let t = self.theme;
+        let mut s = base;
+        if i.style.strong {
+            s = s.add_modifier(Modifier::BOLD);
+        }
+        if i.style.emphasis {
+            s = s.add_modifier(Modifier::ITALIC);
+        }
+        if i.style.strike {
+            s = s.add_modifier(Modifier::CROSSED_OUT);
+        }
+        if i.style.code {
+            s = s.fg(t.code).bg(t.surface);
+        }
+        if i.style.link.is_some() {
+            s = s.fg(t.link).add_modifier(Modifier::UNDERLINED);
+        }
+        if i.style.muted {
+            s = s.fg(t.muted);
+        }
+        if let (Some(url), Some(id)) = (&i.style.link, i.style.link_id)
+            && is_link_style(s, t)
+        {
+            let chars = i.text.chars().filter(|c| !c.is_whitespace()).count();
+            let mut link_runs = self.link_runs.borrow_mut();
+            // `[the **docs**](url)` is several inlines but one link.
+            match link_runs.last_mut() {
+                Some(run) if run.id == id => run.chars += chars,
+                _ => link_runs.push(LinkRun {
+                    url: url.clone(),
+                    chars,
+                    id,
+                }),
+            }
+        }
+        (i.text.clone(), s)
     }
 }
 
@@ -691,6 +713,48 @@ mod tests {
                 b("◦ ", Color::Green),
             ]
         );
+    }
+
+    #[test]
+    fn inline_code_is_padded_into_a_chip() {
+        let t = Theme::dark();
+        let r = render(&parse("Run `cargo build` now\n"), 40, &t);
+        assert_eq!(plain(&r.lines[0]), "Run  cargo build  now");
+        // Which columns sit on the code background.
+        let on_chip: String = r.lines[0]
+            .spans
+            .iter()
+            .flat_map(|s| {
+                let mark = if s.style.bg == Some(t.surface) {
+                    '#'
+                } else {
+                    '.'
+                };
+                std::iter::repeat_n(mark, s.content.chars().count())
+            })
+            .collect();
+        assert_eq!(on_chip, "....#############....");
+
+        // The padding stays with the code when it wraps, and lines keep
+        // to the width.
+        let r = render(&parse("aaaa `bbbb` cc `dd`.\n"), 10, &t);
+        let text: Vec<String> = r.lines.iter().map(|l| plain(l)).collect();
+        assert_eq!(text, ["aaaa", " bbbb  cc", " dd ."], "{text:?}");
+        assert!(r.lines.iter().all(|l| l.width() <= 10));
+
+        // A link's padding isn't part of the link.
+        let r = render(&parse("see [`docs`](https://x.dev)\n"), 40, &t);
+        let link = &r.links[0];
+        let text: String = plain(&r.lines[0])
+            .chars()
+            .skip(link.col)
+            .take(link.width)
+            .collect();
+        assert_eq!(text, "docs");
+
+        // Tables size columns by the text, so cells aren't padded.
+        let r = render(&parse("| a |\n|---|\n| `x` |\n"), 40, &t);
+        assert_eq!(plain(&r.lines[2]).trim(), "x");
     }
 
     #[test]

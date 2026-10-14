@@ -201,10 +201,12 @@ impl Reader {
         let (_, text) = heading_texts(&self.doc.blocks)
             .into_iter()
             .find(|(a, _)| links::slug(a) == anchor)?;
+        // Compare words only: inline code is padded with spaces on screen.
+        let words = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+        let text = words(&text);
         self.rendered.lines.iter().position(|line| {
-            let plain = render::plain(line);
-            let plain = plain.trim();
-            !plain.is_empty() && text.starts_with(plain)
+            let plain = words(&render::plain(line));
+            !plain.is_empty() && text.starts_with(&plain)
         })
     }
 
@@ -515,6 +517,18 @@ mod tests {
         press(&mut r, KeyCode::Esc, KeyModifiers::NONE);
         press(&mut r, KeyCode::Esc, KeyModifiers::NONE);
         assert!(!picker_open(&r));
+    }
+
+    #[test]
+    fn nested_headings_with_inline_code_are_found() {
+        let src = "intro\n\n<details open><summary>More</summary>\n\n## Use `x` here\n\nbody\n\n</details>\n";
+        let mut r = Reader::new(Source::in_memory("t", parse(src)), &Options::default());
+        r.layout(80, 20);
+        let line = r.heading_line("use-x-here").expect("found");
+        assert_eq!(
+            crate::render::plain(&r.rendered.lines[line]).trim(),
+            "Use  x  here"
+        );
     }
 
     #[test]

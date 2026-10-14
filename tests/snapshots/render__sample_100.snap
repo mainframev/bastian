@@ -12,7 +12,7 @@ Lists
 
 • first item
 • second item with a much longer description that should wrap neatly under its own bullet marker
-  • nested item
+  ◦ nested item
 ☑ done task
 ☐ open task
 

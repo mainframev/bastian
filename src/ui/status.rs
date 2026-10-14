@@ -200,31 +200,106 @@ fn popup_rect(
     }
 }
 
-/// Key reference overlay: `(keys, what they do)` rows in a modal.
-pub fn help(frame: &mut Frame, t: &Theme, keys: &[(&str, &str)]) {
-    let key_w = keys
+/// A titled group of `(keys, what they do)` rows in the key help.
+pub type HelpSection = (&'static str, &'static [(&'static str, &'static str)]);
+
+/// Key reference overlay: the version, then `sections` in two columns
+/// when they fit across the screen, else one. Rows that don't fit scroll,
+/// from `scroll`, which is kept in range.
+pub fn help(frame: &mut Frame, t: &Theme, sections: &[HelpSection], scroll: &mut usize) {
+    let key_w = sections
         .iter()
-        .map(|(k, _)| k.chars().count())
+        .flat_map(|(_, keys)| keys.iter())
+        .map(|(k, _)| k.width())
         .max()
         .unwrap_or(0);
-    let mut lines: Vec<Line> = keys
+    let blocks: Vec<Vec<Line>> = sections
         .iter()
-        .map(|(k, what)| {
-            Line::from(vec![
-                Span::styled(
-                    format!("{k:<key_w$}  "),
-                    Style::default().fg(t.accent).bold(),
-                ),
-                Span::styled(what.to_string(), Style::default().fg(t.text)),
-            ])
+        .map(|(title, keys)| {
+            let mut lines = vec![Line::styled(
+                title.to_string(),
+                Style::default().fg(t.heading).bold(),
+            )];
+            lines.extend(keys.iter().map(|(k, what)| {
+                Line::from(vec![
+                    Span::styled(
+                        format!("{k:<key_w$}  "),
+                        Style::default().fg(t.accent).bold(),
+                    ),
+                    Span::styled(what.to_string(), Style::default().fg(t.text)),
+                ])
+            }));
+            lines
         })
         .collect();
-    lines.push(Line::default());
-    lines.push(Line::styled(
-        "any key to close",
-        Style::default().fg(t.muted),
-    ));
-    modal(frame, t, " keys ", lines);
+    let col_w = blocks.iter().flatten().map(Line::width).max().unwrap_or(0);
+    let area = frame.area();
+    // Border and padding take 4 columns, the gap between columns 3.
+    let body = if usize::from(area.width) >= col_w * 2 + 3 + 4 {
+        let (left, right) = blocks.split_at(balanced_split(&blocks));
+        let (left, right) = (stack(left), stack(right));
+        (0..left.len().max(right.len()))
+            .map(|i| {
+                let mut line = left.get(i).cloned().unwrap_or_default();
+                if let Some(r) = right.get(i) {
+                    let pad = col_w + 3 - line.width();
+                    line.spans.push(Span::raw(" ".repeat(pad)));
+                    line.spans.extend(r.spans.iter().cloned());
+                }
+                line
+            })
+            .collect()
+    } else {
+        stack(&blocks)
+    };
+    let mut lines = vec![
+        Line::styled(
+            format!("bastian {}", env!("CARGO_PKG_VERSION")),
+            Style::default().fg(t.muted),
+        ),
+        Line::default(),
+    ];
+    lines.extend(body);
+
+    let rows = usize::from(area.height.saturating_sub(2));
+    let overflow = lines.len().saturating_sub(rows);
+    *scroll = (*scroll).min(overflow);
+    let hint = if overflow > 0 {
+        " j/k scroll · any other key closes "
+    } else {
+        " any key to close "
+    };
+    let rect = popup_rect(area, " Help ", &lines, 0, rows, Place::Center);
+    let block = panel_block(t, " Help ")
+        .title_bottom(Line::styled(hint, Style::default().fg(t.muted)).right_aligned());
+    frame.render_widget(Clear, rect);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(block)
+            .scroll((*scroll as u16, 0)),
+        rect,
+    );
+}
+
+/// Sections one under another, a blank line between them.
+fn stack(blocks: &[Vec<Line<'static>>]) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    for (i, block) in blocks.iter().enumerate() {
+        if i > 0 {
+            lines.push(Line::default());
+        }
+        lines.extend(block.iter().cloned());
+    }
+    lines
+}
+
+/// Where to split `blocks`, in order, into two columns of about the same
+/// height.
+fn balanced_split(blocks: &[Vec<Line>]) -> usize {
+    let height = |bs: &[Vec<Line>]| bs.iter().map(|b| b.len() + 1).sum::<usize>();
+    (1..blocks.len())
+        .min_by_key(|&k| height(&blocks[..k]).max(height(&blocks[k..])))
+        .unwrap_or(blocks.len())
 }
 
 #[cfg(test)]
@@ -239,6 +314,43 @@ mod tests {
         (0..buf.area.height)
             .map(|y| (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect())
             .collect()
+    }
+
+    const SECTIONS: &[HelpSection] = &[
+        ("Move", &[("j/k", "scroll")]),
+        ("Search", &[("/", "search"), ("n/N", "next/previous")]),
+        ("Other", &[("q", "quit")]),
+    ];
+
+    #[test]
+    fn help_shows_the_version_and_pairs_sections() {
+        let mut term = Terminal::new(TestBackend::new(80, 20)).unwrap();
+        term.draw(|f| help(f, &Theme::dark(), SECTIONS, &mut 0))
+            .unwrap();
+        let screen = rows(&term);
+        assert!(screen.iter().any(|r| r.contains(" Help ")), "{screen:#?}");
+        let version = format!("bastian {}", env!("CARGO_PKG_VERSION"));
+        assert!(screen.iter().any(|r| r.contains(&version)), "{screen:#?}");
+        let paired = screen
+            .iter()
+            .any(|r| r.contains("Move") && r.contains("Search"));
+        assert!(paired, "{screen:#?}");
+        assert!(
+            !screen
+                .iter()
+                .any(|r| r.contains("Search") && r.contains("Other"))
+        );
+    }
+
+    #[test]
+    fn narrow_help_stacks_sections() {
+        let mut term = Terminal::new(TestBackend::new(30, 20)).unwrap();
+        term.draw(|f| help(f, &Theme::dark(), SECTIONS, &mut 0))
+            .unwrap();
+        let screen = rows(&term);
+        let move_row = screen.iter().position(|r| r.contains("Move"));
+        let search_row = screen.iter().position(|r| r.contains("Search"));
+        assert!(move_row < search_row, "{screen:#?}");
     }
 
     #[test]

@@ -30,7 +30,7 @@ its note.
 | `y`                         | copy the focused block                                       |
 | `d`, `D`                    | focus the next/previous details block (`Enter` opens/closes) |
 | `c`                         | copy the whole document                                      |
-| `e`                         | edit the file at the line you're reading                     |
+| `ctrl-e`                    | edit the file at the line you're reading                     |
 | `#`                         | toggle line numbers                                          |
 | `i`                         | show/hide images                                             |
 | `T`                         | pick a theme                                                 |
@@ -110,7 +110,7 @@ such as `bastian main.rs`, always show them.
 
 ## Editing and live reload
 
-`e` opens the file in your editor at the line you're reading. The editor is
+`ctrl-e` opens the file in your editor at the line you're reading. The editor is
 the `editor` setting, then `$VISUAL`, then `$EDITOR`, then `vi`; known editors
 (vim, Neovim, Helix, VS Code, …) open at the right line. The open document
 reloads whenever the file changes on disk, so edits show up as soon as you

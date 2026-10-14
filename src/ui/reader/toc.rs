@@ -58,7 +58,8 @@ pub(super) fn draw_toc(frame: &mut Frame, r: &Reader, area: Rect) {
     let numbered = entries
         .iter()
         .find(|e| e.number.is_some())
-        .map_or(0, |e| e.depth);
+        // With nothing numbered, every heading indents by depth alone.
+        .map_or(usize::MAX, |e| e.depth);
     let rows = usize::from(list.height);
     // Keep the current entry about mid-list.
     let first = current
@@ -131,6 +132,8 @@ mod tests {
             pane("# Book\n\n## Part\n\n### One\n\n### Two\n"),
             [" Book", "   Part", " 01 One", " 02 Two"]
         );
+        // Nothing is numbered without a level of two or more headings.
+        assert_eq!(pane("# Only\n\n## Sub\n"), [" Only", "   Sub"]);
         // A lone title stays flush left.
         assert_eq!(
             pane("# Title\n\n## One\n\n## Two\n"),

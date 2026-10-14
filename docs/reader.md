@@ -60,9 +60,10 @@ prompt (`←/→`, `alt-b/f`, `ctrl-w`, `ctrl-u`, …).
 narrows and re-wraps beside it, and the usual keys keep working, so you can
 read with it open. The section you're reading is highlighted as you scroll.
 
-The outermost headings are numbered `01`, `02`, …; when the document has a
-single title, its sections are numbered instead. Deeper headings are
-indented under them. `1` to `9` jump to the numbered headings 1–9 and `0` to
+The outermost level with more than one heading is numbered `01`, `02`, …, so
+a single title leaves the numbers to its sections; a document where no level
+has two headings has no numbers. Deeper headings are indented under the
+numbered ones, and any above them by their depth. `1` to `9` jump to the numbered headings 1–9 and `0` to
 the tenth. `J` and `K` step to the next or previous heading of any level,
 with the pane open or not, which reaches every heading in longer documents.
 

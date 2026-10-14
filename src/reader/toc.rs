@@ -50,8 +50,12 @@ impl Reader {
 
     /// Scroll to the heading numbered `n` in the table of contents.
     pub(super) fn jump_to_entry(&mut self, n: usize) {
-        match self.toc_entries().iter().find(|e| e.number == Some(n)) {
+        let entries = self.toc_entries();
+        match entries.iter().find(|e| e.number == Some(n)) {
             Some(e) => self.jump_to(e.line),
+            None if entries.iter().all(|e| e.number.is_none()) => {
+                self.message = Some("no numbered headings".into());
+            }
             None => self.message = Some(format!("no heading {n:02}")),
         }
     }
@@ -165,6 +169,11 @@ mod tests {
         key(&mut r, 't');
         key(&mut r, '7');
         assert_eq!(r.message(), Some("no heading 07"));
+
+        let mut lone = reader("# Only\n\ntext\n");
+        key(&mut lone, 't');
+        key(&mut lone, '1');
+        assert_eq!(lone.message(), Some("no numbered headings"));
     }
 
     #[test]

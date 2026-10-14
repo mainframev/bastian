@@ -207,7 +207,7 @@ fn toc_width_carries_to_readers_opened_later() {
     r.fit_toc(100);
     press(&mut app, KeyCode::Char('t'));
     press(&mut app, KeyCode::Char('>'));
-    let wider = crate::toc::DEFAULT_WIDTH + crate::toc::STEP;
+    let wider = crate::toc::DEFAULT_WIDTH + crate::pane::STEP;
     assert_eq!(app.settings.reader.toc_width, wider);
     let next = reader_in(&app.settings, doc::parse("# B\n"), PathBuf::from("."));
     assert_eq!(next.toc_width(), wider);
@@ -221,7 +221,7 @@ fn toc_width_carries_to_readers_opened_later() {
     press(&mut app, KeyCode::Char('<'));
     press(&mut app, KeyCode::Char('<'));
     press(&mut app, KeyCode::Esc);
-    let narrower = crate::toc::DEFAULT_WIDTH - crate::toc::STEP;
+    let narrower = crate::toc::DEFAULT_WIDTH - crate::pane::STEP;
     assert_eq!(app.reader.as_ref().unwrap().toc_width(), narrower);
 }
 
@@ -232,7 +232,7 @@ fn clicking_the_toc_markers_resizes_it() {
     r.layout(80, 10);
     press(&mut app, KeyCode::Char('t'));
     let width = app.reader.as_mut().unwrap().fit_toc(100);
-    let (_, wider) = crate::toc::markers(width);
+    let (_, wider) = crate::pane::markers(width);
     let click = Event::Mouse(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: wider,
@@ -241,5 +241,5 @@ fn clicking_the_toc_markers_resizes_it() {
     });
     assert!(!run::is_ignored(&click));
     assert!(app.on_event(&click));
-    assert_eq!(app.settings.reader.toc_width, width + crate::toc::STEP);
+    assert_eq!(app.settings.reader.toc_width, width + crate::pane::STEP);
 }

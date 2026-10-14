@@ -10,6 +10,7 @@ pub mod links;
 pub mod nav;
 pub mod open;
 pub mod output;
+pub mod pane;
 pub mod paths;
 pub mod picker;
 pub mod positions;

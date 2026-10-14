@@ -189,6 +189,7 @@ pub(crate) fn render_with_runs(doc: &Document, width: u16, theme: &Theme, cx: Co
         cx,
         link_runs: RefCell::default(),
         list_depth: Cell::default(),
+        in_quote: Cell::default(),
     };
     let width = usize::from(width).max(10);
     if doc.code_file
@@ -283,6 +284,8 @@ struct Renderer<'a> {
     link_runs: RefCell<Vec<LinkRun>>,
     /// Lists enclosing the block being rendered.
     list_depth: Cell<usize>,
+    /// Whether the block being rendered is in a block quote.
+    in_quote: Cell<bool>,
 }
 
 impl Renderer<'_> {
@@ -320,11 +323,10 @@ impl Renderer<'_> {
             Block::Quote(inner) => {
                 let mut out = Out::default();
                 let bar = [Span::styled(QUOTE_BAR, Style::default().fg(t.muted))];
-                out.append(
-                    self.blocks(inner, width.saturating_sub(2), true),
-                    &bar,
-                    &bar,
-                );
+                let outer = self.in_quote.replace(true);
+                let inner = self.blocks(inner, width.saturating_sub(2), true);
+                self.in_quote.set(outer);
+                out.append(inner, &bar, &bar);
                 out
             }
             Block::Callout { kind, blocks } => {
@@ -486,6 +488,12 @@ impl Renderer<'_> {
         let t = self.theme;
         let mut out = Vec::with_capacity(inlines.len());
         for i in inlines {
+            // Quoted text is italic; code keeps its upright face.
+            let base = if self.in_quote.get() && !i.style.code {
+                base.add_modifier(Modifier::ITALIC)
+            } else {
+                base
+            };
             let (text, s) = self.styled(i, base);
             if chips && i.style.code {
                 // Not underlined or struck, so a link's padding isn't part
@@ -755,6 +763,24 @@ mod tests {
         // Tables size columns by the text, so cells aren't padded.
         let r = render(&parse("| a |\n|---|\n| `x` |\n"), 40, &t);
         assert_eq!(plain(&r.lines[2]).trim(), "x");
+    }
+
+    #[test]
+    fn quoted_text_is_italic_but_its_code_and_bar_are_not() {
+        let r = render(&parse("> some `code` here\n\nafter\n"), 40, &Theme::dark());
+        let italic = |s: &Span| s.style.add_modifier.contains(Modifier::ITALIC);
+        let spans = &r.lines[0].spans;
+        let style_of = |text: &str| spans.iter().find(|s| s.content.contains(text)).unwrap();
+        assert!(
+            italic(style_of("some")) && italic(style_of("here")),
+            "{spans:?}"
+        );
+        assert!(!italic(style_of("code")));
+        assert!(!italic(&spans[0]), "bar");
+        assert!(
+            r.lines[2].spans.iter().all(|s| !italic(s)),
+            "after the quote"
+        );
     }
 
     #[test]

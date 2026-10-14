@@ -14,9 +14,10 @@
 **Make documentation a pleasure to read, right in your terminal.**
 
 bastian finds the Markdown in a folder and lays it out for the terminal:
-fitted tables, highlighted code, clickable links, images, an outline, search
-and live reload. It also reads single documents from a file, stdin, a URL or
-a GitHub/GitLab repository, and can run a runbook's code blocks in place.
+fitted tables, highlighted code, clickable links, images, a table of
+contents, search and live reload. It also reads single documents from a
+file, stdin, a URL or a GitHub/GitLab repository, and can run a runbook's
+code blocks in place.
 
 ![Browsing, filtering, searching and the outline in bastian](demo/usage.gif)
 
@@ -51,7 +52,8 @@ newest first:
 In a document:
 
 - `/` searches, `n/N` jump between matches;
-- `O` opens an outline of the headings to jump through;
+- `t` shows a table of contents beside the document; `1`–`9` and `0` jump
+  to its sections and `J/K` step through headings;
 - `L` lists the links to follow (`[[wiki links]]` included), and links are
   clickable in terminals that support it;
 - images are drawn as pictures where the terminal can; `i` toggles them;
@@ -136,8 +138,8 @@ and `bastian --print-config` shows where each one came from. See
 ## Documentation
 
 - [The file list](docs/file-list.md): navigating, filtering and shaping the list
-- [The reader](docs/reader.md): keys, search, outline, links, images, editing,
-  remote documents and MDX
+- [The reader](docs/reader.md): keys, search, table of contents, links,
+  images, editing, remote documents and MDX
 - [The command line](docs/cli.md): inputs, printing, options and commands
 - [Running code blocks](docs/code-blocks.md): keys, attributes and interpreters
 - [Themes](docs/themes.md): built-in themes, the picker and your own

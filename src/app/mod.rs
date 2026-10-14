@@ -33,6 +33,9 @@ pub struct App {
     browser: Option<Browser>,
     reader: Option<Reader>,
     history: Vec<Reader>,
+    /// Files read this session, most recent first and as they were
+    /// opened, for the `H` list.
+    opened: Vec<PathBuf>,
     /// File to open in the editor once the current event is handled.
     edit: Option<(PathBuf, Option<usize>)>,
     /// Set by ctrl-z; the run loop suspends bastian like a shell job.
@@ -75,11 +78,12 @@ impl App {
     }
 
     fn new(settings: Settings, browser: Option<Browser>, reader: Option<Reader>) -> Self {
-        Self {
+        let mut app = Self {
             settings,
             browser,
             reader,
             history: Vec::new(),
+            opened: Vec::new(),
             edit: None,
             suspend: false,
             themes: ThemeFiles::default(),
@@ -87,7 +91,22 @@ impl App {
             picker_width: picker::DEFAULT_WIDTH,
             pick_and_exit: false,
             exit_note: None,
-        }
+        };
+        app.note_opened();
+        app
+    }
+
+    /// Put the open reader's file first in `opened`. A file reached by
+    /// another path replaces its entry, but keeps the path it was opened
+    /// by: through a symlink, links and images resolve from the link's
+    /// directory, not the target's.
+    fn note_opened(&mut self) {
+        let Some(path) = self.reader.as_ref().and_then(Reader::file) else {
+            return;
+        };
+        let (path, id) = (path.to_path_buf(), reader::canonical(path));
+        self.opened.retain(|p| reader::canonical(p) != id);
+        self.opened.insert(0, path);
     }
 
     pub fn open_picker(&mut self) {
@@ -184,6 +203,7 @@ impl App {
                     prev.remember_position();
                     self.history.push(prev);
                 }
+                self.note_opened();
             }
             Err(err) => self.set_message(format!("{err:#}")),
         }
@@ -247,7 +267,10 @@ impl App {
                     .selected_entry()
                     .map_or_else(|| path.display().to_string(), |e| e.rel.clone());
                 match self.settings.open(&path, name) {
-                    Ok(r) => self.reader = Some(r),
+                    Ok(r) => {
+                        self.reader = Some(r);
+                        self.note_opened();
+                    }
                     Err(err) => self.set_message(format!("{err:#}")),
                 }
                 true
@@ -275,6 +298,7 @@ impl App {
                 if let Some(r) = &mut self.reader {
                     r.set_toc_width(self.settings.reader.toc_width);
                 }
+                self.note_opened();
                 return self.reader.is_some() || self.browser.is_some();
             }
             reader::Action::OpenDocument { path, anchor } => {
@@ -300,6 +324,11 @@ impl App {
             reader::Action::Edit(path, line) => self.edit = Some((path, line)),
             reader::Action::PickTheme => self.open_picker(),
             reader::Action::ToggleImages => self.toggle_images(),
+            reader::Action::ShowHistory => {
+                if let Some(r) = &mut self.reader {
+                    r.show_history(self.opened.clone());
+                }
+            }
             reader::Action::Copy(text) => {
                 // OSC 52 asks the terminal to set the clipboard, which also
                 // works over ssh. Terminals without support ignore it.

@@ -38,6 +38,12 @@ fn cjk_30() {
     snapshot("cjk", 30);
 }
 
+// Printed output can't open a details block, so every one shows open.
+#[test]
+fn details_60() {
+    snapshot("details", 60);
+}
+
 #[test]
 fn code_ranges_cover_code_lines() {
     let src = "text\n\n```sh\na\nb\n```\n\nmore\n\n```\nc\n```\n";

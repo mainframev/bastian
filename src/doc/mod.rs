@@ -94,7 +94,8 @@ pub fn visit<'a>(blocks: &'a [Block], f: &mut impl FnMut(&'a Block)) {
         match b {
             Block::Quote(inner)
             | Block::Callout { blocks: inner, .. }
-            | Block::Footnote { blocks: inner, .. } => visit(inner, f),
+            | Block::Footnote { blocks: inner, .. }
+            | Block::Details { blocks: inner, .. } => visit(inner, f),
             Block::List { items, .. } => items.iter().for_each(|i| visit(i, f)),
             _ => {}
         }
@@ -159,6 +160,16 @@ pub enum Block {
     Image {
         alt: String,
         url: String,
+    },
+    /// An HTML `<details>` disclosure: the summary line, with `blocks`
+    /// shown when it's open.
+    Details {
+        /// Index among the document's details blocks, in display order.
+        id: usize,
+        /// Open to begin with (`<details open>`).
+        open: bool,
+        summary: Vec<Inline>,
+        blocks: Vec<Block>,
     },
 }
 
@@ -325,26 +336,38 @@ impl Footnotes {
             });
             lines.push(line);
         }
-        // Code in notes was numbered where it was defined; ids follow the
-        // order blocks are shown in.
-        renumber_code(blocks, &mut 0);
+        // Code and details in notes were numbered where they were defined;
+        // ids follow the order blocks are shown in.
+        renumber(blocks, &mut Ids::default());
     }
 }
 
-/// Number code blocks in document order, as `visit` walks them.
-fn renumber_code(blocks: &mut [Block], next: &mut usize) {
+/// Next code block and details ids while renumbering.
+#[derive(Default)]
+struct Ids {
+    code: usize,
+    details: usize,
+}
+
+/// Number code and details blocks in document order, as `visit` walks them.
+fn renumber(blocks: &mut [Block], next: &mut Ids) {
     for b in blocks {
         match b {
             Block::Code(c) => {
-                c.id = *next;
-                *next += 1;
+                c.id = next.code;
+                next.code += 1;
+            }
+            Block::Details { id, blocks, .. } => {
+                *id = next.details;
+                next.details += 1;
+                renumber(blocks, next);
             }
             Block::Quote(inner)
             | Block::Callout { blocks: inner, .. }
-            | Block::Footnote { blocks: inner, .. } => renumber_code(inner, next),
+            | Block::Footnote { blocks: inner, .. } => renumber(inner, next),
             Block::List { items, .. } => {
                 for item in items {
-                    renumber_code(item, next);
+                    renumber(item, next);
                 }
             }
             _ => {}

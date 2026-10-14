@@ -82,9 +82,10 @@ pub(super) fn draw_toc(frame: &mut Frame, r: &Reader, area: Rect) {
                         Style::default().fg(t.muted)
                     },
                 ),
-                // Headings above the numbered level (a title) start flush
-                // left; deeper ones indent under the text of their section.
-                None if e.depth < numbered => Span::raw(""),
+                // Headings above the numbered level (a title, or a book
+                // and its part) indent by depth from flush left; deeper
+                // ones indent under the text of their section.
+                None if e.depth < numbered => Span::raw(" ".repeat(2 * e.depth)),
                 None => Span::raw(" ".repeat(NUMBER_W + 2 * (e.depth - numbered))),
             };
             let room = width.saturating_sub(lead.width());
@@ -95,4 +96,45 @@ pub(super) fn draw_toc(frame: &mut Frame, r: &Reader, area: Rect) {
         })
         .collect();
     frame.render_widget(Paragraph::new(lines), list);
+}
+
+#[cfg(test)]
+mod tests {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    use crate::doc::parse;
+    use crate::reader::{Options, Reader, Source};
+
+    /// The pane's entry rows for `src`, without the border or status bar.
+    fn pane(src: &str) -> Vec<String> {
+        let mut r = Reader::new(Source::in_memory("t.md", parse(src)), &Options::default());
+        let mut term = Terminal::new(TestBackend::new(80, 12)).unwrap();
+        term.draw(|f| super::super::draw(f, &mut r)).unwrap();
+        r.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE));
+        term.draw(|f| super::super::draw(f, &mut r)).unwrap();
+        let width = r.fit_toc(80);
+        let buf = term.backend().buffer();
+        (2..11)
+            .map(|y| {
+                let row: String = (0..width).map(|x| buf[(x, y)].symbol()).collect();
+                row.trim_end_matches([' ', '│']).to_string()
+            })
+            .filter(|row| !row.is_empty())
+            .collect()
+    }
+
+    #[test]
+    fn headings_above_the_numbered_level_indent_by_depth() {
+        assert_eq!(
+            pane("# Book\n\n## Part\n\n### One\n\n### Two\n"),
+            [" Book", "   Part", " 01 One", " 02 Two"]
+        );
+        // A lone title stays flush left.
+        assert_eq!(
+            pane("# Title\n\n## One\n\n## Two\n"),
+            [" Title", " 01 One", " 02 Two"]
+        );
+    }
 }

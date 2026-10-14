@@ -478,6 +478,47 @@ fn path_popup_wraps_long_paths() {
     assert!(screen.contains("esc close"), "{screen}");
 }
 
+/// The screen after drawing `r` on a `w`×`h` terminal, row by row.
+fn screen_of(r: &mut Reader, w: u16, h: u16) -> String {
+    use bastian::ui::reader::draw;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+    terminal.draw(|f| draw(f, r)).unwrap();
+    let buf = terminal.backend().buffer();
+    (0..h)
+        .map(|y| (0..w).map(|x| buf[(x, y)].symbol()).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn path_popup_elides_paths_too_long_for_the_screen() {
+    let dir = tempfile::tempdir().unwrap();
+    let deep = dir.path().join("a".repeat(70)).join("b".repeat(70));
+    std::fs::create_dir_all(&deep).unwrap();
+    let path = deep.join("end.md");
+    std::fs::write(&path, "text\n").unwrap();
+    let opened = bastian::open::open(&path).unwrap();
+    let mut r = Reader::new(Source::file("end.md".into(), opened), &Options::default());
+    key(&mut r, KeyCode::Char('p'));
+
+    let screen = screen_of(&mut r, 40, 12);
+    assert!(
+        screen.contains("Relative:") && screen.contains("Absolute:"),
+        "{screen}"
+    );
+    assert!(screen.contains('…'), "{screen}");
+    // The start and the file name of the absolute path stay in view.
+    let absolute = std::fs::canonicalize(&path).unwrap().display().to_string();
+    let shown: String = screen.chars().filter(|c| !"│ \n".contains(*c)).collect();
+    assert!(shown.contains(&absolute[..10]), "{screen}");
+    assert!(shown.contains("bbbb/end.md"), "{screen}");
+    // So do the keys, and the box keeps its bottom border.
+    assert!(screen.contains("esc close"), "{screen}");
+    assert!(screen.contains('┘'), "{screen}");
+}
+
 #[test]
 fn hash_toggles_line_numbers() {
     let mut r = reader("text\n");

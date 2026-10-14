@@ -19,7 +19,7 @@ contents, search and live reload. It also reads single documents from a
 file, stdin, a URL or a GitHub/GitLab repository, and can run a runbook's
 code blocks in place.
 
-![Browsing, filtering, searching and the outline in bastian](demo/usage.gif)
+![Browsing, filtering, searching and the table of contents in bastian](demo/usage.gif)
 
 ## Install
 

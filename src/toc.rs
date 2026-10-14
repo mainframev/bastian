@@ -28,7 +28,8 @@ pub struct Entry {
 
 /// The document's headings in order. A heading nests under the closest
 /// one before it of a lower level. The outermost level with more than one
-/// heading is numbered, so a lone title doesn't take the only number.
+/// heading is numbered, so a lone title doesn't take the only number; with
+/// no such level, as in a document of one heading, nothing is.
 pub fn entries(doc: &Document, rendered: &Rendered) -> Vec<Entry> {
     let mut entries = Vec::new();
     // Levels of the headings the next one may nest under.
@@ -52,9 +53,11 @@ pub fn entries(doc: &Document, rendered: &Rendered) -> Vec<Entry> {
         open.push(*level);
     }
     let max_depth = entries.iter().map(|e| e.depth).max().unwrap_or(0);
-    let numbered = (0..=max_depth)
-        .find(|&d| entries.iter().filter(|e| e.depth == d).count() > 1)
-        .unwrap_or(0);
+    let Some(numbered) =
+        (0..=max_depth).find(|&d| entries.iter().filter(|e| e.depth == d).count() > 1)
+    else {
+        return entries;
+    };
     let mut n = 0;
     for e in entries.iter_mut().filter(|e| e.depth == numbered) {
         n += 1;
@@ -136,8 +139,12 @@ mod tests {
                 ("Two", 1, Some(2)),
             ]
         );
-        // A single heading is still numbered.
-        assert_eq!(shape(&toc("## Only\n").0), [("Only", 0, Some(1))]);
+        // With no level of more than one heading, nothing is numbered.
+        assert_eq!(shape(&toc("## Only\n").0), [("Only", 0, None)]);
+        assert_eq!(
+            shape(&toc("# Book\n\n## Part\n").0),
+            [("Book", 0, None), ("Part", 1, None)]
+        );
     }
 
     #[test]

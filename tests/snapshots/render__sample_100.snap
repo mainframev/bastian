@@ -7,7 +7,8 @@ expression: to_plain(&rendered.lines)
 A paragraph with bold, italic, struck, inline code and a link. It keeps going long enough that the
 renderer has to wrap it across more than one line at narrow widths.
 
-## Lists
+Lists
+─────
 
 • first item
 • second item with a much longer description that should wrap neatly under its own bullet marker
@@ -23,7 +24,8 @@ renderer has to wrap it across more than one line at narrow widths.
 │
 │ • and a list inside
 
-## Code
+Code
+────
 
 ┌─ rust ───────────────────────────────────────────────────────────────────────────────────────────┐
 │ fn main() {                                                                                      │

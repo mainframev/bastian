@@ -88,6 +88,11 @@ for one that suits both) and every color:
 - `[ui]` colors the document: `text`, `muted`, `subtle`, `surface`, `accent`,
   `h1_fg`, `h1_bg`, `heading`, `link`, `code`, `match_bg`, `current_bg`,
   `err`, `ok`, `warn`.
+- `[ui]` may also set these; each one left out takes the color in brackets,
+  so older themes keep working:
+  - `heading_2`, `heading_3`, `heading_4` color headings of that level, and
+    `heading_5` levels 5 and 6 (`heading`).
+  - `heading_underline` colors the rule under level-2 headings (`muted`).
 - `[syntax]` colors code blocks: `comment`, `keyword`, `string`, `number`,
   `constant`, `function`, `type`, `operator`, `punctuation`, `tag`,
   `attribute`, `inserted`, `deleted`.

@@ -238,6 +238,46 @@ mod tests {
         assert_eq!(build(&file(&src), "t").unwrap().accent, Color::White);
     }
 
+    #[test]
+    fn heading_colors_fall_back_to_heading() {
+        let src = "appearance = \"dark\"\n[ui]\n".to_string()
+            + &build::UI_KEYS
+                .iter()
+                .map(|k| format!("{k} = \"#101010\"\n"))
+                .collect::<String>()
+            + "heading = \"#202020\"\nmuted = \"#303030\"\n[syntax]\n"
+            + &build::SYNTAX_KEYS
+                .iter()
+                .map(|k| format!("{k} = \"#101010\"\n"))
+                .collect::<String>();
+        // TOML rejects the repeated keys, so drop the first `heading` and `muted`.
+        let src =
+            src.replacen("heading = \"#101010\"\n", "", 1)
+                .replacen("muted = \"#101010\"\n", "", 1);
+        let t = build(&file(&src), "t").unwrap();
+        let heading = Color::Rgb(0x20, 0x20, 0x20);
+        for level in 2..=6 {
+            assert_eq!(t.heading_color(level), heading, "level {level}");
+        }
+        assert_eq!(t.heading_underline, Color::Rgb(0x30, 0x30, 0x30));
+
+        let src = src.replace(
+            "[syntax]",
+            "heading_3 = \"red\"\nheading_5 = \"#505050\"\nheading_underline = \"default\"\n[syntax]",
+        );
+        let t = build(&file(&src), "t").unwrap();
+        assert_eq!(t.heading_color(2), heading);
+        assert_eq!(t.heading_color(3), Color::Red);
+        assert_eq!(t.heading_color(4), heading);
+        assert_eq!(t.heading_color(5), Color::Rgb(0x50, 0x50, 0x50));
+        assert_eq!(t.heading_color(6), Color::Rgb(0x50, 0x50, 0x50));
+        assert_eq!(t.heading_underline, Color::Reset);
+
+        let bad = src.replace("heading_3 = \"red\"", "heading_3 = \"nope\"");
+        let err = build(&file(&bad), "t").unwrap_err().to_string();
+        assert!(err.contains("`ui.heading_3` = \"nope\""), "{err}");
+    }
+
     fn theme_dir(files: &[(&str, &str)]) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         for (name, src) in files {

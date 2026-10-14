@@ -196,7 +196,10 @@ impl App {
                 MouseEventKind::ScrollDown => 1,
                 MouseEventKind::ScrollUp => -1,
                 MouseEventKind::Down(MouseButton::Left) => {
-                    if let Some(r) = self.reader.as_mut().filter(|_| self.picker.is_none()) {
+                    if let Some((p, _)) = &mut self.picker {
+                        p.on_click(m.column, m.row);
+                        self.picker_width = p.width;
+                    } else if let Some(r) = &mut self.reader {
                         r.on_click(m.column, m.row);
                         self.settings.reader.toc_width = r.toc_width();
                     }

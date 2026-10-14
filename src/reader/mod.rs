@@ -54,6 +54,108 @@ pub struct LinkPicker {
     pub selected: usize,
 }
 
+/// The document a reader shows and where it came from. The origin decides
+/// how links and images resolve, whether the file is watched and can be
+/// edited, whether runs ask first, and whether the reading position is
+/// remembered.
+pub struct Source {
+    /// Shown in the status bar.
+    pub name: String,
+    pub doc: Document,
+    /// The source text, for `c`; empty when unknown.
+    pub text: String,
+    /// Directory block `cwd`s and relative links resolve from.
+    pub base_dir: PathBuf,
+    /// The file it was read from: watched for changes, editable, and its
+    /// reading position remembered.
+    pub file: Option<PathBuf>,
+    /// Fetched over HTTP: links and images resolve against this URL, and
+    /// every run asks first, whatever `Options::assume_yes` says.
+    pub remote_base: Option<url::Url>,
+}
+
+impl Source {
+    /// A document from nowhere in particular: stdin, the theme preview,
+    /// tests. Relative links resolve from the current directory.
+    pub fn in_memory(name: impl Into<String>, doc: Document) -> Self {
+        Self {
+            name: name.into(),
+            doc,
+            text: String::new(),
+            base_dir: PathBuf::from("."),
+            file: None,
+            remote_base: None,
+        }
+    }
+
+    /// A document read from a file.
+    pub fn file(name: String, opened: crate::open::Opened) -> Self {
+        Self {
+            name,
+            doc: opened.doc,
+            text: opened.text,
+            base_dir: opened.base_dir,
+            file: Some(opened.path),
+            remote_base: None,
+        }
+    }
+
+    /// A document fetched over HTTP. Its code blocks run in the current
+    /// directory and it has no file to watch or edit.
+    pub fn remote(doc: crate::remote::RemoteDoc) -> Self {
+        let parsed = doc.parse();
+        Self {
+            name: doc.name,
+            doc: parsed,
+            text: doc.text,
+            base_dir: PathBuf::from("."),
+            file: None,
+            remote_base: Some(doc.base),
+        }
+    }
+}
+
+/// Settings every reader shares. `app::Settings` holds one; the theme
+/// picker and `i` change it, and `set_theme`/`set_images` push those
+/// changes into the readers already open.
+#[derive(Clone)]
+pub struct Options {
+    pub theme: Theme,
+    pub max_width: u16,
+    /// Run blocks without asking, except those marked `confirm`.
+    pub assume_yes: bool,
+    pub interpreters: Interpreters,
+    /// Draw a gutter of line numbers. Code files always do.
+    pub line_numbers: bool,
+    /// Image size and tab width settings.
+    pub render: render::Options,
+    /// Make links clickable terminal hyperlinks.
+    pub hyperlinks: bool,
+    /// Show a scrollbar when the document overflows.
+    pub scrollbar: bool,
+    /// How pictures are drawn; `None` leaves images as their alt text.
+    pub images: Option<crate::images::Support>,
+    /// Where reading positions are remembered; `None` doesn't.
+    pub positions: Option<PathBuf>,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            theme: Theme::dark(),
+            max_width: 80,
+            assume_yes: false,
+            interpreters: Interpreters::default(),
+            line_numbers: false,
+            render: render::Options::default(),
+            hyperlinks: true,
+            scrollbar: true,
+            images: None,
+            positions: None,
+        }
+    }
+}
+
 /// State of the document reader view.
 pub struct Reader {
     pub name: String,
@@ -140,13 +242,28 @@ pub struct Reader {
 }
 
 impl Reader {
-    pub fn new(name: String, doc: Document, theme: Theme, max_width: u16) -> Self {
+    pub fn new(source: Source, opts: &Options) -> Self {
+        let Source {
+            name,
+            doc,
+            text,
+            base_dir,
+            file,
+            remote_base,
+        } = source;
         let codes = collect_code(&doc.blocks);
+        let code_file = doc.code_file;
+        // Only files are remembered, and never where a source file was.
+        let positions = opts.positions.as_ref().filter(|_| !code_file);
+        let restore = match (&file, positions) {
+            (Some(path), Some(store)) => crate::positions::load(store, path),
+            _ => None,
+        };
         Self {
             name,
             doc,
-            theme,
-            max_width,
+            theme: opts.theme.clone(),
+            max_width: opts.max_width,
             rendered: Rendered::default(),
             scroll: 0,
             search: None,
@@ -158,18 +275,20 @@ impl Reader {
             confirm: None,
             confirm_open: None,
             message: None,
-            base_dir: PathBuf::from("."),
-            assume_yes: false,
+            base_dir,
+            // Untrusted source: every run asks first, even with `--yes`.
+            assume_yes: opts.assume_yes && remote_base.is_none(),
             link_picker: None,
             outline: None,
             help: false,
-            line_numbers: false,
-            source: None,
-            text: String::new(),
-            remote_base: None,
-            modified: None,
+            // Source files always show their line numbers.
+            line_numbers: opts.line_numbers || code_file,
+            modified: file.as_deref().and_then(reload::mtime),
+            source: file,
+            text,
+            remote_base,
             last_check: Instant::now(),
-            interpreters: Interpreters::default(),
+            interpreters: opts.interpreters.clone(),
             codes,
             runner: Runner::default(),
             queue: VecDeque::new(),
@@ -177,16 +296,16 @@ impl Reader {
             detached: HashSet::new(),
             follow: None,
             dirty: false,
-            images: Images::default(),
+            images: Images::new(opts.images.clone()),
             images_requested: false,
             highlights: Highlights::default(),
             toggled_details: HashSet::new(),
             details_focus: None,
-            render_opts: render::Options::default(),
-            hyperlinks: true,
-            scrollbar: true,
-            positions: None,
-            restore: None,
+            render_opts: opts.render,
+            hyperlinks: opts.hyperlinks,
+            scrollbar: opts.scrollbar,
+            positions: positions.cloned(),
+            restore,
             restored_at: None,
             pending_anchor: None,
             width: 0,

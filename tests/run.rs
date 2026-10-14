@@ -3,13 +3,15 @@ use std::time::{Duration, Instant};
 
 use bastian::doc::parse;
 use bastian::exec::Status;
-use bastian::reader::{Match, Reader};
-use bastian::render::theme::Theme;
+use bastian::reader::{Match, Options, Reader, Source};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 fn reader(src: &str) -> Reader {
-    let mut r = Reader::new("t.md".into(), parse(src), Theme::dark(), 80);
-    r.base_dir = std::env::temp_dir();
+    let source = Source {
+        base_dir: std::env::temp_dir(),
+        ..Source::in_memory("t.md", parse(src))
+    };
+    let mut r = Reader::new(source, &Options::default());
     r.layout(80, 40);
     r
 }
@@ -157,7 +159,13 @@ fn missing_interpreter_is_an_error_status() {
 #[test]
 fn backtab_from_bottom_focuses_last_visible_block() {
     let src = std::fs::read_to_string("tests/fixtures/runbook.md").unwrap();
-    let mut r = Reader::new("t.md".into(), parse(&src), Theme::dark(), 76);
+    let mut r = Reader::new(
+        Source::in_memory("t.md", parse(&src)),
+        &Options {
+            max_width: 76,
+            ..Options::default()
+        },
+    );
     r.layout(76, 19);
     key(&mut r, KeyCode::Char('G'));
     r.layout(76, 19);
@@ -174,9 +182,16 @@ fn backtab_from_bottom_focuses_last_visible_block() {
 #[test]
 fn view_follows_output_of_focused_run() {
     let src = std::fs::read_to_string("tests/fixtures/runbook.md").unwrap();
-    let mut r = Reader::new("t.md".into(), parse(&src), Theme::dark(), 76);
-    r.base_dir = std::env::temp_dir();
-    r.assume_yes = true;
+    let source = Source {
+        base_dir: std::env::temp_dir(),
+        ..Source::in_memory("t.md", parse(&src))
+    };
+    let opts = Options {
+        max_width: 76,
+        assume_yes: true,
+        ..Options::default()
+    };
+    let mut r = Reader::new(source, &opts);
     r.layout(76, 19);
     key(&mut r, KeyCode::Char('G'));
     r.layout(76, 19);

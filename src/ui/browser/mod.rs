@@ -13,6 +13,7 @@ use super::logo;
 use super::status;
 use crate::browser::Browser;
 use crate::config::{ListLayout, Selector};
+use crate::picker::ThemePicker;
 use crate::render::theme::Theme;
 use crate::text::shorten_left;
 use rows::{card_lines, compact_line, page_indicator, spinner};
@@ -62,13 +63,28 @@ pub struct Look<'a> {
     pub scrollbar: bool,
 }
 
-pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, look: Look) {
+/// The file list, with the theme picker on the right of it when open.
+pub fn draw(
+    frame: &mut Frame,
+    b: &mut Browser,
+    t: &Theme,
+    look: Look,
+    mut picker: Option<&mut ThemePicker>,
+) {
     let show_logo = look.logo;
+    // The theme picker, when open, takes the right of everything but the
+    // status bar, as in the reader, and the list narrows beside it.
+    let [screen, status] =
+        Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
+    let side = picker.as_deref_mut().map_or(0, |p| p.fit(screen.width));
+    let docked = if side < screen.width { side } else { 0 };
+    let [main, _] =
+        Layout::horizontal([Constraint::Min(1), Constraint::Length(docked)]).areas(screen);
     // Layout: the logo (or the `Find:` line while filtering; just that
     // line's row without the logo), the document count, then the list.
     // The page indicator goes under the list (each entry already ends with
     // a blank row) with a blank row between it and the status bar.
-    let [_, top, _, count_row, _, list, pager_row, _, status] = Layout::vertical([
+    let [_, top, _, count_row, _, list, pager_row, _] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(if show_logo { logo::HEIGHT } else { 1 }),
         Constraint::Length(1),
@@ -77,9 +93,8 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, look: Look) {
         Constraint::Min(1),
         Constraint::Length(1),
         Constraint::Length(1),
-        Constraint::Length(1),
     ])
-    .areas(frame.area());
+    .areas(main);
 
     let finding = b.prompt.is_some() || !b.filter.is_empty();
     if finding {
@@ -192,7 +207,9 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, look: Look) {
         status::scrollbar(frame, t, list, b.visible.len(), b.page_len(), b.offset());
     }
 
-    let idle = if b.filter.is_empty() {
+    let idle = if picker.is_some() {
+        super::picker::HINT
+    } else if b.filter.is_empty() {
         "enter open · / filter · e edit · ? more"
     } else {
         "/ edit filter · esc clear"
@@ -205,6 +222,14 @@ pub fn draw(frame: &mut Frame, b: &mut Browser, t: &Theme, look: Look) {
     };
     status::draw(frame, status, t, left, &right);
 
+    if let Some(p) = &picker {
+        let area = Rect {
+            x: screen.right() - side,
+            width: side,
+            ..screen
+        };
+        super::picker::draw(frame, t, p, area);
+    }
     if b.help.open {
         status::help(frame, t, HELP, &mut b.help.scroll);
     }
@@ -229,6 +254,16 @@ mod tests {
 
     /// Like `screen`, with any look, keeping the cells' styles.
     fn styled_screen(files: usize, look: Look, h: u16) -> ratatui::buffer::Buffer {
+        styled_screen_with(files, look, h, None)
+    }
+
+    /// Like `styled_screen`, with the theme picker open or not.
+    fn styled_screen_with(
+        files: usize,
+        look: Look,
+        h: u16,
+        picker: Option<&mut ThemePicker>,
+    ) -> ratatui::buffer::Buffer {
         use ratatui::{Terminal, backend::TestBackend};
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join("docs")).unwrap();
@@ -243,7 +278,9 @@ mod tests {
         crate::browser::tests::wait_for_scan(&mut b);
         let mut terminal = Terminal::new(TestBackend::new(50, h)).unwrap();
         let t = Theme::dark();
-        terminal.draw(|f| draw(f, &mut b, &t, look)).unwrap();
+        terminal
+            .draw(|f| draw(f, &mut b, &t, look, picker))
+            .unwrap();
         terminal.backend().buffer().clone()
     }
 
@@ -413,5 +450,25 @@ mod tests {
             "{text}"
         );
         assert!(!text.contains(" 20"), "no year anywhere:\n{text}");
+    }
+
+    #[test]
+    fn theme_picker_narrows_the_list_beside_it() {
+        let mut p = ThemePicker::new(None, "nord", crate::picker::DEFAULT_WIDTH);
+        let look = look(Selector::Bar, ListLayout::Cards);
+        let rows = rows(&styled_screen_with(0, look, 20, Some(&mut p)));
+        let text = rows.join("\n");
+        // Half of the 50 columns, above the status bar.
+        let pane = |r: &String| r.chars().skip(25).collect::<String>();
+        assert!(pane(&rows[0]).starts_with("│ Themes"), "{text}");
+        assert!(
+            rows[..19].iter().all(|r| pane(r).starts_with('│')),
+            "{text}"
+        );
+        assert!(rows[19].contains("enter use"), "{text}");
+        // The list goes on left of it.
+        let guide = row_of(&rows, "Guide");
+        assert!(rows[guide + 1].contains("docs/guide.md"), "{text}");
+        assert!(rows[guide].find("Guide") < rows[guide].find('│'), "{text}");
     }
 }

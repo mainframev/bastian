@@ -42,8 +42,9 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<Option<String
         }
         if std::mem::take(&mut redraw) {
             terminal.draw(|f| {
+                let picker = app.picker.as_mut().map(|(p, _)| p);
                 if let Some(r) = &mut app.reader {
-                    ui::reader::draw(f, r);
+                    ui::reader::draw_with(f, r, picker);
                 } else if let Some(b) = &mut app.browser {
                     let s = &app.settings;
                     let look = ui::browser::Look {
@@ -53,10 +54,7 @@ pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<Option<String
                         selector: s.selector,
                         layout: s.list_layout,
                     };
-                    ui::browser::draw(f, b, &s.reader.theme, look);
-                }
-                if let Some((p, _)) = &app.picker {
-                    ui::picker::draw(f, &app.settings.reader.theme, p);
+                    ui::browser::draw(f, b, &s.reader.theme, look, picker);
                 }
             })?;
         }

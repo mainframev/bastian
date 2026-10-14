@@ -1398,6 +1398,39 @@ fn toc_pane_keeps_the_same_source_at_the_top() {
 }
 
 #[test]
+fn focused_code_block_frame_follows_the_toc_pane() {
+    use bastian::ui::reader::{MARGIN, draw};
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let mut r = Reader::new(
+        Source::in_memory("t.md", parse("# A\n\n```sh\necho hi\n```\n")),
+        &Options::default(),
+    );
+    let mut terminal = Terminal::new(TestBackend::new(80, 12)).unwrap();
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    key(&mut r, KeyCode::Char('t'));
+    key(&mut r, KeyCode::Tab);
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let pane = r.fit_toc(80);
+    assert!(pane > 0);
+
+    let buf = terminal.backend().buffer();
+    let block = &r.rendered().code_blocks[0];
+    let cols = block.frame.clone().unwrap();
+    let theme = Theme::dark();
+    // Below the blank top row, right of the pane.
+    let y = block.lines.start as u16 + 1;
+    let x = |col: usize| pane + MARGIN + col as u16;
+    assert_eq!(buf[(x(cols.start), y)].symbol(), "┌");
+    for col in cols.clone() {
+        assert_eq!(buf[(x(col), y)].fg, theme.accent, "{col}");
+    }
+    assert_eq!(buf[(x(cols.end - 1), y)].symbol(), "┐");
+    // Nothing left of the frame is recolored.
+    assert_ne!(buf[(x(cols.start) - 1, y)].fg, theme.accent);
+}
+
+#[test]
 fn hyperlinks_and_scrollbar_can_be_turned_off() {
     use bastian::ui::reader::draw;
     use ratatui::{Terminal, backend::TestBackend};

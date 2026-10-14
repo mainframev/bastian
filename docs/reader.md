@@ -45,7 +45,8 @@ its note.
 | `q`                         | quit                                                         |
 
 `--mouse` (or `mouse = true`) also scrolls with the mouse wheel, and a click
-on the `<` or `>` in the table of contents' header resizes it. It captures
+on the `<` or `>` in the header of the table of contents or the theme picker
+resizes it. It captures
 the mouse, so selecting text in the terminal then needs a modifier key (often
 shift or option).
 
@@ -72,6 +73,10 @@ with the pane open or not, which reaches every heading in longer documents.
 half the screen; with `--mouse`, clicking the `<` or `>` in its header does
 the same. The width lasts until bastian quits. Screens narrower than 40
 columns leave the pane out.
+
+The theme picker (`T`) opens as a pane on the right, and the document
+re-wraps between the two. When the screen is too narrow for both, the table
+of contents is hidden until the picker closes; see [themes](themes.md).
 
 `t` replaces the outline that `O` opened in earlier versions.
 

@@ -2,11 +2,10 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
+use super::Theme;
 use super::file::user_file;
 use super::{Appearance, builtin_names, canonical, load};
-use crate::config::Resolved;
 use crate::paths;
-use crate::render::theme::Theme;
 
 /// One row of `bastian themes`.
 pub struct Listing {
@@ -63,7 +62,9 @@ pub fn list(dir: Option<&Path>) -> Vec<Listing> {
 
 /// `bastian themes`: one row per theme with its appearance, where it comes
 /// from, a color swatch when `color`, and which settings point at it.
-pub fn format_list(r: &Resolved, dir: Option<&Path>, color: bool) -> String {
+/// `roles` pairs each theme setting's name with the theme it names, e.g.
+/// `("dark_theme", "nord")`.
+pub fn format_list(roles: &[(&str, &str)], dir: Option<&Path>, color: bool) -> String {
     use ratatui::style::Color;
     let rows = list(dir);
     let w = rows.iter().map(|l| l.name.len()).max().unwrap_or(0);
@@ -73,15 +74,11 @@ pub fn format_list(r: &Resolved, dir: Option<&Path>, color: bool) -> String {
     };
     let mut out = String::new();
     for l in rows {
-        let roles: Vec<&str> = [
-            ("theme", &r.theme.value),
-            ("dark_theme", &r.dark_theme.value),
-            ("light_theme", &r.light_theme.value),
-        ]
-        .into_iter()
-        .filter(|(_, v)| canonical(v, dir) == l.name)
-        .map(|(k, _)| k)
-        .collect();
+        let roles: Vec<&str> = roles
+            .iter()
+            .filter(|(_, v)| canonical(v, dir) == l.name)
+            .map(|(k, _)| *k)
+            .collect();
         let origin = match (&l.path, l.overrides) {
             (Some(p), true) => format!("{} (overrides built-in)", paths::tilde(p)),
             (Some(p), false) => paths::tilde(p),

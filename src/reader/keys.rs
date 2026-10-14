@@ -2,6 +2,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use super::{Action, LinkPicker, Reader};
 use crate::links;
+use crate::nav;
 use crate::outline::{self, Outline};
 use crate::prompt::{self, Edited, Prompt};
 
@@ -43,7 +44,7 @@ impl Reader {
         }
 
         let page = self.height.max(1) as isize;
-        let ctrl = prompt::ctrl(&key);
+        let ctrl = nav::ctrl(&key);
         match key.code {
             KeyCode::Char('q') => return Action::Quit,
             KeyCode::Esc if self.link_focus.is_some() => self.link_focus = None,

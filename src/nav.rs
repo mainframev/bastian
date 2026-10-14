@@ -1,8 +1,11 @@
 //! Cursor movement shared by the selectable lists.
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::prompt;
+/// Whether ctrl is held.
+pub fn ctrl(key: &KeyEvent) -> bool {
+    key.modifiers.contains(KeyModifiers::CONTROL)
+}
 
 /// A move of a list's selection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,7 +18,7 @@ pub enum Motion {
 
 /// The keys every list understands: j/k ↓/↑ (ctrl-n/p too), g/G Home/End.
 pub fn list_motion(key: &KeyEvent) -> Option<Motion> {
-    let ctrl = prompt::ctrl(key);
+    let ctrl = ctrl(key);
     Some(match key.code {
         KeyCode::Char('j') | KeyCode::Down => Motion::Down,
         KeyCode::Char('n') if ctrl => Motion::Down,

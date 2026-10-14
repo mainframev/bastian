@@ -47,6 +47,7 @@ impl Reader {
         match key.code {
             KeyCode::Char('q') => return Action::Quit,
             KeyCode::Esc if self.link_focus.is_some() => self.link_focus = None,
+            KeyCode::Esc if self.details_focus.is_some() => self.details_focus = None,
             KeyCode::Esc if self.search.is_some() => self.search = None,
             KeyCode::Esc if self.focus.is_some() => self.focus = None,
             KeyCode::Esc | KeyCode::Char('h') | KeyCode::Left => return Action::Back,

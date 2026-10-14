@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::time::{Instant, SystemTime};
 
-use crate::doc::{self, Block, CodeBlock, Document};
+use crate::doc::{CodeBlock, Document};
 use crate::exec::{BlockRun, Interpreters, Runner};
 use crate::images::{Images, Source as ImageSource};
 use crate::links::Link;
@@ -192,13 +192,7 @@ impl Reader {
         if !self.images.enabled() {
             return;
         }
-        let mut urls = Vec::new();
-        doc::visit(&self.doc.blocks, &mut |b| {
-            if let Block::Image { url, .. } = b {
-                urls.push(url.clone());
-            }
-        });
-        for url in urls {
+        for url in self.visible_images() {
             if let Some(source) = self.image_source(&url) {
                 self.images.request(&url, source);
             }

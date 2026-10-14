@@ -1430,6 +1430,153 @@ fn focused_code_block_frame_follows_the_toc_pane() {
     assert_ne!(buf[(x(cols.start) - 1, y)].fg, theme.accent);
 }
 
+/// Columns `from..to` of each row of the screen.
+fn columns(
+    t: &ratatui::Terminal<ratatui::backend::TestBackend>,
+    from: u16,
+    to: u16,
+) -> Vec<String> {
+    let buf = t.backend().buffer();
+    (0..buf.area.height)
+        .map(|y| (from..to).map(|x| buf[(x, y)].symbol()).collect())
+        .collect()
+}
+
+#[test]
+fn theme_picker_pane_sits_right_of_the_document() {
+    use bastian::picker::{self, ThemePicker};
+    use bastian::ui::reader::draw_with;
+    use ratatui::text::Line;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let src = "# Title\n\n".to_string() + &"word ".repeat(80);
+    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
+    let widest = |r: &Reader| r.rendered().lines.iter().map(Line::width).max().unwrap();
+    let mut terminal = Terminal::new(TestBackend::new(100, 12)).unwrap();
+    terminal.draw(|f| draw_with(f, &mut r, None)).unwrap();
+    assert!(widest(&r) > 70, "{}", widest(&r));
+
+    let mut p = ThemePicker::new(None, "nord", picker::DEFAULT_WIDTH);
+    terminal
+        .draw(|f| draw_with(f, &mut r, Some(&mut p)))
+        .unwrap();
+    // Re-wrapped left of the 34-column pane, within its own margins.
+    assert!(widest(&r) <= 100 - 34 - 4, "{}", widest(&r));
+    let pane = columns(&terminal, 66, 100);
+    assert!(pane[0].starts_with("│ Themes"), "{pane:#?}");
+    assert!(pane.iter().any(|r| r.starts_with("│ ✓ nord")), "{pane:#?}");
+    let doc = columns(&terminal, 0, 66);
+    assert!(doc[1].starts_with("   Title"), "{doc:#?}");
+    // Above the status bar, which keeps the whole width and the keys.
+    assert!(!pane[11].contains('│'), "{pane:#?}");
+    assert!(columns(&terminal, 0, 100)[11].contains("enter use · esc cancel"));
+}
+
+#[test]
+fn theme_picker_and_toc_share_the_screen_when_it_fits() {
+    use bastian::picker::{self, ThemePicker};
+    use bastian::ui::reader::draw_with;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let src = "# A\n\ntext\n\n# B\n\nmore\n";
+    let mut r = Reader::new(Source::in_memory("t.md", parse(src)), &Options::default());
+    let mut p = ThemePicker::new(None, "nord", picker::DEFAULT_WIDTH);
+    // Wide: the table of contents left, the picker right, the document
+    // between them.
+    let mut terminal = Terminal::new(TestBackend::new(120, 12)).unwrap();
+    terminal.draw(|f| draw_with(f, &mut r, None)).unwrap();
+    key(&mut r, KeyCode::Char('t'));
+    terminal
+        .draw(|f| draw_with(f, &mut r, Some(&mut p)))
+        .unwrap();
+    let screen = columns(&terminal, 0, 120);
+    assert!(screen[0].starts_with(" Table of Contents"), "{screen:#?}");
+    assert_eq!(screen[0].chars().nth(120 - 34), Some('│'), "{screen:#?}");
+    assert!(screen[1].contains("   A"), "{screen:#?}");
+
+    // At 80 columns there's no room for both: the table of contents makes
+    // way for the picker while it's open.
+    let mut terminal = Terminal::new(TestBackend::new(80, 12)).unwrap();
+    terminal
+        .draw(|f| draw_with(f, &mut r, Some(&mut p)))
+        .unwrap();
+    let screen = columns(&terminal, 0, 80);
+    assert!(
+        !screen.join("").contains("Table of Contents"),
+        "{screen:#?}"
+    );
+    assert!(screen[1].starts_with("   A"), "{screen:#?}");
+    assert!(screen[0].contains("│ Themes"), "{screen:#?}");
+    // And it's back once the picker closes.
+    terminal.draw(|f| draw_with(f, &mut r, None)).unwrap();
+    let screen = columns(&terminal, 0, 80);
+    assert!(screen[0].starts_with(" Table of Contents"), "{screen:#?}");
+}
+
+#[test]
+fn theme_picker_covers_a_screen_too_narrow_to_share() {
+    use bastian::picker::{self, ThemePicker};
+    use bastian::ui::reader::draw_with;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let mut r = Reader::new(
+        Source::in_memory("t.md", parse("# A\n\ntext\n")),
+        &Options::default(),
+    );
+    let mut terminal = Terminal::new(TestBackend::new(30, 12)).unwrap();
+    terminal.draw(|f| draw_with(f, &mut r, None)).unwrap();
+    let lines = r.rendered().lines.len();
+    let mut p = ThemePicker::new(None, "nord", picker::DEFAULT_WIDTH);
+    terminal
+        .draw(|f| draw_with(f, &mut r, Some(&mut p)))
+        .unwrap();
+    let screen = columns(&terminal, 0, 30);
+    assert!(screen[0].starts_with("│ Themes"), "{screen:#?}");
+    assert!(
+        screen.iter().any(|r| r.starts_with("│ ✓ nord")),
+        "{screen:#?}"
+    );
+    // The document underneath isn't laid out again.
+    assert_eq!(r.rendered().lines.len(), lines);
+}
+
+#[test]
+fn theme_picker_pane_keeps_the_same_source_at_the_top() {
+    use bastian::picker::{self, ThemePicker};
+    use bastian::ui::reader::draw_with;
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let src: String = std::iter::once("# Title\n\n".to_string())
+        .chain((0..30).map(|i| format!("p{i} {}\n\n", "word ".repeat(40))))
+        .collect();
+    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
+    let mut terminal = Terminal::new(TestBackend::new(100, 12)).unwrap();
+    terminal.draw(|f| draw_with(f, &mut r, None)).unwrap();
+    let top = |r: &Reader| bastian::render::plain(&r.rendered().lines[r.scroll()]);
+    let p20 = r
+        .rendered()
+        .lines
+        .iter()
+        .position(|l| bastian::render::plain(l).trim_start().starts_with("p20 "))
+        .unwrap();
+    r.scroll_by(p20 as isize);
+
+    let mut p = ThemePicker::new(None, "nord", picker::DEFAULT_WIDTH);
+    terminal
+        .draw(|f| draw_with(f, &mut r, Some(&mut p)))
+        .unwrap();
+    assert!(top(&r).trim_start().starts_with("p20 "), "{}", top(&r));
+    // Widening the pane, and closing it, keep it too.
+    p.on_key(KeyEvent::new(KeyCode::Char('>'), KeyModifiers::NONE));
+    terminal
+        .draw(|f| draw_with(f, &mut r, Some(&mut p)))
+        .unwrap();
+    assert!(top(&r).trim_start().starts_with("p20 "), "{}", top(&r));
+    terminal.draw(|f| draw_with(f, &mut r, None)).unwrap();
+    assert!(top(&r).trim_start().starts_with("p20 "), "{}", top(&r));
+}
+
 #[test]
 fn hyperlinks_and_scrollbar_can_be_turned_off() {
     use bastian::ui::reader::draw;

@@ -125,6 +125,27 @@ fn bastian_themes_quits_once_a_theme_is_picked() {
 }
 
 #[test]
+fn theme_picker_width_carries_to_the_next_time_it_opens() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = reading(dir.path(), "nord");
+    app.reader.as_mut().unwrap().layout(80, 10);
+    press(&mut app, KeyCode::Char('t'));
+    assert!(app.reader.as_ref().unwrap().toc);
+    press(&mut app, KeyCode::Char('T'));
+    // Sized against the screen at the last draw.
+    app.picker.as_mut().unwrap().0.fit(100);
+    press(&mut app, KeyCode::Char('>'));
+    assert!(app.picker.is_some(), "resizing keeps it open");
+    // The picker has the keys: the table of contents stays as it was.
+    let toc = app.reader.as_ref().unwrap().toc_width();
+    assert_eq!(toc, crate::toc::DEFAULT_WIDTH);
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Char('T'));
+    let wider = picker::DEFAULT_WIDTH + crate::pane::STEP;
+    assert_eq!(app.picker.as_ref().unwrap().0.width, wider);
+}
+
+#[test]
 fn mouse_wheel_scrolls_the_reader() {
     let settings = settings();
     let src: String = (0..50).map(|i| format!("line {i}\n\n")).collect();
@@ -207,7 +228,7 @@ fn toc_width_carries_to_readers_opened_later() {
     r.fit_toc(100);
     press(&mut app, KeyCode::Char('t'));
     press(&mut app, KeyCode::Char('>'));
-    let wider = crate::toc::DEFAULT_WIDTH + crate::toc::STEP;
+    let wider = crate::toc::DEFAULT_WIDTH + crate::pane::STEP;
     assert_eq!(app.settings.reader.toc_width, wider);
     let next = reader_in(&app.settings, doc::parse("# B\n"), PathBuf::from("."));
     assert_eq!(next.toc_width(), wider);
@@ -221,7 +242,7 @@ fn toc_width_carries_to_readers_opened_later() {
     press(&mut app, KeyCode::Char('<'));
     press(&mut app, KeyCode::Char('<'));
     press(&mut app, KeyCode::Esc);
-    let narrower = crate::toc::DEFAULT_WIDTH - crate::toc::STEP;
+    let narrower = crate::toc::DEFAULT_WIDTH - crate::pane::STEP;
     assert_eq!(app.reader.as_ref().unwrap().toc_width(), narrower);
 }
 
@@ -232,7 +253,7 @@ fn clicking_the_toc_markers_resizes_it() {
     r.layout(80, 10);
     press(&mut app, KeyCode::Char('t'));
     let width = app.reader.as_mut().unwrap().fit_toc(100);
-    let (_, wider) = crate::toc::markers(width);
+    let (_, wider) = crate::pane::markers(width);
     let click = Event::Mouse(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: wider,
@@ -241,5 +262,23 @@ fn clicking_the_toc_markers_resizes_it() {
     });
     assert!(!run::is_ignored(&click));
     assert!(app.on_event(&click));
-    assert_eq!(app.settings.reader.toc_width, width + crate::toc::STEP);
+    assert_eq!(app.settings.reader.toc_width, width + crate::pane::STEP);
+}
+
+#[test]
+fn clicking_the_theme_picker_markers_resizes_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = reading(dir.path(), "nord");
+    press(&mut app, KeyCode::Char('T'));
+    let width = app.picker.as_mut().unwrap().0.fit(100);
+    let (_, wider) = crate::pane::markers(width);
+    let click = Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 100 - width + wider,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    });
+    assert!(app.on_event(&click));
+    assert_eq!(app.picker_width, width + crate::pane::STEP);
+    assert!(app.picker.is_some());
 }

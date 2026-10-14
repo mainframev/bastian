@@ -204,14 +204,36 @@ pub fn draw(
         status::scrollbar(frame, t, list, b.visible.len(), b.page_len(), b.offset());
     }
 
-    let idle = if picker.is_some() {
-        super::picker::HINT
-    } else if b.filter.is_empty() {
-        "enter open · / filter · e edit · ? more"
+    let hints: &[(&str, &str)] = if b.filter.is_empty() {
+        &[
+            ("j/k", "move"),
+            ("enter", "open"),
+            ("/", "filter"),
+            ("e", "edit"),
+            ("T", "theme"),
+            ("q", "quit"),
+            ("?", "help"),
+        ]
     } else {
-        "/ edit filter · esc clear"
+        &[
+            ("j/k", "move"),
+            ("enter", "open"),
+            ("/", "edit filter"),
+            ("esc", "clear"),
+        ]
     };
-    let left = status::left(b.prompt.is_some(), b.message.as_deref(), idle);
+    // The picker's keys, typing or a message take the place of the hints.
+    let left = if picker.is_some() {
+        status::left(
+            b.prompt.is_some(),
+            b.message.as_deref(),
+            super::picker::HINT,
+        )
+    } else if b.prompt.is_none() && b.message.is_none() {
+        status::Left::Hints(hints)
+    } else {
+        status::left(b.prompt.is_some(), b.message.as_deref(), "")
+    };
     let right = if b.visible.is_empty() {
         String::new()
     } else {
@@ -434,6 +456,22 @@ mod tests {
         assert!(!one.contains('━'), "{one}");
         let many = screen(20, false, 30).join("\n");
         assert!(many.contains('━'), "{many}");
+    }
+
+    #[test]
+    fn status_bar_hints_keys_and_keeps_help_when_narrow() {
+        let t = Theme::dark();
+        let buf = styled_screen(0, look(Selector::Bar, ListLayout::Cards), 30);
+        let rows = rows(&buf);
+        let bar = rows.last().unwrap();
+        // 50 columns: some hints drop, `? help` stays last.
+        assert!(bar.contains("j/k move · enter open"), "{bar}");
+        assert!(bar.contains("· ? help"), "{bar}");
+        assert!(!bar.contains("quit"), "{bar}");
+        let x = bar[..bar.find("enter").unwrap()].chars().count() as u16;
+        let y = buf.area.height - 1;
+        assert_eq!(buf[(x, y)].fg, t.accent, "keys in the accent");
+        assert_eq!(buf[(x + 6, y)].fg, t.muted, "what they do muted");
     }
 
     #[test]

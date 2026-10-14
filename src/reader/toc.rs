@@ -86,7 +86,7 @@ impl Reader {
         let popup = self
             .overlay
             .as_ref()
-            .is_some_and(|o| !matches!(o, Overlay::Prompt(_)));
+            .is_some_and(|o| !matches!(o, Overlay::Prompt(_) | Overlay::GoTo(_)));
         let width = self.fit_toc(self.screen);
         if popup || width == 0 || row != 0 {
             return false;

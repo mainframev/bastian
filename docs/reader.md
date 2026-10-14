@@ -18,6 +18,7 @@ its note.
 | `ctrl-d/u`                  | scroll half a page                                           |
 | `space/b`, `PageDown/Up`    | scroll a page                                                |
 | `g/G`, `Home/End`           | top/bottom                                                   |
+| `:`                         | go to a line: type its number, `Enter`                       |
 | `/`, `n/N`                  | search, next/previous match                                  |
 | `t`                         | show/hide the table of contents                              |
 | `J/K`                       | jump to the next/previous heading                            |
@@ -148,6 +149,10 @@ off by default as it adds about 8 MB to the binary.
 
 `#` toggles line numbers (or start with `-n`). Source files opened directly,
 such as `bastian main.rs`, always show them.
+
+`:` asks for a line number and scrolls that line to the top: the number the
+line numbers show, so a source line in source files. A number past the end goes
+to the end.
 
 ## Editing and live reload
 

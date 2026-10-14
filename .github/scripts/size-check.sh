@@ -4,7 +4,12 @@
 set -eu
 
 BIN=$1
-BUDGET=$(grep -v '^#' "$2" | tr -d '[:space:]')
+# Exactly one line besides comments and blanks: the byte count.
+ENTRIES=$(grep -v '^[[:space:]]*#' "$2" | grep -v '^[[:space:]]*$' || true)
+if [ "$(printf '%s\n' "$ENTRIES" | grep -c .)" -ne 1 ]; then
+    echo "$2 must hold exactly one byte count" >&2; exit 1
+fi
+BUDGET=$(printf '%s' "$ENTRIES" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
 case $BUDGET in
     '' | *[!0-9]*) echo "no byte count in $2" >&2; exit 1 ;;
 esac

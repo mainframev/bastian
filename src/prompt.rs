@@ -1,11 +1,6 @@
-use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
 use tui_input::Input;
 use tui_input::backend::crossterm::EventHandler;
-
-/// Whether ctrl is held.
-pub fn ctrl(key: &KeyEvent) -> bool {
-    key.modifiers.contains(KeyModifiers::CONTROL)
-}
 
 /// Single-line text input with a cursor (search and filter), backed by
 /// `tui_input`: ←/→, Home/End, ctrl-a/e, alt-b/f and word deletion work
@@ -80,6 +75,7 @@ pub fn drive(slot: &mut Option<Prompt>, key: KeyEvent) -> Option<Edited> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::crossterm::event::KeyModifiers;
 
     fn press(p: &mut Prompt, code: KeyCode, mods: KeyModifiers) -> PromptEvent {
         p.on_key(KeyEvent::new(code, mods))

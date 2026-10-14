@@ -90,7 +90,6 @@ fn walk(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::doc::parse;
     use crate::render::*;
 

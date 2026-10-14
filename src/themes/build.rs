@@ -4,8 +4,8 @@ use std::sync::Arc;
 use anyhow::{Result, anyhow, bail};
 use ratatui::style::Color;
 
+use super::Theme;
 use super::file::ThemeFile;
-use crate::render::theme::Theme;
 
 /// Keys every theme defines, by section.
 pub(super) const UI_KEYS: &[&str] = &[

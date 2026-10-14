@@ -17,7 +17,7 @@ pub fn parse_for(src: &str, path: Option<&Path>) -> Document {
         .map(str::to_ascii_lowercase);
     match ext.as_deref() {
         Some("mdx") => mdx::parse(src).unwrap_or_else(|| parse(src)),
-        Some(e) if !is_markdown_ext(e) && crate::render::known_extension(e) => code_file(src, e),
+        Some(e) if !is_markdown_ext(e) && crate::syntax::known_extension(e) => code_file(src, e),
         _ => parse(src),
     }
 }

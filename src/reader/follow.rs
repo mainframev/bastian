@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
-use super::{Action, Reader};
+use super::{Action, Overlay, Reader};
 use crate::doc::{self, Block};
 use crate::links::{self, Target};
 use crate::nav::{self, Motion};
@@ -49,7 +49,7 @@ impl Reader {
     }
 
     pub(super) fn on_link_key(&mut self, key: KeyEvent) -> Action {
-        let Some(picker) = &mut self.link_picker else {
+        let Some(Overlay::Links(picker)) = &mut self.overlay else {
             return Action::None;
         };
         let motion = match key.code {
@@ -64,10 +64,10 @@ impl Reader {
         match key.code {
             KeyCode::Enter => {
                 let url = picker.links[picker.selected].url.clone();
-                self.link_picker = None;
+                self.overlay = None;
                 return self.follow_link(&url);
             }
-            KeyCode::Esc | KeyCode::Char('q' | 'L') => self.link_picker = None,
+            KeyCode::Esc | KeyCode::Char('q' | 'L') => self.overlay = None,
             _ => {}
         }
         Action::None
@@ -115,7 +115,7 @@ impl Reader {
         if links::is_web(&target) {
             Action::OpenExternal(target)
         } else {
-            self.confirm_open = Some(target);
+            self.overlay = Some(Overlay::OpenConfirm(target));
             Action::None
         }
     }
@@ -123,11 +123,11 @@ impl Reader {
     pub(super) fn on_open_confirm_key(&mut self, key: KeyEvent) -> Action {
         match key.code {
             KeyCode::Char('y' | 'Y') | KeyCode::Enter => {
-                if let Some(target) = self.confirm_open.take() {
+                if let Some(Overlay::OpenConfirm(target)) = self.overlay.take() {
                     return Action::OpenExternal(target);
                 }
             }
-            KeyCode::Char('n' | 'N' | 'q') | KeyCode::Esc => self.confirm_open = None,
+            KeyCode::Char('n' | 'N' | 'q') | KeyCode::Esc => self.overlay = None,
             _ => {}
         }
         Action::None
@@ -333,7 +333,7 @@ mod tests {
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use crate::doc::parse;
-    use crate::reader::{Options, Reader, Source};
+    use crate::reader::{Options, Overlay, Reader, Source};
 
     fn press(r: &mut Reader, code: KeyCode, mods: KeyModifiers) {
         r.on_key(KeyEvent::new(code, mods));
@@ -345,7 +345,10 @@ mod tests {
         let mut r = Reader::new(Source::in_memory("t", parse(src)), &Options::default());
         r.layout(80, 20);
         press(&mut r, KeyCode::Char('L'), KeyModifiers::NONE);
-        let selected = |r: &Reader| r.link_picker.as_ref().unwrap().selected;
+        let selected = |r: &Reader| match &r.overlay {
+            Some(Overlay::Links(p)) => p.selected,
+            _ => panic!("no link picker"),
+        };
         press(&mut r, KeyCode::Char('G'), KeyModifiers::NONE);
         assert_eq!(selected(&r), 2);
         press(&mut r, KeyCode::Char('p'), KeyModifiers::CONTROL);

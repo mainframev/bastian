@@ -2,7 +2,7 @@ use std::path::Path;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
-use super::{Action, Reader};
+use super::{Action, Overlay, Reader};
 
 /// Where the document came from, as the `p` popup shows it.
 #[derive(Debug, PartialEq, Eq)]
@@ -48,20 +48,20 @@ impl Location {
 impl Reader {
     /// Show where the document came from.
     pub(super) fn open_location(&mut self) {
-        self.location = Some(Location::of(self));
+        self.overlay = Some(Overlay::Location(Location::of(self)));
     }
 
     /// Keys while the `p` popup is open: `R`/`A` copy, and it stays open
     /// with a message; anything else is ignored.
     pub(super) fn on_location_key(&mut self, key: KeyEvent) -> Action {
-        let Some(location) = &self.location else {
+        let Some(Overlay::Location(location)) = &self.overlay else {
             return Action::None;
         };
         let relative = match key.code {
             KeyCode::Char('R') => true,
             KeyCode::Char('A') => false,
             KeyCode::Esc | KeyCode::Char('q' | 'p') => {
-                self.location = None;
+                self.overlay = None;
                 return Action::None;
             }
             _ => return Action::None,

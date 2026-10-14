@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
-use super::Reader;
+use super::{Overlay, Reader};
 use crate::doc::{self, Block, CodeBlock};
 use crate::exec::{BlockRun, RunEvent, RunSpec, Status};
 use crate::render;
@@ -99,7 +99,7 @@ impl Reader {
         if self.assume_yes && !must_ask {
             self.start_queue(ids);
         } else {
-            self.confirm = Some(ids);
+            self.overlay = Some(Overlay::RunConfirm(ids));
         }
     }
 
@@ -186,11 +186,11 @@ impl Reader {
     pub(super) fn on_confirm_key(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Char('y' | 'Y') | KeyCode::Enter => {
-                if let Some(ids) = self.confirm.take() {
+                if let Some(Overlay::RunConfirm(ids)) = self.overlay.take() {
                     self.start_queue(ids);
                 }
             }
-            KeyCode::Char('n' | 'N' | 'q') | KeyCode::Esc => self.confirm = None,
+            KeyCode::Char('n' | 'N' | 'q') | KeyCode::Esc => self.overlay = None,
             _ => {}
         }
     }

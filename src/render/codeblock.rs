@@ -48,14 +48,23 @@ impl Renderer<'_> {
         if framed {
             lines.push(self.code_top(c, width));
         }
-        self.with_highlighted(c, |src| {
-            for src_line in src {
-                // Wrapped continuations get a dotted bar.
-                for (i, row) in hard_wrap(src_line, inner_w).into_iter().enumerate() {
-                    lines.push(pad_line(row, if i == 0 { "│" } else { "┊" }));
+        if let Some(diagram) = self.diagram(c, inner_w) {
+            let style = Style::default().fg(t.text);
+            lines.extend(
+                diagram
+                    .into_iter()
+                    .map(|l| pad_line(vec![Span::styled(l, style)], "│")),
+            );
+        } else {
+            self.with_highlighted(c, |src| {
+                for src_line in src {
+                    // Wrapped continuations get a dotted bar.
+                    for (i, row) in hard_wrap(src_line, inner_w).into_iter().enumerate() {
+                        lines.push(pad_line(row, if i == 0 { "│" } else { "┊" }));
+                    }
                 }
-            }
-        });
+            });
+        }
         if framed {
             lines.push(Line::styled(format!("└{}┘", "─".repeat(width - 2)), edge));
         }
@@ -95,6 +104,21 @@ impl Renderer<'_> {
         let label = shorten_right(&label, width - 6);
         let fill = width - 5 - label.width();
         Line::styled(format!("┌─ {label} {}┐", "─".repeat(fill)), edge)
+    }
+
+    /// `c` drawn as a diagram `width` columns wide, unless it isn't one,
+    /// can't be drawn, or the reader switched it to its source.
+    fn diagram(&self, c: &CodeBlock, width: usize) -> Option<Vec<String>> {
+        if !super::is_mermaid(c.lang.as_deref()) || self.cx.as_source.contains(&c.id) {
+            return None;
+        }
+        #[cfg(feature = "mermaid")]
+        return super::diagram::draw(&c.src, width);
+        #[cfg(not(feature = "mermaid"))]
+        {
+            let _ = width;
+            None
+        }
     }
 
     /// Call `f` with the highlighted source lines of `c`, highlighting them

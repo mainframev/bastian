@@ -265,7 +265,7 @@ const HELP: &[status::HelpSection] = &[
             ("Enter, r", "run focused block"),
             ("R", "run from here to the end"),
             ("x", "stop running blocks"),
-            ("o", "show/hide output"),
+            ("o, v", "output, diagram/source"),
             ("y", "copy focused block"),
         ],
     ),

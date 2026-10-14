@@ -234,6 +234,8 @@ pub struct Reader {
     toggled_details: HashSet<usize>,
     /// Id of the focused details block.
     pub details_focus: Option<usize>,
+    /// Diagram blocks switched to show their source.
+    as_source: HashSet<usize>,
     /// Image size and tab width settings.
     render_opts: render::Options,
     /// Make links clickable terminal hyperlinks.
@@ -321,6 +323,7 @@ impl Reader {
             images_requested: false,
             highlights: Highlights::default(),
             toggled_details: HashSet::new(),
+            as_source: HashSet::new(),
             details_focus: None,
             render_opts: opts.render,
             hyperlinks: opts.hyperlinks,
@@ -453,6 +456,7 @@ impl Reader {
                 highlights: &self.highlights,
                 images: &images,
                 toggled_details: Some(&self.toggled_details),
+                as_source: &self.as_source,
                 opts: self.render_opts,
             };
             self.rendered = render::render_with_runs(&self.doc, width, &self.theme, cx);

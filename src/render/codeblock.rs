@@ -1,33 +1,78 @@
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
+use unicode_width::UnicodeWidthStr;
 
 use super::wrap::hard_wrap;
 use super::{CodeRange, Out, Rendered, Renderer, code};
 use crate::doc::CodeBlock;
+use crate::text::shorten_right;
+
+/// Narrowest code block that gets a frame: the frame and its padding take
+/// four columns, leaving at least four for code.
+const MIN_FRAME_WIDTH: usize = 8;
 
 impl Renderer<'_> {
     pub(super) fn code(&self, c: &CodeBlock, width: usize) -> Out {
         let t = self.theme;
         let bg = Style::default().bg(t.surface);
-        let inner_w = width.saturating_sub(2).max(1);
-        // Background goes on every span, not the line, so prefixes added by
-        // enclosing lists and quotes stay unshaded.
-        let pad_line = |mut spans: Vec<Span<'static>>| {
-            spans.insert(0, Span::raw(" "));
-            let used: usize = spans.iter().map(Span::width).sum();
-            spans.push(Span::raw(" ".repeat(width.saturating_sub(used))));
-            Line::from(
-                spans
-                    .into_iter()
-                    .map(|s| {
-                        let style = bg.patch(s.style);
-                        s.style(style)
-                    })
-                    .collect::<Vec<_>>(),
-            )
+        let edge = Style::default().fg(t.muted);
+        // Too narrow for a frame: just the shaded code.
+        let framed = width >= MIN_FRAME_WIDTH;
+        let inner_w = if framed { width - 4 } else { width.max(1) };
+        // Background goes on every span inside the frame, not the line, so
+        // the frame and prefixes added by enclosing lists and quotes stay
+        // unshaded.
+        let pad_line = |mut spans: Vec<Span<'static>>, bar: &'static str| {
+            let fill = inner_w.saturating_sub(spans.iter().map(Span::width).sum());
+            if framed {
+                spans.insert(0, Span::raw(" "));
+                spans.push(Span::raw(" ".repeat(fill + 1)));
+            } else {
+                spans.push(Span::raw(" ".repeat(fill)));
+            }
+            let mut line: Vec<Span<'static>> = spans
+                .into_iter()
+                .map(|s| {
+                    let style = bg.patch(s.style);
+                    s.style(style)
+                })
+                .collect();
+            if framed {
+                line.insert(0, Span::styled(bar, edge));
+                line.push(Span::styled("│", edge));
+            }
+            Line::from(line)
         };
 
         let mut lines = Vec::new();
+        if framed {
+            lines.push(self.code_top(c, width));
+        }
+        self.with_highlighted(c, |src| {
+            for src_line in src {
+                // Wrapped continuations get a dotted bar.
+                for (i, row) in hard_wrap(src_line, inner_w).into_iter().enumerate() {
+                    lines.push(pad_line(row, if i == 0 { "│" } else { "┊" }));
+                }
+            }
+        });
+        if framed {
+            lines.push(Line::styled(format!("└{}┘", "─".repeat(width - 2)), edge));
+        }
+
+        let mut range = self.add_run_panel(c, &mut lines, width);
+        range.frame = framed.then_some(0..width);
+        Out {
+            lines,
+            codes: vec![range],
+            ..Out::default()
+        }
+    }
+
+    /// Top of a code block's frame, with its label (name, language, and
+    /// `▶` when it can run) set into the border.
+    fn code_top(&self, c: &CodeBlock, width: usize) -> Line<'static> {
+        let edge = Style::default().fg(self.theme.muted);
         let label = match (&c.attrs.name, &c.lang) {
             (Some(name), Some(lang)) => format!("{name} · {lang}"),
             (Some(name), None) => name.clone(),
@@ -42,25 +87,14 @@ impl Renderer<'_> {
         } else {
             label
         };
-        lines.push(pad_line(vec![Span::styled(
-            format!("{label:>inner_w$}"),
-            Style::default().fg(t.muted),
-        )]));
-        self.with_highlighted(c, |src| {
-            for src_line in src {
-                for row in hard_wrap(src_line, inner_w) {
-                    lines.push(pad_line(row));
-                }
-            }
-        });
-        lines.push(pad_line(Vec::new()));
-
-        let range = self.add_run_panel(c, &mut lines, width);
-        Out {
-            lines,
-            codes: vec![range],
-            ..Out::default()
+        // `┌─ label ─┐`: the corners, a rule either side and a space around
+        // the label take six columns.
+        if label.is_empty() {
+            return Line::styled(format!("┌{}┐", "─".repeat(width - 2)), edge);
         }
+        let label = shorten_right(&label, width - 6);
+        let fill = width - 5 - label.width();
+        Line::styled(format!("┌─ {label} {}┐", "─".repeat(fill)), edge)
     }
 
     /// Call `f` with the highlighted source lines of `c`, highlighting them
@@ -98,6 +132,7 @@ impl Renderer<'_> {
             id: c.id,
             lines: 0..len,
             output_end: lines.len(),
+            frame: None,
         }
     }
 

@@ -113,6 +113,10 @@ pub struct CodeRange {
     pub lines: Range<usize>,
     /// End of the run panel under the box, or `lines.end` without one.
     pub output_end: usize,
+    /// Columns the box's frame spans, after any prefixes from enclosing
+    /// lists or quotes; `None` when it has no frame (a code file, or too
+    /// narrow for one).
+    pub frame: Option<Range<usize>>,
 }
 
 /// The bar down the left of quotes and run output.
@@ -234,19 +238,20 @@ impl Out {
                 self.lines.push(Line::from(spans).style(line.style));
             }
         }
+        // Prefixes are as wide on every line of a block, so either will do.
+        let indent: usize = rest.iter().chain(first).map(Span::width).max().unwrap_or(0);
         self.codes
             .extend(other.codes.into_iter().map(|c| CodeRange {
                 id: c.id,
                 lines: c.lines.start + offset..c.lines.end + offset,
                 output_end: c.output_end + offset,
+                frame: c.frame.map(|f| f.start + indent..f.end + indent),
             }));
         self.details
             .extend(other.details.into_iter().map(|d| DetailsSpan {
                 line: d.line + offset,
                 ..d
             }));
-        // Prefixes are as wide on every line of a block, so either will do.
-        let indent: usize = rest.iter().chain(first).map(Span::width).max().unwrap_or(0);
         self.images
             .extend(other.images.into_iter().map(|s| ImageSlot {
                 line: s.line + offset,

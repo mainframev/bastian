@@ -109,7 +109,7 @@ impl Reader {
                 if links.is_empty() {
                     self.message = Some("no links in this document".into());
                 } else {
-                    self.overlay = Some(Overlay::Links(LinkPicker { links, selected: 0 }));
+                    self.overlay = Some(Overlay::Links(LinkPicker::new(links)));
                 }
             }
             KeyCode::Char('p') => self.open_location(),

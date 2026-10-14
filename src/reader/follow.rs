@@ -6,6 +6,7 @@ use super::{Action, Overlay, Reader};
 use crate::doc::{self, Block};
 use crate::links::{self, Target};
 use crate::nav::{self, Motion};
+use crate::prompt::{Prompt, PromptEvent};
 use crate::render;
 
 impl Reader {
@@ -49,24 +50,66 @@ impl Reader {
     }
 
     pub(super) fn on_link_key(&mut self, key: KeyEvent) -> Action {
+        // As many rows as the popup shows: those it had room for, or
+        // the document's before it's drawn, and no more than match.
+        let fallback = self.height.saturating_sub(3);
         let Some(Overlay::Links(picker)) = &mut self.overlay else {
             return Action::None;
         };
+        let len = picker.shown().len();
+        let room = match picker.rows.get() {
+            0 => fallback,
+            rows => rows,
+        };
+        let page = room.min(len).max(1);
+        let ctrl = nav::ctrl(&key);
+        let typing = picker.prompt.is_some();
+        // Only keys that don't type text move the list while filtering.
         let motion = match key.code {
-            KeyCode::Tab => Some(Motion::Down),
-            KeyCode::BackTab => Some(Motion::Up),
+            KeyCode::Tab | KeyCode::Down => Some(Motion::Down),
+            KeyCode::BackTab | KeyCode::Up => Some(Motion::Up),
+            KeyCode::Char('n') if ctrl => Some(Motion::Down),
+            KeyCode::Char('p') if ctrl => Some(Motion::Up),
+            _ if typing => None,
             _ => nav::list_motion(&key),
         };
+        let jump = match key.code {
+            KeyCode::PageDown => Some(page as isize),
+            KeyCode::PageUp => Some(-(page as isize)),
+            KeyCode::Char('d') if ctrl => Some((page / 2).max(1) as isize),
+            KeyCode::Char('u') if ctrl => Some(-((page / 2).max(1) as isize)),
+            _ => None,
+        };
         if let Some(motion) = motion {
-            picker.selected = nav::step(picker.selected, picker.links.len(), motion);
+            picker.selected = nav::step(picker.selected, len, motion);
+            return Action::None;
+        }
+        if let Some(by) = jump {
+            let last = len.saturating_sub(1);
+            picker.selected = picker.selected.saturating_add_signed(by).min(last);
             return Action::None;
         }
         match key.code {
             KeyCode::Enter => {
-                let url = picker.links[picker.selected].url.clone();
+                let Some(url) = picker.current().map(|l| l.url.clone()) else {
+                    return Action::None;
+                };
                 self.overlay = None;
                 return self.follow_link(&url);
             }
+            KeyCode::Esc if typing => {
+                picker.prompt = None;
+                picker.set_filter(String::new());
+            }
+            _ if typing => {
+                let prompt = picker.prompt.as_mut().expect("typing");
+                if prompt.on_key(key) == PromptEvent::Changed {
+                    let text = prompt.text().to_string();
+                    picker.set_filter(text);
+                }
+            }
+            KeyCode::Char('/') => picker.prompt = Some(Prompt::new(&picker.filter)),
+            KeyCode::Esc if !picker.filter.is_empty() => picker.set_filter(String::new()),
             KeyCode::Esc | KeyCode::Char('q' | 'L') => self.overlay = None,
             _ => {}
         }
@@ -333,10 +376,21 @@ mod tests {
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use crate::doc::parse;
-    use crate::reader::{Options, Overlay, Reader, Source};
+    use crate::reader::{LinkPicker, Options, Overlay, Reader, Source};
 
     fn press(r: &mut Reader, code: KeyCode, mods: KeyModifiers) {
         r.on_key(KeyEvent::new(code, mods));
+    }
+
+    fn picker(r: &Reader) -> &LinkPicker {
+        match &r.overlay {
+            Some(Overlay::Links(p)) => p,
+            _ => panic!("no link picker"),
+        }
+    }
+
+    fn picker_open(r: &Reader) -> bool {
+        matches!(r.overlay, Some(Overlay::Links(_)))
     }
 
     #[test]
@@ -360,6 +414,107 @@ mod tests {
         assert_eq!(selected(&r), 2);
         press(&mut r, KeyCode::BackTab, KeyModifiers::NONE);
         assert_eq!(selected(&r), 1);
+    }
+
+    #[test]
+    fn link_picker_pages_through_long_lists() {
+        let src: String = (0..50)
+            .map(|i| format!("[l{i}](https://{i}.dev)\n\n"))
+            .collect();
+        let mut r = Reader::new(Source::in_memory("t", parse(&src)), &Options::default());
+        // 20 rows of document: 17 in the list.
+        r.layout(80, 20);
+        press(&mut r, KeyCode::Char('L'), KeyModifiers::NONE);
+        let selected = |r: &Reader| picker(r).selected;
+        press(&mut r, KeyCode::PageDown, KeyModifiers::NONE);
+        assert_eq!(selected(&r), 17);
+        press(&mut r, KeyCode::Char('d'), KeyModifiers::CONTROL);
+        assert_eq!(selected(&r), 25);
+        press(&mut r, KeyCode::Char('u'), KeyModifiers::CONTROL);
+        assert_eq!(selected(&r), 17);
+        press(&mut r, KeyCode::PageUp, KeyModifiers::NONE);
+        assert_eq!(selected(&r), 0);
+        for _ in 0..4 {
+            press(&mut r, KeyCode::PageDown, KeyModifiers::NONE);
+        }
+        assert_eq!(selected(&r), 49);
+    }
+
+    #[test]
+    fn link_picker_pages_by_the_rows_it_shows() {
+        let src: String = (0..50)
+            .map(|i| format!("[l{i}](https://{i}.dev)\n\n"))
+            .collect();
+        let mut r = Reader::new(Source::in_memory("t", parse(&src)), &Options::default());
+        r.layout(80, 20);
+        press(&mut r, KeyCode::Char('L'), KeyModifiers::NONE);
+        // As drawn at 80×24, whatever the document's height.
+        picker(&r).rows.set(18);
+        press(&mut r, KeyCode::PageDown, KeyModifiers::NONE);
+        assert_eq!(picker(&r).selected, 18);
+        press(&mut r, KeyCode::Char('d'), KeyModifiers::CONTROL);
+        assert_eq!(picker(&r).selected, 27);
+        // Fewer matches than rows: the page is the matches.
+        press(&mut r, KeyCode::Char('/'), KeyModifiers::NONE);
+        press(&mut r, KeyCode::Char('4'), KeyModifiers::NONE);
+        let shown = picker(&r).shown().len();
+        assert!(shown > 4, "{shown}");
+        press(&mut r, KeyCode::Char('d'), KeyModifiers::CONTROL);
+        assert_eq!(picker(&r).selected, shown / 2);
+    }
+
+    #[test]
+    fn link_picker_filters_by_text_or_url() {
+        let src = "[Alma](https://a.dev) [beta](https://b.dev/guide) [Gamma](https://c.dev)\n";
+        let mut r = Reader::new(Source::in_memory("t", parse(src)), &Options::default());
+        r.layout(80, 20);
+        press(&mut r, KeyCode::Char('L'), KeyModifiers::NONE);
+        press(&mut r, KeyCode::Char('/'), KeyModifiers::NONE);
+        // Letters type into the filter, not move the list.
+        for c in "GU".chars() {
+            press(&mut r, KeyCode::Char(c), KeyModifiers::NONE);
+        }
+        assert_eq!(picker(&r).filter, "GU");
+        let texts = |r: &Reader| {
+            let p = picker(r);
+            p.shown()
+                .iter()
+                .map(|&i| p.links[i].text.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(texts(&r), ["beta"]);
+        // Esc while typing drops the filter; again closes the list.
+        press(&mut r, KeyCode::Esc, KeyModifiers::NONE);
+        assert_eq!(texts(&r).len(), 3);
+        assert!(picker(&r).prompt.is_none());
+        press(&mut r, KeyCode::Char('/'), KeyModifiers::NONE);
+        press(&mut r, KeyCode::Char('m'), KeyModifiers::NONE);
+        press(&mut r, KeyCode::Char('a'), KeyModifiers::NONE);
+        assert_eq!(texts(&r), ["Alma", "Gamma"]);
+        press(&mut r, KeyCode::Down, KeyModifiers::NONE);
+        assert_eq!(picker(&r).current().unwrap().text, "Gamma");
+        // Enter follows the selected match.
+        let action = r.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(
+            matches!(&action, crate::reader::Action::OpenExternal(url) if url == "https://c.dev")
+        );
+        assert!(!picker_open(&r));
+    }
+
+    #[test]
+    fn link_picker_ignores_enter_with_no_matches() {
+        let src = "[a](https://a.dev)\n";
+        let mut r = Reader::new(Source::in_memory("t", parse(src)), &Options::default());
+        r.layout(80, 20);
+        press(&mut r, KeyCode::Char('L'), KeyModifiers::NONE);
+        press(&mut r, KeyCode::Char('/'), KeyModifiers::NONE);
+        press(&mut r, KeyCode::Char('z'), KeyModifiers::NONE);
+        press(&mut r, KeyCode::Enter, KeyModifiers::NONE);
+        assert!(picker_open(&r));
+        // Closing the prompt keeps the filter; Esc clears it, then closes.
+        press(&mut r, KeyCode::Esc, KeyModifiers::NONE);
+        press(&mut r, KeyCode::Esc, KeyModifiers::NONE);
+        assert!(!picker_open(&r));
     }
 
     #[test]

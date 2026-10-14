@@ -597,12 +597,13 @@ fn reopening_a_file_returns_to_where_it_was_left() {
     key(&mut again, KeyCode::Char('#'));
     again.layout(60, 10);
     assert_eq!(again.source_line(), left_at);
+    let before = again.scroll();
     key(&mut again, KeyCode::Char('j'));
     again.layout(60, 10);
-    let moved = again.scroll();
     // A restore still in force would snap the view back to the block top.
+    assert_eq!(again.scroll(), before + 1);
     again.layout(60, 10);
-    assert_eq!(again.scroll(), moved);
+    assert_eq!(again.scroll(), before + 1);
 
     // Back at the top, the position is forgotten.
     key(&mut again, KeyCode::Char('g'));
@@ -993,6 +994,15 @@ fn code_files_always_show_line_numbers() {
     let r = Reader::new(Source::file("main.rs".into(), opened), &Options::default());
     assert!(r.line_numbers);
     assert_eq!(r.base_dir(), dir.path());
+
+    // A code file fetched over HTTP keeps the configured setting.
+    let fetched = RemoteDoc {
+        name: "main.rs".into(),
+        base: url::Url::parse("https://example.com/x/main.rs").unwrap(),
+        text: "fn main() {}\n".into(),
+    };
+    let r = Reader::new(Source::remote(fetched), &Options::default());
+    assert!(r.doc().code_file && !r.line_numbers);
 }
 
 #[test]

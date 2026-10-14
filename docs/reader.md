@@ -41,7 +41,8 @@ its note.
 | `T`                         | pick a theme                                                 |
 | `ctrl-z`                    | suspend; resume with `fg`                                    |
 | `?`                         | key help                                                     |
-| `Esc`, `h`                  | back to the previous document or the file list              |
+| `Esc`                       | clear focus and search; pressed again, back                 |
+| `h`                         | back to the previous document or the file list              |
 | `q`                         | quit                                                         |
 
 `--mouse` (or `mouse = true`) also scrolls with the mouse wheel, and a click
@@ -53,7 +54,8 @@ shift or option).
 ## Search
 
 `/` searches the rendered text as you type; `Enter` keeps the search, `n` and
-`N` move between matches and `Esc` clears it. The input edits like a shell
+`N` move between matches and `Esc` clears it along with any focus. The input
+edits like a shell
 prompt (`←/→`, `alt-b/f`, `ctrl-w`, `ctrl-u`, …).
 
 ## Table of contents

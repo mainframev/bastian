@@ -57,6 +57,23 @@ pub struct LinkPicker {
     pub selected: usize,
 }
 
+/// What has the keyboard instead of the document. At most one is open;
+/// opening another replaces it, draft and all.
+pub enum Overlay {
+    /// The key help, opened with `?`.
+    Help(nav::Help),
+    /// The link list opened with `L`.
+    Links(LinkPicker),
+    /// Where the document came from, opened with `p`.
+    Location(Location),
+    /// Blocks waiting for a yes/no before they run.
+    RunConfirm(Vec<usize>),
+    /// Link target waiting for a yes/no before the system opener gets it.
+    OpenConfirm(String),
+    /// The search prompt opened with `/`.
+    Prompt(Prompt),
+}
+
 /// The document a reader shows and where it came from. The origin decides
 /// how links and images resolve, whether the file is watched and can be
 /// edited, whether runs ask first, and whether the reading position is
@@ -172,7 +189,8 @@ pub struct Reader {
     rendered: Rendered,
     scroll: usize,
     pub search: Option<Search>,
-    pub prompt: Option<Prompt>,
+    /// The open Overlay, if any.
+    pub overlay: Option<Overlay>,
     /// Focused code block id.
     pub focus: Option<usize>,
     /// Focused link, as an index into `link_stops()`.
@@ -180,19 +198,12 @@ pub struct Reader {
     /// Where the focused link leads, for the status bar.
     pub link_preview: String,
     runs: HashMap<usize, BlockRun>,
-    /// Blocks waiting for a yes/no before they run.
-    pub confirm: Option<Vec<usize>>,
-    /// Link target waiting for a yes/no before the system opener gets it.
-    pub confirm_open: Option<String>,
     /// One-shot status bar message, cleared on the next key.
     message: Option<String>,
     /// Directory that block `cwd`s are relative to.
     base_dir: PathBuf,
     /// Skip confirmation, except for blocks marked `confirm`.
     assume_yes: bool,
-    pub link_picker: Option<LinkPicker>,
-    /// Where the document came from, shown with `p`.
-    pub location: Option<Location>,
     /// The table of contents is shown beside the document (`t`).
     pub toc: bool,
     /// Columns asked for the table of contents; `<` and `>` change it.
@@ -200,7 +211,6 @@ pub struct Reader {
     /// Width of the screen at the last draw, which the table of contents
     /// is sized against.
     screen: u16,
-    pub help: nav::Help,
     /// Draw a gutter of rendered line numbers.
     pub line_numbers: bool,
     /// File the document came from, watched for changes.
@@ -287,23 +297,18 @@ impl Reader {
             rendered: Rendered::default(),
             scroll: 0,
             search: None,
-            prompt: None,
+            overlay: None,
             focus: None,
             link_focus: None,
             link_preview: String::new(),
             runs: HashMap::new(),
-            confirm: None,
-            confirm_open: None,
             message: None,
             base_dir,
             // Untrusted source: every run asks first, even with `--yes`.
             assume_yes: opts.assume_yes && remote_base.is_none(),
-            link_picker: None,
-            location: None,
             toc: false,
             toc_width: opts.toc_width,
             screen: 0,
-            help: nav::Help::default(),
             // Source files read from disk always show their line numbers.
             line_numbers: opts.line_numbers || (file.is_some() && code_file),
             modified: file.as_deref().and_then(reload::mtime),
@@ -389,6 +394,14 @@ impl Reader {
 
     pub fn theme(&self) -> &Theme {
         &self.theme
+    }
+
+    /// The search prompt, while it's being typed into.
+    pub fn prompt(&self) -> Option<&Prompt> {
+        match &self.overlay {
+            Some(Overlay::Prompt(p)) => Some(p),
+            _ => None,
+        }
     }
 
     /// The document as laid out by the last `layout`.

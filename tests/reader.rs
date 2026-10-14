@@ -1364,6 +1364,40 @@ fn toc_pane_sits_beside_the_document_and_follows_the_scroll() {
 }
 
 #[test]
+fn toc_pane_keeps_the_same_source_at_the_top() {
+    use bastian::ui::reader::draw;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    // Long paragraphs, so the rendered rows above one change with the width.
+    let src: String = std::iter::once("# Title\n\n".to_string())
+        .chain((0..30).map(|i| format!("p{i} {}\n\n", "word ".repeat(40))))
+        .collect();
+    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
+    let mut terminal = Terminal::new(TestBackend::new(100, 12)).unwrap();
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let top = |r: &Reader| bastian::render::plain(&r.rendered().lines[r.scroll()]);
+    let p20 = r
+        .rendered()
+        .lines
+        .iter()
+        .position(|l| bastian::render::plain(l).trim_start().starts_with("p20 "))
+        .unwrap();
+    r.scroll_by(p20 as isize);
+    assert!(top(&r).trim_start().starts_with("p20 "), "{}", top(&r));
+
+    for _ in 0..2 {
+        key(&mut r, KeyCode::Char('t'));
+        terminal.draw(|f| draw(f, &mut r)).unwrap();
+        assert!(top(&r).trim_start().starts_with("p20 "), "{}", top(&r));
+    }
+    // Resizing the open pane keeps it too.
+    key(&mut r, KeyCode::Char('t'));
+    key(&mut r, KeyCode::Char('>'));
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    assert!(top(&r).trim_start().starts_with("p20 "), "{}", top(&r));
+}
+
+#[test]
 fn hyperlinks_and_scrollbar_can_be_turned_off() {
     use bastian::ui::reader::draw;
     use ratatui::{Terminal, backend::TestBackend};

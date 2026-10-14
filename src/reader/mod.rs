@@ -437,6 +437,14 @@ impl Reader {
             self.images_requested = true;
             self.request_images();
         }
+        // A new width (a resized terminal or the table of contents opening,
+        // closing or resizing) rewraps the text: keep the same part of the
+        // source at the top rather than the same rendered row.
+        let keep = if width != self.width && self.width != 0 {
+            self.position()
+        } else {
+            None
+        };
         if width != self.width || self.dirty {
             let images = self.images.sizes();
             let cx = render::Context {
@@ -471,6 +479,14 @@ impl Reader {
             }
         }
         self.height = usize::from(height);
+        // A restore still in progress places the view itself.
+        let restoring =
+            self.restore.is_some() && self.restored_at.is_none_or(|at| at == self.scroll);
+        if let Some(position) = keep
+            && !restoring
+        {
+            self.scroll_to_position(position);
+        }
         if let Some(position) = self.restore {
             if self.restored_at.is_none_or(|at| at == self.scroll) {
                 self.scroll_to_position(position);

@@ -11,7 +11,9 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::clipboard::CopyToClipboard;
-use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, MouseEventKind};
+use ratatui::crossterm::event::{
+    Event, KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEventKind,
+};
 use ratatui::crossterm::execute;
 
 use crate::browser::{self, Browser};
@@ -183,6 +185,13 @@ impl App {
             let step = match m.kind {
                 MouseEventKind::ScrollDown => 1,
                 MouseEventKind::ScrollUp => -1,
+                MouseEventKind::Down(MouseButton::Left) => {
+                    if let Some(r) = self.reader.as_mut().filter(|_| self.picker.is_none()) {
+                        r.on_click(m.column, m.row);
+                        self.settings.reader.toc_width = r.toc_width();
+                    }
+                    return true;
+                }
                 _ => return true,
             };
             if let Some(r) = &mut self.reader {

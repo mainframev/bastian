@@ -224,3 +224,22 @@ fn toc_width_carries_to_readers_opened_later() {
     let narrower = crate::toc::DEFAULT_WIDTH - crate::toc::STEP;
     assert_eq!(app.reader.as_ref().unwrap().toc_width(), narrower);
 }
+
+#[test]
+fn clicking_the_toc_markers_resizes_it() {
+    let mut app = reading(Path::new("."), "nord");
+    let r = app.reader.as_mut().unwrap();
+    r.layout(80, 10);
+    press(&mut app, KeyCode::Char('t'));
+    let width = app.reader.as_mut().unwrap().fit_toc(100);
+    let (_, wider) = crate::toc::markers(width);
+    let click = Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: wider,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    });
+    assert!(!run::is_ignored(&click));
+    assert!(app.on_event(&click));
+    assert_eq!(app.settings.reader.toc_width, width + crate::toc::STEP);
+}

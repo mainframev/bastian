@@ -68,6 +68,11 @@ impl Reader {
         // name other blocks: forget which were opened and which was focused.
         self.details_focus = None;
         self.toggled_details.clear();
+        // Diagrams switched to their source follow their block.
+        self.as_source = std::mem::take(&mut self.as_source)
+            .into_iter()
+            .filter_map(|id| moved.get(id).copied().flatten())
+            .collect();
         self.focus = self
             .focus
             .and_then(|id| moved.get(id).copied().flatten().or(Some(id)))
@@ -128,6 +133,17 @@ mod tests {
         let mut r = Reader::new(Source::in_memory("t", parse(src)), &opts);
         r.layout(80, 40);
         r
+    }
+
+    #[test]
+    fn diagrams_shown_as_source_follow_their_block() {
+        let diagram = "```mermaid\nflowchart TD\n  A --> B\n```\n";
+        let mut r = reader(&format!("{diagram}\n```sh\necho a\n```\n"));
+        r.as_source.insert(0);
+        r.replace_doc(parse(&format!("```sh\necho new\n```\n\n{diagram}")));
+        assert_eq!(r.as_source.iter().collect::<Vec<_>>(), [&1]);
+        r.replace_doc(parse("```sh\necho new\n```\n"));
+        assert!(r.as_source.is_empty(), "the diagram is gone");
     }
 
     fn settle(r: &mut Reader) {

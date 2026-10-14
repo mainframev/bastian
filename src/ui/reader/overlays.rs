@@ -6,7 +6,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::reader::{LinkPicker, Location, Reader};
 use crate::render::theme::Theme;
-use crate::text::{shorten_left, take_width};
+use crate::text::{shorten_left, shorten_right, take_width};
 use crate::ui::status;
 
 pub(super) fn draw_links(frame: &mut Frame, over: Rect, r: &Reader, picker: &LinkPicker) {
@@ -15,12 +15,13 @@ pub(super) fn draw_links(frame: &mut Frame, over: Rect, r: &Reader, picker: &Lin
     // Leave room for the border and a margin around the box.
     let rows = area.height.saturating_sub(6).max(1) as usize;
     let max_w = area.width.saturating_sub(10) as usize;
-    let lines: Vec<Line> = picker
-        .links
+    let shown = picker.shown();
+    let lines: Vec<Line> = shown
         .iter()
+        .map(|&i| &picker.links[i])
         .enumerate()
-        .map(|(i, link)| {
-            let selected = i == picker.selected;
+        .map(|(row, link)| {
+            let selected = row == picker.selected;
             let text_style = status::row_style(t, selected);
             let entry = format!("{}  {}", link.text, link.url);
             let shown = take_width(&entry, max_w.saturating_sub(2));
@@ -32,12 +33,47 @@ pub(super) fn draw_links(frame: &mut Frame, over: Rect, r: &Reader, picker: &Lin
             ])
         })
         .collect();
-    let title = format!(
-        " links {}/{} · enter open · esc close ",
-        picker.selected + 1,
-        picker.links.len()
-    );
+    let at = if shown.is_empty() {
+        0
+    } else {
+        picker.selected + 1
+    };
+    let count = format!("{at}/{}", shown.len());
+    // The title sits in the top border, between its corners.
+    let max_title = usize::from(area.width.saturating_sub(2));
+    let title = match &picker.prompt {
+        Some(prompt) => filter_title(prompt.text(), Some(prompt.cursor()), &count, max_title),
+        None if picker.filter.is_empty() => {
+            format!(" links {count} · / filter · enter open · esc close ")
+        }
+        None => filter_title(&picker.filter, None, &count, max_title),
+    };
+    picker.rows.set(rows);
     status::list_popup(frame, t, over, &title, lines, picker.selected, rows);
+}
+
+/// ` /filter · n/m · keys `, in at most `max` columns: the keys go
+/// first, then the filter keeps the columns around `cursor`, where a bar
+/// marks it while typing.
+fn filter_title(filter: &str, cursor: Option<usize>, count: &str, max: usize) -> String {
+    const KEYS: &str = " · enter open · esc clear";
+    let bar = if cursor.is_some() { "▏" } else { "" };
+    let fixed =
+        |keys: &str| " /".width() + bar.width() + " · ".width() + count.width() + keys.width() + 1;
+    // Room for at least a few characters of the filter, else no keys.
+    let keys = if fixed(KEYS) + 8 <= max { KEYS } else { "" };
+    let room = max.saturating_sub(fixed(keys));
+    let at = cursor.map_or(filter.len(), |c| {
+        filter
+            .char_indices()
+            .nth(c)
+            .map_or(filter.len(), |(i, _)| i)
+    });
+    let (before, after) = filter.split_at(at);
+    // Up to a third of the room for the text after the cursor.
+    let before = shorten_left(before, room - after.width().min(room / 3));
+    let after = shorten_right(after, room.saturating_sub(before.width()));
+    format!(" /{before}{bar}{after} · {count}{keys} ")
 }
 
 pub(super) fn draw_confirm(frame: &mut Frame, over: Rect, r: &Reader, ids: &[usize]) {
@@ -264,4 +300,31 @@ fn elide_middle(s: &str, max: usize) -> String {
     }
     let head = take_width(s, max.saturating_sub(1) / 2);
     format!("{head}{}", shorten_left(s, max - head.width()))
+}
+
+#[cfg(test)]
+mod tests {
+    use unicode_width::UnicodeWidthStr;
+
+    use super::filter_title;
+
+    #[test]
+    fn long_filters_keep_the_cursor_and_count_in_view() {
+        let filter = "x".repeat(80);
+        let title = filter_title(&filter, Some(80), "1/3", 78);
+        assert!(title.width() <= 78, "{title}");
+        assert!(title.contains("x▏ · 1/3"), "{title}");
+        assert!(title.starts_with(" /…"), "{title}");
+        // Typing mid-filter keeps text on both sides of the bar.
+        let title = filter_title(&filter, Some(40), "1/3", 40);
+        assert!(title.width() <= 40, "{title}");
+        assert!(title.contains("x▏x"), "{title}");
+        assert!(
+            title.starts_with(" /…") && title.contains("x… · 1/3"),
+            "{title}"
+        );
+        // Short filters show whole, with the keys.
+        let title = filter_title("guide", Some(5), "2/9", 78);
+        assert_eq!(title, " /guide▏ · 2/9 · enter open · esc clear ");
+    }
 }

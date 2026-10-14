@@ -84,7 +84,10 @@ of contents is hidden until the picker closes; see [themes](themes.md).
 
 ## Links
 
-`L` lists the document's links. `Enter` follows the selected one:
+`L` lists the document's links. Move with `j`/`k`, `g`/`G`, `ctrl-d`/`ctrl-u`
+(half a list) and `PgDn`/`PgUp` (a list), or press `/` and type to keep only
+links whose text or URL contains it; `Esc` clears the filter, then closes the
+list. `Enter` follows the selected one:
 
 - `#anchor` links scroll to their heading;
 - links to Markdown files open in bastian (`Esc` comes back);

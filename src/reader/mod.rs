@@ -11,6 +11,7 @@ mod toc;
 pub use location::Location;
 pub use search::{Match, Search};
 
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime};
@@ -54,7 +55,49 @@ pub enum Action {
 /// The link list opened with `L`.
 pub struct LinkPicker {
     pub links: Vec<Link>,
+    /// Index into `shown()`.
     pub selected: usize,
+    /// Only links whose text or URL contains this, ignoring case.
+    pub filter: String,
+    /// The filter being typed, after `/`.
+    pub prompt: Option<Prompt>,
+    /// Rows the popup had room for when last drawn, a page for `PgDn` and
+    /// the like; 0 before it's drawn.
+    pub rows: Cell<usize>,
+}
+
+impl LinkPicker {
+    pub fn new(links: Vec<Link>) -> Self {
+        Self {
+            links,
+            selected: 0,
+            filter: String::new(),
+            prompt: None,
+            rows: Cell::new(0),
+        }
+    }
+
+    /// Indexes of the links that match the filter, in document order.
+    pub fn shown(&self) -> Vec<usize> {
+        let filter = self.filter.to_lowercase();
+        (0..self.links.len())
+            .filter(|&i| {
+                let link = &self.links[i];
+                link.text.to_lowercase().contains(&filter)
+                    || link.url.to_lowercase().contains(&filter)
+            })
+            .collect()
+    }
+
+    /// The selected link, if any matches the filter.
+    pub fn current(&self) -> Option<&Link> {
+        self.shown().get(self.selected).map(|&i| &self.links[i])
+    }
+
+    fn set_filter(&mut self, filter: String) {
+        self.filter = filter;
+        self.selected = 0;
+    }
 }
 
 /// What has the keyboard instead of the document. At most one is open;

@@ -29,11 +29,23 @@ bastian themes               # pick one with a live preview; Enter saves it
 bastian -t nord README.md    # use a theme just this once
 ```
 
-`bastian themes` previews each theme on a sample document as you move through
-the list. `Enter` saves the highlighted one as `theme` in your config file,
-keeping your other settings and comments; `Esc` leaves things as they were.
-Press `T` while reading or browsing for the same picker. Piped,
-`bastian themes` prints the list with each theme's colors.
+`bastian themes` lists the themes in a pane on the right and previews each one
+on a sample document as you move through the list (`j`/`k`, `↓`/`↑`, `g`/`G`).
+The document re-wraps beside the pane, so the preview is how it will read.
+Each theme shows whether it's dark or light and a swatch of its colors when
+the pane is wide enough, and the one in use is ticked. `Enter` saves the
+highlighted one as `theme` in your config file, keeping your other settings and
+comments; `Esc`, `q` or `T` leave things as they were.
+
+Press `T` while reading or browsing for the same picker; the document or the
+file list narrows beside it. `<` and `>` narrow or widen the pane, from 16
+columns up to half the screen, and with `--mouse` so does clicking the `<` or
+`>` in its header; the width lasts until bastian quits. With the table of
+contents open, both stay while the document keeps 40 columns between them;
+otherwise the table of contents is hidden until the picker closes. On screens
+narrower than 40 columns the picker covers the screen.
+
+Piped, `bastian themes` prints the list with each theme's colors.
 
 ![The theme picker previewing themes on a sample document](../demo/themes.gif)
 

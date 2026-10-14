@@ -12,10 +12,12 @@ fmt:
 lint:
     cargo fmt --check
     cargo clippy --all-targets -- -D warnings
+    cargo clippy --all-targets --features mermaid -- -D warnings
 
-# Run the test suite.
+# Run the test suite, with and without the mermaid feature.
 test:
     cargo test
+    cargo test --features mermaid
 
 # Time rendering of generated documents (not run in CI).
 bench:

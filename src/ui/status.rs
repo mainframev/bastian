@@ -157,7 +157,13 @@ pub fn find_prompt(t: &Theme, prompt: Option<&Prompt>, query: &str) -> Line<'sta
 
 /// `Find: text`, with a block cursor at character `cursor` while editing.
 pub fn find_line(t: &Theme, text: &str, cursor: Option<usize>) -> Line<'static> {
-    let label = Span::styled("Find: ", Style::default().fg(t.warn).bold());
+    prompt_line(t, "Find: ", text, cursor)
+}
+
+/// `label` then `text`, with a block cursor at character `cursor` while
+/// editing.
+pub fn prompt_line(t: &Theme, label: &str, text: &str, cursor: Option<usize>) -> Line<'static> {
+    let label = Span::styled(label.to_string(), Style::default().fg(t.warn).bold());
     let style = Style::default().fg(t.text);
     let Some(at) = cursor else {
         return Line::from(vec![label, Span::styled(text.to_string(), style)]);

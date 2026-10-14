@@ -1,0 +1,39 @@
+---
+source: tests/render.rs
+expression: to_plain(&rendered.lines)
+---
+ Code blocks
+
+┌─ rust ─────┐
+│ fn main()  │
+┊ {          │
+│     printl │
+┊ n!("こんに │
+┊ ちは、世界 │
+┊ 。これは長 │
+┊ い行です") │
+┊ ;          │
+│ }          │
+└────────────┘
+
+┌────────────┐
+│ no languag │
+┊ e          │
+└────────────┘
+
+┌─ ▶ a rat… ─┐
+│ echo hi    │
+└────────────┘
+
+• In a list:
+  ┌─ ▶ py ───┐
+  │ print("h │
+  ┊ i")      │
+  └──────────┘
+
+│ │ │ • Deep
+│ │ │   inside
+│ │ │   quote
+│ │ │   s:
+│ │ │   echo d
+│ │ │   eep

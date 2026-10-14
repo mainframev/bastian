@@ -9,9 +9,9 @@ expression: to_plain(&rendered.lines)
 
   • a list item
 
-                                                       ▶ sh
-   echo hi
-
+  ┌─ ▶ sh ─────────────────────────────────────────────────┐
+  │ echo hi                                                │
+  └────────────────────────────────────────────────────────┘
 
 ▼ Already open
   Visible.

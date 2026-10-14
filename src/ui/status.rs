@@ -39,17 +39,33 @@ pub fn row_style(t: &Theme, selected: bool) -> Style {
 
 pub fn draw(frame: &mut Frame, area: Rect, t: &Theme, left: Left, right: &str) {
     const NAME: &str = " bastian ";
+    // One column of padding on each side of the right-hand text.
+    let mut right = right;
+    let mut right_w = right.width() as u16 + 2;
+    let mut name = NAME;
+    // Hints keep their last one, giving up the right-hand text and then
+    // the name when the bar is too narrow for it.
+    if let Left::Hints(&[.., (key, what)]) = left {
+        let need = 1 + key.width() + 1 + what.width();
+        let room = |name: &str, right_w: u16| {
+            usize::from(area.width.saturating_sub(right_w)).saturating_sub(name.width())
+        };
+        if room(name, right_w) < need {
+            (right, right_w) = ("", 0);
+        }
+        if room(name, right_w) < need {
+            name = "";
+        }
+    }
     let mut spans = vec![Span::styled(
-        NAME,
+        name,
         Style::default().fg(t.h1_fg).bg(t.accent).bold(),
     )];
-    // One column of padding on each side of the right-hand text.
-    let right_w = right.width() as u16 + 2;
     match left {
         Left::Text(s) => spans.push(Span::styled(format!(" {s}"), Style::default().fg(t.text))),
         Left::Error(s) => spans.push(Span::styled(format!(" {s}"), Style::default().fg(t.err))),
         Left::Hints(hints) => {
-            let room = usize::from(area.width.saturating_sub(right_w)).saturating_sub(NAME.width());
+            let room = usize::from(area.width.saturating_sub(right_w)).saturating_sub(name.width());
             spans.extend(hint_spans(t, hints, room));
         }
     }
@@ -425,5 +441,23 @@ mod tests {
         let narrow = Rect::new(110, 0, 10, 29);
         let rect = popup_rect(screen, narrow, " t ", &lines, 0, 4);
         assert_eq!(rect.right(), screen.right());
+    }
+
+    #[test]
+    fn narrow_bars_give_up_the_counter_then_the_name_for_the_last_hint() {
+        let hints: &[(&str, &str)] = &[("j/k", "move"), ("?", "help")];
+        let bar = |w: u16| {
+            let mut term = Terminal::new(TestBackend::new(w, 1)).unwrap();
+            term.draw(|f| draw(f, f.area(), &Theme::dark(), Left::Hints(hints), "1/2"))
+                .unwrap();
+            rows(&term).remove(0)
+        };
+        let wide = bar(40);
+        assert!(wide.contains("bastian") && wide.contains("1/2"), "{wide}");
+        let twenty = bar(20);
+        assert!(twenty.contains("bastian  ? help"), "{twenty}");
+        assert!(!twenty.contains("1/2"), "{twenty}");
+        let fourteen = bar(14);
+        assert_eq!(fourteen.trim(), "? help", "{fourteen}");
     }
 }

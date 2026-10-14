@@ -1,4 +1,5 @@
 use ratatui::Frame;
+use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
@@ -8,7 +9,7 @@ use crate::render::theme::Theme;
 use crate::text::{shorten_left, take_width};
 use crate::ui::status;
 
-pub(super) fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
+pub(super) fn draw_links(frame: &mut Frame, over: Rect, r: &Reader, picker: &LinkPicker) {
     let t = r.theme();
     let area = frame.area();
     // Leave room for the border and a margin around the box.
@@ -36,10 +37,10 @@ pub(super) fn draw_links(frame: &mut Frame, r: &Reader, picker: &LinkPicker) {
         picker.selected + 1,
         picker.links.len()
     );
-    status::list_popup(frame, t, &title, lines, picker.selected, rows);
+    status::list_popup(frame, t, over, &title, lines, picker.selected, rows);
 }
 
-pub(super) fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {
+pub(super) fn draw_confirm(frame: &mut Frame, over: Rect, r: &Reader, ids: &[usize]) {
     let t = r.theme();
     let what = match ids {
         [id] => r.label(*id),
@@ -65,13 +66,13 @@ pub(super) fn draw_confirm(frame: &mut Frame, r: &Reader, ids: &[usize]) {
             Span::styled(" cancel", Style::default().fg(t.subtle)),
         ]),
     ];
-    status::modal(frame, t, " run ", lines);
+    status::modal(frame, t, over, " run ", lines);
 }
 
 /// Ask before handing a non-web link to the system opener. The target is
 /// wrapped to the screen; one too long to fit keeps its first and last rows
 /// (scheme and host, file name) with `…` between, and the y/n row stays.
-pub(super) fn draw_open_confirm(frame: &mut Frame, r: &Reader, target: &str) {
+pub(super) fn draw_open_confirm(frame: &mut Frame, over: Rect, r: &Reader, target: &str) {
     let t = r.theme();
     let area = frame.area();
     // Border and padding, at least one column for the text.
@@ -94,7 +95,7 @@ pub(super) fn draw_open_confirm(frame: &mut Frame, r: &Reader, target: &str) {
             lines.push(Line::styled(elide_middle(target, max_w), target_style));
         }
         lines.push(keys);
-        status::modal(frame, t, " open ", lines);
+        status::modal(frame, t, over, " open ", lines);
         return;
     };
     let mut lines = vec![Line::styled(
@@ -103,13 +104,13 @@ pub(super) fn draw_open_confirm(frame: &mut Frame, r: &Reader, target: &str) {
     )];
     lines.extend(fit_rows(t, target, target_style, max_w, budget));
     lines.extend([Line::default(), keys]);
-    status::modal(frame, t, " open ", lines);
+    status::modal(frame, t, over, " open ", lines);
 }
 
 /// Where the document came from, with the keys that copy it. Long paths
 /// wrap to the screen; on a screen too short for them, each keeps its
 /// first and last rows with `…` between, and the labels and keys stay.
-pub(super) fn draw_location(frame: &mut Frame, r: &Reader, location: &Location) {
+pub(super) fn draw_location(frame: &mut Frame, over: Rect, r: &Reader, location: &Location) {
     let t = r.theme();
     let area = frame.area();
     // Border and padding, at least one column for the text.
@@ -154,7 +155,7 @@ pub(super) fn draw_location(frame: &mut Frame, r: &Reader, location: &Location) 
         lines.push(Line::default());
     }
     lines.extend(footer);
-    status::modal(frame, t, " File Path ", lines);
+    status::modal(frame, t, over, " File Path ", lines);
 }
 
 /// A label and its text, or a key and what it does.

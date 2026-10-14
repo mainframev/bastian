@@ -123,9 +123,9 @@ pub fn panel_block<'a>(t: &Theme, title: impl Into<Line<'a>>) -> Block<'a> {
         .style(Style::default().bg(t.surface))
 }
 
-/// A bordered box centered on screen.
-pub fn modal(frame: &mut Frame, t: &Theme, title: &str, lines: Vec<Line>) {
-    let rect = popup_rect(frame.area(), title, &lines, 0, lines.len());
+/// A bordered box centered on `over`.
+pub fn modal(frame: &mut Frame, t: &Theme, over: Rect, title: &str, lines: Vec<Line>) {
+    let rect = popup_rect(frame.area(), over, title, &lines, 0, lines.len());
     frame.render_widget(Clear, rect);
     frame.render_widget(
         Paragraph::new(lines).block(panel_block(t, title.to_string())),
@@ -138,13 +138,14 @@ pub fn modal(frame: &mut Frame, t: &Theme, title: &str, lines: Vec<Line>) {
 pub fn list_popup(
     frame: &mut Frame,
     t: &Theme,
+    over: Rect,
     title: &str,
     lines: Vec<Line>,
     selected: usize,
     rows: usize,
 ) {
     let marker = Span::styled("▶ ", Style::default().fg(t.accent));
-    let rect = popup_rect(frame.area(), title, &lines, marker.width(), rows);
+    let rect = popup_rect(frame.area(), over, title, &lines, marker.width(), rows);
     let list = List::new(lines)
         .block(panel_block(t, title.to_string()))
         .highlight_symbol(marker)
@@ -156,7 +157,14 @@ pub fn list_popup(
 
 /// The box for at most `rows` of `lines`, each `extra` columns wider:
 /// border, padding and title, fitted to `area` and centered in it.
-fn popup_rect(area: Rect, title: &str, lines: &[Line], extra: usize, rows: usize) -> Rect {
+fn popup_rect(
+    area: Rect,
+    over: Rect,
+    title: &str,
+    lines: &[Line],
+    extra: usize,
+    rows: usize,
+) -> Rect {
     let inner_w = lines
         .iter()
         .map(|l| l.width() + extra)
@@ -165,7 +173,19 @@ fn popup_rect(area: Rect, title: &str, lines: &[Line], extra: usize, rows: usize
         .unwrap_or(20);
     let width = (inner_w as u16 + 4).min(area.width);
     let height = (lines.len().min(rows) as u16 + 2).min(area.height);
-    area.centered(Constraint::Length(width), Constraint::Length(height))
+    // Half the spare space on each side, moved back on screen when the
+    // box is bigger than `over`.
+    let mid = |start: u16, len: u16, size: u16, lo: u16, hi: u16| {
+        (start + len.saturating_sub(size) / 2)
+            .saturating_sub(size.saturating_sub(len) / 2)
+            .clamp(lo, hi.saturating_sub(size).max(lo))
+    };
+    Rect::new(
+        mid(over.x, over.width, width, area.x, area.right()),
+        mid(over.y, over.height, height, area.y, area.bottom()),
+        width,
+        height,
+    )
 }
 
 /// A titled group of `(keys, what they do)` rows in the key help.
@@ -174,7 +194,13 @@ pub type HelpSection = (&'static str, &'static [(&'static str, &'static str)]);
 /// Key reference overlay: the version, then `sections` in two columns
 /// when they fit across the screen, else one. Rows that don't fit scroll,
 /// from `scroll`, which is kept in range.
-pub fn help(frame: &mut Frame, t: &Theme, sections: &[HelpSection], scroll: &mut usize) {
+pub fn help(
+    frame: &mut Frame,
+    t: &Theme,
+    over: Rect,
+    sections: &[HelpSection],
+    scroll: &mut usize,
+) {
     let key_w = sections
         .iter()
         .flat_map(|(_, keys)| keys.iter())
@@ -237,7 +263,7 @@ pub fn help(frame: &mut Frame, t: &Theme, sections: &[HelpSection], scroll: &mut
     } else {
         " any key to close "
     };
-    let rect = popup_rect(area, " Help ", &lines, 0, rows);
+    let rect = popup_rect(area, over, " Help ", &lines, 0, rows);
     let block = panel_block(t, " Help ")
         .title_bottom(Line::styled(hint, Style::default().fg(t.muted)).right_aligned());
     frame.render_widget(Clear, rect);
@@ -293,7 +319,7 @@ mod tests {
     #[test]
     fn help_shows_the_version_and_pairs_sections() {
         let mut term = Terminal::new(TestBackend::new(80, 20)).unwrap();
-        term.draw(|f| help(f, &Theme::dark(), SECTIONS, &mut 0))
+        term.draw(|f| help(f, &Theme::dark(), f.area(), SECTIONS, &mut 0))
             .unwrap();
         let screen = rows(&term);
         assert!(screen.iter().any(|r| r.contains(" Help ")), "{screen:#?}");
@@ -313,7 +339,7 @@ mod tests {
     #[test]
     fn narrow_help_stacks_sections() {
         let mut term = Terminal::new(TestBackend::new(30, 20)).unwrap();
-        term.draw(|f| help(f, &Theme::dark(), SECTIONS, &mut 0))
+        term.draw(|f| help(f, &Theme::dark(), f.area(), SECTIONS, &mut 0))
             .unwrap();
         let screen = rows(&term);
         let move_row = screen.iter().position(|r| r.contains("Move"));
@@ -326,7 +352,7 @@ mod tests {
         let theme = Theme::dark();
         let lines: Vec<Line> = (0..20).map(|i| Line::raw(format!("item {i}"))).collect();
         let mut term = Terminal::new(TestBackend::new(30, 10)).unwrap();
-        term.draw(|f| list_popup(f, &theme, " t ", lines.clone(), 15, 4))
+        term.draw(|f| list_popup(f, &theme, f.area(), " t ", lines.clone(), 15, 4))
             .unwrap();
         let screen = rows(&term);
         let marked: Vec<&String> = screen.iter().filter(|r| r.contains('▶')).collect();
@@ -338,5 +364,23 @@ mod tests {
             "{screen:#?}"
         );
         assert!(!screen.iter().any(|r| r.contains("item 16")), "{screen:#?}");
+    }
+
+    #[test]
+    fn popups_center_on_the_area_given_and_stay_on_screen() {
+        let lines = vec![Line::raw("x".repeat(16)); 4];
+        let screen = Rect::new(0, 0, 120, 30);
+        // The document beside a 29-column pane, above the status bar.
+        let doc = Rect::new(29, 0, 91, 29);
+        let rect = popup_rect(screen, doc, " t ", &lines, 0, 4);
+        assert_eq!((rect.width, rect.height), (20, 6));
+        let (left, right) = (rect.x - doc.x, doc.right() - rect.right());
+        let (top, bottom) = (rect.y - doc.y, doc.bottom() - rect.bottom());
+        assert!(left.abs_diff(right) <= 1, "{left} vs {right}");
+        assert!(top.abs_diff(bottom) <= 1, "{top} vs {bottom}");
+        // Wider than the area: centered on it as far as the screen allows.
+        let narrow = Rect::new(110, 0, 10, 29);
+        let rect = popup_rect(screen, narrow, " t ", &lines, 0, 4);
+        assert_eq!(rect.right(), screen.right());
     }
 }

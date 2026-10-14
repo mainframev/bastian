@@ -231,7 +231,11 @@ pub fn draw(
         super::picker::draw(frame, t, p, area);
     }
     if b.help.open {
-        status::help(frame, t, HELP, &mut b.help.scroll);
+        let over = Rect {
+            height: status.y - frame.area().y,
+            ..frame.area()
+        };
+        status::help(frame, t, over, HELP, &mut b.help.scroll);
     }
 }
 

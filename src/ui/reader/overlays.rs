@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Clear;
 use unicode_width::UnicodeWidthStr;
 
-use crate::reader::{LinkPicker, Reader};
+use crate::reader::{LinkPicker, Location, Reader};
 use crate::text::{shorten_left, take_width};
 use crate::ui::status::{self, Place};
 
@@ -157,6 +157,67 @@ pub(super) fn draw_open_confirm(frame: &mut Frame, r: &Reader, target: &str) {
     }
     lines.extend([Line::default(), keys]);
     status::modal(frame, t, " open ", lines);
+}
+
+/// Where the document came from, with the keys that copy it. Long paths
+/// wrap to the screen.
+pub(super) fn draw_location(frame: &mut Frame, r: &Reader, location: &Location) {
+    let t = r.theme();
+    // Border and padding, at least one column for the text.
+    let max_w = (frame.area().width.saturating_sub(4) as usize).max(1);
+    let label = Style::default().fg(t.muted);
+    let value = Style::default().fg(t.accent).bold();
+    let mut lines = Vec::new();
+    let mut entry = |name: &str, text: &str| {
+        lines.push(Line::styled(name.to_string(), label));
+        let rows = wrap_width(text, max_w);
+        lines.extend(
+            rows.into_iter()
+                .map(|row| Line::styled(row.to_string(), value)),
+        );
+    };
+    let keys: &[(&str, &str)] = match location {
+        Location::File { relative, absolute } => {
+            entry("Relative:", relative);
+            entry("Absolute:", absolute);
+            &[("R", " copy relative · "), ("A", " copy absolute · ")]
+        }
+        Location::Url(url) => {
+            entry("URL:", url);
+            &[("R/A", " copy URL · ")]
+        }
+        Location::Unnamed(name) => {
+            lines.push(Line::styled(
+                format!("({name})"),
+                Style::default().fg(t.text),
+            ));
+            lines.push(Line::styled("no local file", label));
+            &[]
+        }
+    };
+    let pairs: Vec<[Span; 2]> = keys
+        .iter()
+        .copied()
+        .chain([("esc", " close")])
+        .map(|(key, what)| {
+            [
+                Span::styled(key, Style::default().fg(t.accent).bold()),
+                Span::styled(what, Style::default().fg(t.subtle)),
+            ]
+        })
+        .collect();
+    lines.push(Line::default());
+    let footer: Line = pairs.iter().flatten().cloned().collect();
+    if footer.width() <= max_w {
+        lines.push(footer);
+    } else {
+        // Too narrow for one row: a key per row, without the separators.
+        lines.extend(pairs.into_iter().map(|[key, what]| {
+            let what = what.content.trim_end_matches(" · ").to_string();
+            Line::from(vec![key, Span::styled(what, Style::default().fg(t.subtle))])
+        }));
+    }
+    status::modal(frame, t, " File Path ", lines);
 }
 
 /// `s` cut into rows of at most `max` columns.

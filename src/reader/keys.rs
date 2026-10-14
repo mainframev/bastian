@@ -16,6 +16,9 @@ impl Reader {
         if self.link_picker.is_some() {
             return self.on_link_key(key);
         }
+        if self.location.is_some() {
+            return self.on_location_key(key);
+        }
         if let Some(outline) = &mut self.outline {
             match outline.on_key(key) {
                 outline::Event::None => {}
@@ -110,6 +113,7 @@ impl Reader {
                     self.link_picker = Some(LinkPicker { links, selected: 0 });
                 }
             }
+            KeyCode::Char('p') => self.open_location(),
             KeyCode::Char('?') => self.help.show(),
             KeyCode::Char('T') => return Action::PickTheme,
             KeyCode::Char('i') => return Action::ToggleImages,

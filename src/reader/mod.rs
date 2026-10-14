@@ -1,11 +1,13 @@
 mod details;
 mod follow;
 mod keys;
+mod location;
 mod reload;
 mod run;
 mod scroll;
 mod search;
 
+pub use location::Location;
 pub use search::{Match, Search};
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -187,6 +189,8 @@ pub struct Reader {
     pub link_picker: Option<LinkPicker>,
     /// The heading outline opened with `O`.
     pub outline: Option<Outline>,
+    /// Where the document came from, shown with `p`.
+    pub location: Option<Location>,
     pub help: nav::Help,
     /// Draw a gutter of rendered line numbers.
     pub line_numbers: bool,
@@ -285,6 +289,7 @@ impl Reader {
             assume_yes: opts.assume_yes && remote_base.is_none(),
             link_picker: None,
             outline: None,
+            location: None,
             help: nav::Help::default(),
             // Source files read from disk always show their line numbers.
             line_numbers: opts.line_numbers || (file.is_some() && code_file),

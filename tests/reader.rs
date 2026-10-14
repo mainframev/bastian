@@ -520,6 +520,18 @@ fn path_popup_elides_paths_too_long_for_the_screen() {
 }
 
 #[test]
+fn path_popup_names_stdin() {
+    let source = Source::in_memory("stdin", parse("text\n"));
+    let mut r = Reader::new(source, &Options::default());
+    key(&mut r, KeyCode::Char('p'));
+    assert_eq!(r.location, Some(Location::Unnamed("stdin".into())));
+    let screen = screen_of(&mut r, 40, 12);
+    assert!(screen.contains("(stdin)"), "{screen}");
+    assert!(screen.contains("no local file"), "{screen}");
+    assert!(screen.contains("esc close"), "{screen}");
+}
+
+#[test]
 fn hash_toggles_line_numbers() {
     let mut r = reader("text\n");
     assert!(!r.line_numbers);

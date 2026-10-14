@@ -12,7 +12,8 @@ pub enum Location {
     File { relative: String, absolute: String },
     /// A document fetched over HTTP.
     Url(String),
-    /// Read from stdin or made in memory: only its name is known.
+    /// Read from stdin (named `stdin`) or made in memory, like the theme
+    /// preview: only its name is known.
     Unnamed(String),
 }
 

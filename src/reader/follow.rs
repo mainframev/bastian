@@ -203,7 +203,7 @@ impl Reader {
             .find(|(a, _)| links::slug(a) == anchor)?;
         self.rendered.lines.iter().position(|line| {
             let plain = render::plain(line);
-            let plain = plain.trim().trim_start_matches('#').trim();
+            let plain = plain.trim();
             !plain.is_empty() && text.starts_with(plain)
         })
     }

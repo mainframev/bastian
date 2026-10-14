@@ -387,11 +387,22 @@ impl Renderer<'_> {
                 })
                 .collect()
         } else {
-            let marker = format!("{} ", "#".repeat(usize::from(level)));
-            let style = Style::default().fg(t.heading).bold();
-            let mut runs = vec![(marker, Style::default().fg(t.muted).bold())];
-            runs.extend(self.runs(inlines, style));
-            wrap(&runs, width)
+            // Color tells the levels apart; bold down to 5, italic for 6.
+            let mut style = Style::default().fg(t.heading_color(level));
+            style = if level < 6 {
+                style.bold()
+            } else {
+                style.italic()
+            };
+            let mut lines = wrap(&self.runs(inlines, style), width);
+            if level == 2 {
+                let w = lines.iter().map(Line::width).max().unwrap_or(0);
+                lines.push(Line::styled(
+                    "─".repeat(w),
+                    Style::default().fg(t.heading_underline),
+                ));
+            }
+            lines
         };
         Out::from(lines)
     }
@@ -594,6 +605,51 @@ mod tests {
                 "{title} not bold"
             );
         }
+    }
+
+    #[test]
+    fn headings_take_their_level_colour_and_h2_an_underline() {
+        let t = crate::themes::load("catppuccin-mocha", None).unwrap();
+        let src = "## Two words\n\n### Three\n\n#### Four\n\n##### Five\n\n###### Six\n";
+        let r = render(&parse(src), 40, &t);
+        let text: Vec<String> = r.lines.iter().map(|l| plain(l)).collect();
+        assert_eq!(
+            text,
+            [
+                "Two words",
+                "─────────",
+                "",
+                "Three",
+                "",
+                "Four",
+                "",
+                "Five",
+                "",
+                "Six"
+            ]
+        );
+        let style = |i: usize| r.lines[i].style.patch(r.lines[i].spans[0].style);
+        assert_eq!(style(1).fg, Some(t.heading_underline));
+        for (line, level) in [(0, 2), (3, 3), (5, 4), (7, 5), (9, 6)] {
+            assert_eq!(
+                style(line).fg,
+                Some(t.heading_color(level)),
+                "level {level}"
+            );
+            let bold = style(line).add_modifier.contains(Modifier::BOLD);
+            let italic = style(line).add_modifier.contains(Modifier::ITALIC);
+            assert_eq!((bold, italic), (level < 6, level == 6), "level {level}");
+        }
+        // The levels differ in this theme.
+        assert_ne!(t.heading_color(2), t.heading_color(3));
+        assert_ne!(t.heading_color(3), t.heading_color(4));
+        // Block starts point at the heading text, not its underline.
+        assert_eq!(r.block_starts[..2], [0, 3]);
+
+        // A wrapped heading is underlined as wide as its widest line.
+        let r = render(&parse("## one two three four\n"), 12, &t);
+        let text: Vec<String> = r.lines.iter().map(|l| plain(l)).collect();
+        assert_eq!(text, ["one two", "three four", "──────────"]);
     }
 
     #[test]

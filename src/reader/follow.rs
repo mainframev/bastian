@@ -34,13 +34,13 @@ impl Reader {
                 return None;
             }
             let path = abs.to_file_path().ok()?;
-            return is_markdown_file(&path).then(|| abs.to_string());
+            return crate::open::is_markdown_file(&path).then(|| abs.to_string());
         }
         let (path, fragment) = url
             .split_once('#')
             .map_or((url, None), |(p, f)| (p, Some(f)));
         let abs = std::path::absolute(self.base_dir.join(path)).ok()?;
-        if !is_markdown_file(&abs) {
+        if !crate::open::is_markdown_file(&abs) {
             return None;
         }
         let mut file = url::Url::from_file_path(abs).ok()?;
@@ -330,14 +330,6 @@ fn blocks_text(blocks: &[Block]) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-/// Whether `path` is an existing file with a Markdown extension.
-fn is_markdown_file(path: &std::path::Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(doc::is_markdown_ext)
-        && path.is_file()
 }
 
 /// `(anchor text, shown text)` of every heading.

@@ -7,13 +7,6 @@ use crate::render::Rendered;
 
 /// Columns the pane starts with.
 pub const DEFAULT_WIDTH: u16 = 30;
-/// The narrowest the pane gets.
-pub const MIN_WIDTH: u16 = 16;
-/// Columns `<` and `>` take off or add.
-pub const STEP: u16 = 4;
-/// Screens narrower than this leave the pane out, so the document keeps
-/// room to read.
-pub const MIN_SCREEN: u16 = 40;
 
 /// A heading in the table of contents.
 pub struct Entry {
@@ -70,27 +63,6 @@ pub fn entries(doc: &Document, rendered: &Rendered) -> Vec<Entry> {
 /// view: the last heading at or above it. `None` before the first heading.
 pub fn current(entries: &[Entry], scroll: usize) -> Option<usize> {
     entries.iter().rposition(|e| e.line <= scroll)
-}
-
-/// The pane's width on a screen `screen` columns wide when asked for
-/// `width`: kept to at least `MIN_WIDTH` and at most half the screen, or 0
-/// when the screen is too narrow for it.
-pub fn fit(width: u16, screen: u16) -> u16 {
-    if screen < MIN_SCREEN {
-        return 0;
-    }
-    width.clamp(MIN_WIDTH, max_width(screen))
-}
-
-/// The widest the pane gets on a screen `screen` columns wide.
-pub fn max_width(screen: u16) -> u16 {
-    (screen / 2).max(MIN_WIDTH)
-}
-
-/// Columns of the `<` and `>` markers on the header row of a pane `width`
-/// wide, from its left edge: before a space and the right border.
-pub fn markers(width: u16) -> (u16, u16) {
-    (width.saturating_sub(5), width.saturating_sub(3))
 }
 
 #[cfg(test)]
@@ -156,14 +128,5 @@ mod tests {
         assert_eq!(current(&e, b - 1), Some(0));
         assert_eq!(current(&e, b), Some(1));
         assert_eq!(current(&e, usize::MAX), Some(1));
-    }
-
-    #[test]
-    fn fit_keeps_the_pane_within_the_screen() {
-        assert_eq!(fit(30, 100), 30);
-        assert_eq!(fit(4, 100), MIN_WIDTH);
-        assert_eq!(fit(90, 100), 50);
-        assert_eq!(fit(30, MIN_SCREEN - 1), 0);
-        assert_eq!(fit(30, MIN_SCREEN), 20);
     }
 }

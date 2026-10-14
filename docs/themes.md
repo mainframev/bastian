@@ -93,6 +93,8 @@ for one that suits both) and every color:
   - `heading_2`, `heading_3`, `heading_4` color headings of that level, and
     `heading_5` levels 5 and 6 (`heading`).
   - `heading_underline` colors the rule under level-2 headings (`muted`).
+  - `bullet_1`, `bullet_2`, `bullet_3` color list bullets (`•`, `◦`, `▸`)
+    by nesting depth, cycling for deeper lists (`accent`).
 - `[syntax]` colors code blocks: `comment`, `keyword`, `string`, `number`,
   `constant`, `function`, `type`, `operator`, `punctuation`, `tag`,
   `attribute`, `inserted`, `deleted`.

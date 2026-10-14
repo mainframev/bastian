@@ -24,6 +24,8 @@ pub struct Theme {
     pub heading_5: Color,
     /// The rule under level-2 headings.
     pub heading_underline: Color,
+    /// Bullets of unordered lists, by nesting depth; deeper lists cycle.
+    pub bullets: [Color; 3],
     pub link: Color,
     pub code: Color,
     /// Background of search matches, and of the current match.

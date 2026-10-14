@@ -239,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn heading_colors_fall_back_to_heading() {
+    fn optional_colors_fall_back() {
         let src = "appearance = \"dark\"\n[ui]\n".to_string()
             + &build::UI_KEYS
                 .iter()
@@ -260,6 +260,7 @@ mod tests {
             assert_eq!(t.heading_color(level), heading, "level {level}");
         }
         assert_eq!(t.heading_underline, Color::Rgb(0x30, 0x30, 0x30));
+        assert_eq!(t.bullets, [t.accent; 3]);
 
         let src = src.replace(
             "[syntax]",
@@ -272,6 +273,10 @@ mod tests {
         assert_eq!(t.heading_color(5), Color::Rgb(0x50, 0x50, 0x50));
         assert_eq!(t.heading_color(6), Color::Rgb(0x50, 0x50, 0x50));
         assert_eq!(t.heading_underline, Color::Reset);
+
+        let src = src.replace("[syntax]", "bullet_2 = \"green\"\n[syntax]");
+        let t = build(&file(&src), "t").unwrap();
+        assert_eq!(t.bullets, [t.accent, Color::Green, t.accent]);
 
         let bad = src.replace("heading_3 = \"red\"", "heading_3 = \"nope\"");
         let err = build(&file(&bad), "t").unwrap_err().to_string();

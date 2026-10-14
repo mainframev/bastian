@@ -16,7 +16,7 @@ pub(crate) use plain::strip_controls;
 pub use plain::{plain, to_plain};
 pub(crate) use run::run_status;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
@@ -126,6 +126,9 @@ pub(crate) fn is_mermaid(lang: Option<&str>) -> bool {
     lang.is_some_and(|l| l.eq_ignore_ascii_case("mermaid"))
 }
 
+/// Bullets of unordered lists, by nesting depth; deeper lists cycle.
+const BULLETS: [&str; 3] = ["• ", "◦ ", "▸ "];
+
 /// The bar down the left of quotes and run output.
 const QUOTE_BAR: &str = "│ ";
 
@@ -185,6 +188,7 @@ pub(crate) fn render_with_runs(doc: &Document, width: u16, theme: &Theme, cx: Co
         theme,
         cx,
         link_runs: RefCell::default(),
+        list_depth: Cell::default(),
     };
     let width = usize::from(width).max(10);
     if doc.code_file
@@ -277,6 +281,8 @@ struct Renderer<'a> {
     cx: Context<'a>,
     /// Link runs in the order they were styled, for `locate_links`.
     link_runs: RefCell<Vec<LinkRun>>,
+    /// Lists enclosing the block being rendered.
+    list_depth: Cell<usize>,
 }
 
 impl Renderer<'_> {
@@ -415,6 +421,7 @@ impl Renderer<'_> {
         width: usize,
     ) -> Out {
         let t = self.theme;
+        let depth = self.list_depth.get();
         let numbers: Vec<String> = match start {
             Some(n) => (0..items.len() as u64)
                 .map(|i| format!("{}. ", n + i))
@@ -442,7 +449,8 @@ impl Renderer<'_> {
                 match task {
                     Some(task) => spans.push(task),
                     None if start.is_none() => {
-                        spans.push(Span::styled("• ", Style::default().fg(t.accent)));
+                        let i = depth % BULLETS.len();
+                        spans.push(Span::styled(BULLETS[i], Style::default().fg(t.bullets[i])));
                     }
                     None => {}
                 }
@@ -454,6 +462,7 @@ impl Renderer<'_> {
         let pad = [Span::raw(" ".repeat(marker_w))];
 
         let mut out = Out::default();
+        self.list_depth.set(depth + 1);
         for (item, mut first) in items.iter().zip(markers) {
             let gap = marker_w - width_of(&first);
             if gap > 0 {
@@ -462,6 +471,7 @@ impl Renderer<'_> {
             let inner = self.blocks(item, width.saturating_sub(marker_w), false);
             out.append(non_empty(inner), &first, &pad);
         }
+        self.list_depth.set(depth);
         out
     }
 
@@ -650,6 +660,37 @@ mod tests {
         let r = render(&parse("## one two three four\n"), 12, &t);
         let text: Vec<String> = r.lines.iter().map(|l| plain(l)).collect();
         assert_eq!(text, ["one two", "three four", "──────────"]);
+    }
+
+    #[test]
+    fn bullets_cycle_by_depth_in_their_colours() {
+        use ratatui::style::Color;
+        let mut t = Theme::dark();
+        // Without bullet colours the theme uses its accent for all of them.
+        assert_eq!(t.bullets, [t.accent; 3]);
+        t.bullets = [Color::Red, Color::Green, Color::Blue];
+        let src = "- a\n  - b\n    - c\n      - d\n- e\n\n1. one\n   - f\n";
+        let r = render(&parse(src), 40, &t);
+        let bullets: Vec<(String, Option<Color>)> = r
+            .lines
+            .iter()
+            .filter_map(|l| l.spans.iter().find(|s| !s.content.trim().is_empty()))
+            .map(|s| (s.content.to_string(), s.style.fg))
+            .collect();
+        let b = |s: &str, c| (s.to_string(), Some(c));
+        assert_eq!(
+            bullets,
+            [
+                b("• ", Color::Red),
+                b("◦ ", Color::Green),
+                b("▸ ", Color::Blue),
+                b("• ", Color::Red),
+                b("• ", Color::Red),
+                b("1. ", t.accent),
+                // Nested in a numbered list, a level down.
+                b("◦ ", Color::Green),
+            ]
+        );
     }
 
     #[test]

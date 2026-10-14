@@ -33,6 +33,9 @@ pub(super) const OPTIONAL_UI_KEYS: &[(&str, &str)] = &[
     ("heading_4", "heading"),
     ("heading_5", "heading"),
     ("heading_underline", "muted"),
+    ("bullet_1", "accent"),
+    ("bullet_2", "accent"),
+    ("bullet_3", "accent"),
 ];
 
 pub(super) const SYNTAX_KEYS: &[&str] = &[
@@ -112,6 +115,7 @@ pub(super) fn build(file: &ThemeFile, origin: &str) -> Result<Theme> {
         heading_4: ui("heading_4")?,
         heading_5: ui("heading_5")?,
         heading_underline: ui("heading_underline")?,
+        bullets: [ui("bullet_1")?, ui("bullet_2")?, ui("bullet_3")?],
         link: ui("link")?,
         code: ui("code")?,
         match_bg: ui("match_bg")?,

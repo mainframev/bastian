@@ -28,8 +28,12 @@ pub enum Action {
     /// Go back to the previous document or the browser, or quit.
     Back,
     Quit,
-    /// Open a Markdown document in bastian.
-    OpenDocument(PathBuf),
+    /// Open a Markdown document in bastian, at the heading `anchor` names
+    /// when there is one.
+    OpenDocument {
+        path: PathBuf,
+        anchor: Option<String>,
+    },
     /// Fetch and open a remote Markdown document.
     OpenRemote(url::Url),
     /// Hand a URL or file to the system opener.
@@ -129,6 +133,8 @@ pub struct Reader {
     /// Where the last restore left the view; any other scroll position
     /// means the user moved, which ends the restore.
     restored_at: Option<usize>,
+    /// Heading anchor to scroll to once the document is laid out.
+    pending_anchor: Option<String>,
     width: u16,
     height: usize,
 }
@@ -182,6 +188,7 @@ impl Reader {
             positions: None,
             restore: None,
             restored_at: None,
+            pending_anchor: None,
             width: 0,
             height: 0,
         }
@@ -275,8 +282,21 @@ impl Reader {
                 self.restore = None;
             }
         }
+        if let Some(anchor) = self.pending_anchor.take() {
+            match self.heading_line(&anchor) {
+                Some(line) => self.jump_to(line),
+                None => self.message = Some(format!("no heading #{anchor}")),
+            }
+        }
         self.follow_output();
         self.scroll = self.scroll.min(self.max_scroll());
+    }
+
+    /// Open at the heading whose anchor is `anchor` (`#getting-started`
+    /// without the `#`), instead of at a remembered position.
+    pub fn go_to_anchor(&mut self, anchor: &str) {
+        self.pending_anchor = Some(anchor.to_string());
+        self.restore = None;
     }
 
     /// Search the rendered text again, keeping the current match in range.

@@ -87,7 +87,13 @@ impl Reader {
             };
         }
         match links::resolve(url, &self.base_dir) {
-            Target::Document(path) => Action::OpenDocument(path),
+            Target::Document(path) => Action::OpenDocument {
+                path,
+                anchor: url
+                    .split_once('#')
+                    .map(|(_, a)| a.to_string())
+                    .filter(|a| !a.is_empty()),
+            },
             Target::External(target) => self.open_external(target),
             Target::Anchor(anchor) => {
                 match self.heading_line(&anchor) {
@@ -384,7 +390,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("Other Page.md"),
-            "# Other\n\n## Getting Started\n",
+            "# Other\n\nintro\n\n## Getting Started\n\nstep one\n\nstep two\n\nthe end\n",
         )
         .unwrap();
         let mut r = Reader::new(
@@ -397,7 +403,20 @@ mod tests {
         r.layout(80, 20);
         press(&mut r, KeyCode::Char('s'), KeyModifiers::NONE);
         assert_eq!(r.link_preview, "→ Other Page.md · Other");
-        let action = r.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        assert!(matches!(&action, Action::OpenDocument(p) if p.ends_with("Other Page.md")));
+        let Action::OpenDocument { path, anchor } =
+            r.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        else {
+            panic!("expected OpenDocument");
+        };
+        assert!(path.ends_with("Other Page.md"));
+        assert_eq!(anchor.as_deref(), Some("getting-started"));
+
+        // The page opens at that heading, not at its top.
+        let text = std::fs::read_to_string(&path).unwrap();
+        let mut page = Reader::new("Other Page.md".into(), parse(&text), Theme::dark(), 80);
+        page.go_to_anchor(anchor.as_deref().unwrap());
+        page.layout(80, 2);
+        assert_eq!(Some(page.scroll), page.heading_line("getting-started"));
+        assert!(page.scroll > 0);
     }
 }

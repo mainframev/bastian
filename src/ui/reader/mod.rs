@@ -142,18 +142,32 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
         frame.render_widget(Paragraph::new(numbers), area);
     }
 
-    // Focus marker in the left margin, next to the focused block.
-    if let Some(range) = r
+    // The focused block's frame in the accent color, or a marker in the
+    // left margin next to a block without one.
+    if let Some(block) = r
         .focus
         .and_then(|id| r.rendered().code_blocks.iter().find(|c| c.id == id))
-        .map(|c| c.lines.clone())
     {
-        let top = range.start.max(r.scroll());
-        let bottom = range.end.min(end);
-        for line in top..bottom {
+        let accent = Style::default().fg(t.accent);
+        let range = &block.lines;
+        for line in range.start.max(r.scroll())..range.end.min(end) {
             let y = body.y + (line - r.scroll()) as u16;
-            let cell = Rect::new(body.x, y, 1, 1);
-            frame.render_widget(Span::styled("▌", Style::default().fg(t.accent)), cell);
+            let Some(cols) = &block.frame else {
+                frame.render_widget(Span::styled("▌", accent), Rect::new(body.x, y, 1, 1));
+                continue;
+            };
+            let x = |col: usize| content.x + col as u16;
+            let cells = if line == range.start || line + 1 == range.end {
+                vec![(cols.start, cols.len())]
+            } else {
+                vec![(cols.start, 1), (cols.end - 1, 1)]
+            };
+            for (col, width) in cells {
+                let width = (width as u16).min(content.right().saturating_sub(x(col)));
+                frame
+                    .buffer_mut()
+                    .set_style(Rect::new(x(col), y, width, 1), accent);
+            }
         }
     }
 

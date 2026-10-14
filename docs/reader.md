@@ -19,7 +19,10 @@ its note.
 | `space/b`, `PageDown/Up`    | scroll a page                                                |
 | `g/G`, `Home/End`           | top/bottom                                                   |
 | `/`, `n/N`                  | search, next/previous match                                  |
-| `O`                         | outline: jump to a heading                                   |
+| `t`                         | show/hide the table of contents                              |
+| `J/K`                       | jump to the next/previous heading                            |
+| `1-9`, `0`                  | table of contents open: jump to entry 1–9, 10                |
+| `<`, `>`                    | table of contents open: narrow/widen it                      |
 | `L`                         | list links; `Enter` follows one                              |
 | `s/S`                       | focus the next/previous link; `Enter` follows it             |
 | `Tab`, `Shift-Tab`          | focus the next/previous code block                           |
@@ -40,7 +43,8 @@ its note.
 | `Esc`, `h`                  | back to the previous document or the file list              |
 | `q`                         | quit                                                         |
 
-`--mouse` (or `mouse = true`) also scrolls with the mouse wheel. It captures
+`--mouse` (or `mouse = true`) also scrolls with the mouse wheel, and a click
+on the `<` or `>` in the table of contents' header resizes it. It captures
 the mouse, so selecting text in the terminal then needs a modifier key (often
 shift or option).
 
@@ -50,10 +54,24 @@ shift or option).
 `N` move between matches and `Esc` clears it. The input edits like a shell
 prompt (`←/→`, `alt-b/f`, `ctrl-w`, `ctrl-u`, …).
 
-## Outline
+## Table of contents
 
-`O` docks the document's headings on the right as a tree. Move with `j/k`,
-press `Enter` to jump to a heading, `Esc` to close it.
+`t` shows the document's headings in a pane on the left. The document
+narrows and re-wraps beside it, and the usual keys keep working, so you can
+read with it open. The section you're reading is highlighted as you scroll.
+
+The outermost headings are numbered `01`, `02`, …; when the document has a
+single title, its sections are numbered instead. Deeper headings are
+indented under them. `1` to `9` jump to the numbered headings 1–9 and `0` to
+the tenth. `J` and `K` step to the next or previous heading of any level,
+with the pane open or not, which reaches every heading in longer documents.
+
+`<` and `>` narrow or widen the pane by four columns, from 16 columns up to
+half the screen; with `--mouse`, clicking the `<` or `>` in its header does
+the same. The width lasts until bastian quits. Screens narrower than 40
+columns leave the pane out.
+
+`t` replaces the outline that `O` opened in earlier versions.
 
 ## Links
 

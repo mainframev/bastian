@@ -286,10 +286,7 @@ const HELP: &[status::HelpSection] = &[
             ("1-9, 0", "jump to entry 1-10"),
         ],
     ),
-    (
-        "General",
-        &[("T", "pick a theme"), ("?", "this help"), ("q", "quit")],
-    ),
+    ("General", &[("T", "pick a theme"), ("q", "quit")]),
     (
         "Code blocks",
         &[

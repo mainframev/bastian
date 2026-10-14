@@ -983,7 +983,7 @@ fn hyperlink_targets_follow_the_rendered_links() {
         &opts,
     );
     r.layout(80, 40);
-    assert!(r.hyperlink_targets().is_empty());
+    assert_eq!(r.hyperlink_targets(), [] as [Option<String>; 0]);
 }
 
 #[test]

@@ -1,0 +1,35 @@
+# Neutral Dark
+# Plain grays with blue headings, for a dark background.
+appearance = "dark"
+
+[ui]
+text = "#d4d4d4"
+muted = "#808080"
+subtle = "#a8a8a8"
+surface = "#262626"
+accent = "#569cd6"
+h1_fg = "#1e1e1e"
+h1_bg = "#569cd6"
+heading = "#569cd6"
+link = "#4fc1ff"
+code = "#ce9178"
+match_bg = "#3a3d41"
+current_bg = "#d7ba7d"
+err = "#f44747"
+ok = "#6a9955"
+warn = "#d7ba7d"
+
+[syntax]
+comment = "#6a9955"
+keyword = "#569cd6"
+string = "#ce9178"
+number = "#b5cea8"
+constant = "#4fc1ff"
+function = "#dcdcaa"
+type = "#4ec9b0"
+operator = "#d4d4d4"
+punctuation = "#d4d4d4"
+tag = "#569cd6"
+attribute = "#9cdcfe"
+inserted = "#6a9955"
+deleted = "#f44747"

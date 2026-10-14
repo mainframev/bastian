@@ -9,6 +9,9 @@ popular ones and loads your own from TOML files.
 
 | Family      | Themes                                                                                             |
 | ----------- | -------------------------------------------------------------------------------------------------- |
+| Terminal    | `terminal`: the terminal's own 16 colors, on a dark or light background                            |
+| Neutral     | `neutral-dark`, `neutral-light`                                                                    |
+| Accessible  | `high-contrast`                                                                                    |
 | Tokyo Night | `tokyonight-night` (`tokyonight`), `tokyonight-storm`, `tokyonight-moon`, `tokyonight-day`         |
 | Rosé Pine   | `rose-pine`, `rose-pine-moon`, `rose-pine-dawn`                                                    |
 | Kanagawa    | `kanagawa-wave` (`kanagawa`), `kanagawa-dragon`, `kanagawa-lotus`                                  |
@@ -66,8 +69,8 @@ h1_bg = "#ff9e64"
 comment = "#7a88cf"
 ```
 
-Without `extends`, a theme sets `appearance` (`"dark"` or `"light"`) and every
-color:
+Without `extends`, a theme sets `appearance` (`"dark"`, `"light"`, or `"any"`
+for one that suits both) and every color:
 
 - `[ui]` colors the document: `text`, `muted`, `subtle`, `surface`, `accent`,
   `h1_fg`, `h1_bg`, `heading`, `link`, `code`, `match_bg`, `current_bg`,
@@ -75,6 +78,11 @@ color:
 - `[syntax]` colors code blocks: `comment`, `keyword`, `string`, `number`,
   `constant`, `function`, `type`, `operator`, `punctuation`, `tag`,
   `attribute`, `inserted`, `deleted`.
+
+A color is `#rrggbb`, one of the 16 ANSI color names (`black`, `red`, `green`,
+`yellow`, `blue`, `magenta`, `cyan`, `white`, and each with a `bright-`
+prefix), which show in your terminal's palette, or `default` for the
+terminal's own foreground or background.
 
 The built-in themes in the repository's [`themes/`](../themes) directory are
 complete examples. A file named after a built-in replaces it; to tweak a

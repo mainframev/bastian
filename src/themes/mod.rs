@@ -8,6 +8,7 @@ mod file;
 mod list;
 mod theme;
 
+pub use build::from_syntect;
 pub use builtin::builtin_names;
 pub use list::{Listing, format_list, list};
 pub use theme::Theme;
@@ -31,6 +32,8 @@ pub const DEFAULT_LIGHT: &str = "rose-pine-dawn";
 pub enum Appearance {
     Dark,
     Light,
+    /// Follows the terminal's own colors, so suits either background.
+    Any,
 }
 
 /// Whether `name` is a theme bastian can load: a file in `dir` (the user's
@@ -101,7 +104,9 @@ mod tests {
     fn every_builtin_loads() {
         for name in builtin_names() {
             let t = load(name, None).unwrap_or_else(|e| panic!("{name}: {e:#}"));
-            let expect = if name.ends_with("-day")
+            let expect = if name == "terminal" {
+                Appearance::Any
+            } else if name.ends_with("-day")
                 || name.ends_with("-dawn")
                 || name.ends_with("-lotus")
                 || name.ends_with("-latte")
@@ -113,7 +118,7 @@ mod tests {
             };
             assert_eq!(t.appearance, expect, "{name}");
         }
-        assert_eq!(BUILTINS.len(), 22);
+        assert_eq!(BUILTINS.len(), 26);
     }
 
     #[test]
@@ -206,6 +211,31 @@ mod tests {
         assert_eq!(color_of("hi"), Some(want("string")));
         assert_eq!(color_of("main"), Some(want("function")));
         assert_eq!(color_of("Point"), Some(want("type")));
+    }
+
+    #[test]
+    fn ansi_names_follow_the_terminal_palette() {
+        let t = load("terminal", None).unwrap();
+        assert_eq!(t.text, Color::Reset);
+        assert_eq!(t.muted, Color::DarkGray);
+        assert_eq!(t.accent, Color::Blue);
+        let lines =
+            crate::render::code::highlight("fn main() { let s = \"hi\"; }\n", Some("rust"), &t, 4);
+        let color_of = |text: &str| {
+            lines[0]
+                .iter()
+                .find(|s| s.content.contains(text))
+                .unwrap_or_else(|| panic!("no span with {text}: {:?}", lines[0]))
+                .style
+                .fg
+        };
+        assert_eq!(color_of("fn"), Some(Color::Magenta));
+        assert_eq!(color_of("hi"), Some(Color::Green));
+        assert_eq!(color_of("main"), Some(Color::Blue));
+        assert_eq!(color_of("{"), Some(Color::Reset));
+
+        let src = with_line("accent", "accent = \"bright-white\"");
+        assert_eq!(build(&file(&src), "t").unwrap().accent, Color::White);
     }
 
     fn theme_dir(files: &[(&str, &str)]) -> tempfile::TempDir {

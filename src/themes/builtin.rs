@@ -6,6 +6,10 @@ macro_rules! builtins {
 
 /// Built-in themes: name and TOML source.
 pub(super) const BUILTINS: &[(&str, &str)] = builtins![
+    "terminal",
+    "neutral-dark",
+    "neutral-light",
+    "high-contrast",
     "tokyonight-night",
     "tokyonight-storm",
     "tokyonight-moon",

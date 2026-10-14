@@ -101,9 +101,10 @@ see [code blocks](docs/code-blocks.md).
 
 ## Themes
 
-Built in: Tokyo Night, Rosé Pine, Kanagawa, Catppuccin, Gruvbox, Nord,
-Dracula, Everforest and Solarized, each with its variants. By default bastian
-follows your terminal's light or dark background.
+Built in: `terminal` (your terminal's own colors), neutral dark and light,
+high contrast, and Tokyo Night, Rosé Pine, Kanagawa, Catppuccin, Gruvbox,
+Nord, Dracula, Everforest and Solarized, each with its variants. By default
+bastian follows your terminal's light or dark background.
 
 ```sh {norun}
 bastian themes               # pick one with a live preview; Enter saves it

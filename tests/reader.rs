@@ -1161,6 +1161,25 @@ fn links_are_terminal_hyperlinks() {
 }
 
 #[test]
+fn popups_hide_hyperlinks_beneath_them() {
+    use bastian::ui::reader::draw;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let doc = "See [docs](https://x.dev/docs) and [more](https://x.dev/more) here.\n";
+    let mut r = Reader::new(Source::in_memory("t.md", parse(doc)), &Options::default());
+    r.on_key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE));
+    let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+    let frame = terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let buf = frame.buffer;
+    let cells: String = (0..30)
+        .flat_map(|y| (0..100).map(move |x| (x, y)))
+        .map(|(x, y)| buf[(x, y)].symbol().to_string())
+        .collect();
+    // Their labels would print over the popup.
+    assert!(!cells.contains("\u{1b}]8;;"), "no OSC 8 links under help");
+}
+
+#[test]
 fn hyperlink_targets_follow_the_rendered_links() {
     let dir = tempfile::tempdir().unwrap();
     let d = dir.path();

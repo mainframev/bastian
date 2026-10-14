@@ -32,8 +32,9 @@ bastian -t nord README.md    # use a theme just this once
 `bastian themes` lists the themes in a pane on the right and previews each one
 on a sample document as you move through the list (`j`/`k`, `↓`/`↑`, `g`/`G`).
 The document re-wraps beside the pane, so the preview is how it will read.
-Each theme shows whether it's dark or light and a swatch of its colors when
-the pane is wide enough, and the one in use is ticked. `Enter` saves the
+Each theme shows whether it's dark or light, and the one in use is ticked.
+Widen the pane and a swatch of its colors appears, on the theme's own surface,
+with more colors the wider it gets. `Enter` saves the
 highlighted one as `theme` in your config file, keeping your other settings and
 comments; `Esc`, `q` or `T` leave things as they were.
 

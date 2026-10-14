@@ -1167,7 +1167,7 @@ fn popups_hide_hyperlinks_beneath_them() {
 
     let doc = "See [docs](https://x.dev/docs) and [more](https://x.dev/more) here.\n";
     let mut r = Reader::new(Source::in_memory("t.md", parse(doc)), &Options::default());
-    r.help.open = true;
+    r.on_key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE));
     let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
     let frame = terminal.draw(|f| draw(f, &mut r)).unwrap();
     let buf = frame.buffer;

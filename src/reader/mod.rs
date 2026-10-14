@@ -285,8 +285,8 @@ impl Reader {
             link_picker: None,
             outline: None,
             help: false,
-            // Source files always show their line numbers.
-            line_numbers: opts.line_numbers || code_file,
+            // Source files read from disk always show their line numbers.
+            line_numbers: opts.line_numbers || (file.is_some() && code_file),
             modified: file.as_deref().and_then(reload::mtime),
             source: file,
             text,

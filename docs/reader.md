@@ -30,6 +30,7 @@ its note.
 | `y`                         | copy the focused block                                       |
 | `d`, `D`                    | focus the next/previous details block (`Enter` opens/closes) |
 | `c`                         | copy the whole document                                      |
+| `p`                         | show the file path; `R`/`A` copy it relative/absolute        |
 | `ctrl-e`                    | edit the file at the line you're reading                     |
 | `#`                         | toggle line numbers                                          |
 | `i`                         | show/hide images                                             |
@@ -126,7 +127,9 @@ different width. Positions live in `$XDG_STATE_HOME/bastian/positions.json`
 
 ## Copying
 
-`y` copies the focused code block and `c` the whole document's source. Both
+`y` copies the focused code block and `c` the whole document's source. `p`
+shows where the file is, relative to the current directory and in full; `R`
+and `A` copy one of the two (for a remote document, its URL). All of these
 use OSC 52, so they work over ssh in terminals that support it.
 
 ## Remote documents

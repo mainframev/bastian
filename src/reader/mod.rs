@@ -9,7 +9,7 @@ mod search;
 pub use search::{Match, Search};
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime};
 
 use crate::doc::{CodeBlock, Document};
@@ -159,11 +159,11 @@ impl Default for Options {
 /// State of the document reader view.
 pub struct Reader {
     pub name: String,
-    pub doc: Document,
-    pub theme: Theme,
+    doc: Document,
+    theme: Theme,
     pub max_width: u16,
-    pub rendered: Rendered,
-    pub scroll: usize,
+    rendered: Rendered,
+    scroll: usize,
     pub search: Option<Search>,
     pub prompt: Option<Prompt>,
     /// Focused code block id.
@@ -172,17 +172,17 @@ pub struct Reader {
     pub link_focus: Option<usize>,
     /// Where the focused link leads, for the status bar.
     pub link_preview: String,
-    pub runs: HashMap<usize, BlockRun>,
+    runs: HashMap<usize, BlockRun>,
     /// Blocks waiting for a yes/no before they run.
     pub confirm: Option<Vec<usize>>,
     /// Link target waiting for a yes/no before the system opener gets it.
     pub confirm_open: Option<String>,
     /// One-shot status bar message, cleared on the next key.
-    pub message: Option<String>,
+    message: Option<String>,
     /// Directory that block `cwd`s are relative to.
-    pub base_dir: PathBuf,
+    base_dir: PathBuf,
     /// Skip confirmation, except for blocks marked `confirm`.
-    pub assume_yes: bool,
+    assume_yes: bool,
     pub link_picker: Option<LinkPicker>,
     /// The heading outline opened with `O`.
     pub outline: Option<Outline>,
@@ -190,14 +190,14 @@ pub struct Reader {
     /// Draw a gutter of rendered line numbers.
     pub line_numbers: bool,
     /// File the document came from, watched for changes.
-    pub source: Option<PathBuf>,
+    source: Option<PathBuf>,
     /// The document's source text, for copying it whole.
-    pub text: String,
+    text: String,
     /// Set for documents fetched over HTTP: links resolve against this URL.
-    pub remote_base: Option<url::Url>,
+    remote_base: Option<url::Url>,
     modified: Option<SystemTime>,
     last_check: Instant,
-    pub interpreters: Interpreters,
+    interpreters: Interpreters,
     codes: Vec<CodeBlock>,
     runner: Runner,
     /// Remaining blocks of a run-all, started one after another.
@@ -210,7 +210,7 @@ pub struct Reader {
     follow: Option<usize>,
     dirty: bool,
     /// Pictures for the document's image blocks.
-    pub images: Images,
+    pub(crate) images: Images,
     /// Whether this document's images were asked for yet. Done on the first
     /// layout, once `base_dir` and `remote_base` are final.
     images_requested: bool,
@@ -221,17 +221,17 @@ pub struct Reader {
     /// Id of the focused details block.
     pub details_focus: Option<usize>,
     /// Image size and tab width settings.
-    pub render_opts: render::Options,
+    render_opts: render::Options,
     /// Make links clickable terminal hyperlinks.
     pub hyperlinks: bool,
     /// Show a scrollbar when the document overflows.
     pub scrollbar: bool,
     /// Where reading positions are remembered; `None` doesn't remember
     /// this document's.
-    pub positions: Option<PathBuf>,
+    positions: Option<PathBuf>,
     /// Source line to scroll to, kept until the user moves so it survives
     /// re-renders (e.g. pictures loading).
-    pub restore: Option<crate::positions::Position>,
+    restore: Option<crate::positions::Position>,
     /// Where the last restore left the view; any other scroll position
     /// means the user moved, which ends the restore.
     restored_at: Option<usize>,
@@ -356,6 +356,50 @@ impl Reader {
         self.theme = theme;
         self.highlights.clear();
         self.dirty = true;
+    }
+
+    pub fn doc(&self) -> &Document {
+        &self.doc
+    }
+
+    pub fn theme(&self) -> &Theme {
+        &self.theme
+    }
+
+    /// The document as laid out by the last `layout`.
+    pub fn rendered(&self) -> &Rendered {
+        &self.rendered
+    }
+
+    /// The rendered line at the top of the view.
+    pub fn scroll(&self) -> usize {
+        self.scroll
+    }
+
+    /// Put rendered line `line` at the top of the view, as far as the
+    /// document allows. Counts as the user moving: it ends a restore.
+    pub fn scroll_to(&mut self, line: usize) {
+        self.jump_to(line);
+    }
+
+    /// The one-shot status bar message, if any.
+    pub fn message(&self) -> Option<&str> {
+        self.message.as_deref()
+    }
+
+    /// Show `msg` in the status bar until the next key.
+    pub fn set_message(&mut self, msg: impl Into<String>) {
+        self.message = Some(msg.into());
+    }
+
+    /// Run state by code block id.
+    pub fn runs(&self) -> &HashMap<usize, BlockRun> {
+        &self.runs
+    }
+
+    /// Directory block `cwd`s and relative links resolve from.
+    pub fn base_dir(&self) -> &Path {
+        &self.base_dir
     }
 
     /// Re-render when the width or run output changed, and keep scroll in range.

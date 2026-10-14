@@ -7,11 +7,24 @@ use bastian::reader::{Match, Options, Reader, Source};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 fn reader(src: &str) -> Reader {
+    reader_with(src, std::env::temp_dir(), false)
+}
+
+/// A reader that runs blocks without asking.
+fn yes(src: &str) -> Reader {
+    reader_with(src, std::env::temp_dir(), true)
+}
+
+fn reader_with(src: &str, base_dir: std::path::PathBuf, assume_yes: bool) -> Reader {
     let source = Source {
-        base_dir: std::env::temp_dir(),
+        base_dir,
         ..Source::in_memory("t.md", parse(src))
     };
-    let mut r = Reader::new(source, &Options::default());
+    let opts = Options {
+        assume_yes,
+        ..Options::default()
+    };
+    let mut r = Reader::new(source, &opts);
     r.layout(80, 40);
     r
 }
@@ -32,14 +45,18 @@ fn settle(r: &mut Reader) -> Vec<Option<Status>> {
         assert!(Instant::now() < deadline, "blocks did not finish");
         thread::sleep(Duration::from_millis(20));
     }
-    let n = r.rendered.code_blocks.len();
+    let n = r.rendered().code_blocks.len();
     (0..n)
-        .map(|id| r.runs.get(&id).map(|b| b.status.clone()))
+        .map(|id| r.runs().get(&id).map(|b| b.status.clone()))
         .collect()
 }
 
 fn output(r: &Reader, id: usize) -> Vec<String> {
-    r.runs[&id].output.iter().map(|l| l.text.clone()).collect()
+    r.runs()[&id]
+        .output
+        .iter()
+        .map(|l| l.text.clone())
+        .collect()
 }
 
 #[test]
@@ -49,9 +66,9 @@ fn confirm_then_run_shows_output() {
     assert_eq!(r.confirm, Some(vec![0]));
     key(&mut r, KeyCode::Char('y'));
     settle(&mut r);
-    assert!(matches!(r.runs[&0].status, Status::Ok(_)));
+    assert!(matches!(r.runs()[&0].status, Status::Ok(_)));
     assert_eq!(output(&r, 0), ["hello"]);
-    let text = bastian::render::to_plain(&r.rendered.lines);
+    let text = bastian::render::to_plain(&r.rendered().lines);
     assert!(text.contains("✓ done in"), "{text}");
     assert!(text.contains("│ hello"), "{text}");
 }
@@ -62,13 +79,12 @@ fn declining_does_not_run() {
     key(&mut r, KeyCode::Enter);
     key(&mut r, KeyCode::Char('n'));
     assert!(r.confirm.is_none());
-    assert!(r.runs.is_empty());
+    assert!(r.runs().is_empty());
 }
 
 #[test]
 fn assume_yes_skips_confirm_except_marked_blocks() {
-    let mut r = reader("```sh\necho a\n```\n\n```sh {confirm}\necho b\n```\n");
-    r.assume_yes = true;
+    let mut r = yes("```sh\necho a\n```\n\n```sh {confirm}\necho b\n```\n");
     key(&mut r, KeyCode::Enter);
     assert!(r.confirm.is_none());
     settle(&mut r);
@@ -80,8 +96,7 @@ fn assume_yes_skips_confirm_except_marked_blocks() {
 #[test]
 fn run_all_stops_at_first_failure_and_skips_unrunnable() {
     let src = "```sh\necho one\n```\n\n```text\nnot code\n```\n\n```sh\nexit 2\n```\n\n```sh\necho never\n```\n";
-    let mut r = reader(src);
-    r.assume_yes = true;
+    let mut r = yes(src);
     key(&mut r, KeyCode::Char('R'));
     let statuses = settle(&mut r);
     assert!(matches!(statuses[0], Some(Status::Ok(_))));
@@ -95,8 +110,7 @@ fn run_all_stops_at_first_failure_and_skips_unrunnable() {
 
 #[test]
 fn timeout_kills_block() {
-    let mut r = reader("```sh {timeout=200ms}\nsleep 5\n```\n");
-    r.assume_yes = true;
+    let mut r = yes("```sh {timeout=200ms}\nsleep 5\n```\n");
     key(&mut r, KeyCode::Enter);
     let start = Instant::now();
     let statuses = settle(&mut r);
@@ -109,8 +123,7 @@ fn timeout_kills_block() {
 
 #[test]
 fn cancel_with_x() {
-    let mut r = reader("```sh\nsleep 5\n```\n");
-    r.assume_yes = true;
+    let mut r = yes("```sh\nsleep 5\n```\n");
     key(&mut r, KeyCode::Enter);
     thread::sleep(Duration::from_millis(100));
     key(&mut r, KeyCode::Char('x'));
@@ -125,9 +138,11 @@ fn cancel_with_x() {
 fn cwd_is_relative_to_document() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir(dir.path().join("sub")).unwrap();
-    let mut r = reader("```sh {cwd=sub}\npwd\n```\n");
-    r.base_dir = dir.path().to_path_buf();
-    r.assume_yes = true;
+    let mut r = reader_with(
+        "```sh {cwd=sub}\npwd\n```\n",
+        dir.path().to_path_buf(),
+        true,
+    );
     key(&mut r, KeyCode::Enter);
     settle(&mut r);
     let got = std::fs::canonicalize(&output(&r, 0)[0]).unwrap();
@@ -138,7 +153,7 @@ fn cwd_is_relative_to_document() {
 fn unrunnable_block_reports_why() {
     let mut r = reader("```rust\nfn main() {}\n```\n");
     key(&mut r, KeyCode::Enter);
-    assert_eq!(r.message.as_deref(), Some("no interpreter for `rust`"));
+    assert_eq!(r.message(), Some("no interpreter for `rust`"));
     assert!(r.confirm.is_none());
 }
 
@@ -146,8 +161,7 @@ fn unrunnable_block_reports_why() {
 fn missing_interpreter_is_an_error_status() {
     // A real language whose program is unlikely to exist under this name
     // can't be tested portably, so check a missing cwd instead.
-    let mut r = reader("```sh {cwd=does-not-exist}\necho x\n```\n");
-    r.assume_yes = true;
+    let mut r = yes("```sh {cwd=does-not-exist}\necho x\n```\n");
     key(&mut r, KeyCode::Enter);
     let statuses = settle(&mut r);
     assert!(
@@ -174,8 +188,8 @@ fn backtab_from_bottom_focuses_last_visible_block() {
         r.focus,
         Some(4),
         "scroll {} lines {}",
-        r.scroll,
-        r.rendered.lines.len()
+        r.scroll(),
+        r.rendered().lines.len()
     );
 }
 
@@ -198,7 +212,7 @@ fn view_follows_output_of_focused_run() {
     key(&mut r, KeyCode::BackTab);
     key(&mut r, KeyCode::Enter);
     let deadline = Instant::now() + Duration::from_secs(10);
-    while r.is_running() || r.runs.is_empty() {
+    while r.is_running() || r.runs().is_empty() {
         assert!(Instant::now() < deadline);
         r.tick();
         r.layout(76, 19);
@@ -206,19 +220,19 @@ fn view_follows_output_of_focused_run() {
     }
     r.tick();
     r.layout(76, 19);
-    let range = r.rendered.code_blocks[4].clone();
+    let range = r.rendered().code_blocks[4].clone();
     assert!(
         range.output_end > range.lines.end,
         "python block has no output panel"
     );
     assert!(
-        r.scroll + 19 >= range.output_end,
+        r.scroll() + 19 >= range.output_end,
         "output not visible: scroll {} output_end {}",
-        r.scroll,
+        r.scroll(),
         range.output_end
     );
     assert_eq!(
-        r.runs[&4]
+        r.runs()[&4]
             .output
             .iter()
             .map(|l| l.text.as_str())
@@ -238,19 +252,19 @@ fn running_timer_updates_in_place() {
     thread::sleep(Duration::from_millis(250));
     assert!(r.tick());
     r.layout(80, 40);
-    let before = bastian::render::to_plain(&r.rendered.lines);
+    let before = bastian::render::to_plain(&r.rendered().lines);
     thread::sleep(Duration::from_millis(250));
     assert!(r.tick());
     r.layout(80, 40);
-    let patched = bastian::render::to_plain(&r.rendered.lines);
+    let patched = bastian::render::to_plain(&r.rendered().lines);
     assert!(patched.contains("● running"), "{patched}");
     assert_ne!(before, patched, "timer did not advance");
 
     // A full re-render gives the same text, apart from the elapsed time.
-    let doc = r.doc.clone();
+    let doc = r.doc().clone();
     r.replace_doc(doc);
     r.layout(80, 40);
-    let full = bastian::render::to_plain(&r.rendered.lines);
+    let full = bastian::render::to_plain(&r.rendered().lines);
     let mask = |s: &str| s.replace(|c: char| c.is_ascii_digit(), "#");
     assert_eq!(mask(&patched), mask(&full));
     key(&mut r, KeyCode::Char('x'));
@@ -269,7 +283,7 @@ fn search_follows_a_running_timer() {
     assert!(r.tick());
     r.layout(80, 40);
     let timer = |r: &Reader| -> String {
-        let text = bastian::render::to_plain(&r.rendered.lines);
+        let text = bastian::render::to_plain(&r.rendered().lines);
         let at = text.find("running ").expect("running status line");
         text[at..]
             .split_whitespace()

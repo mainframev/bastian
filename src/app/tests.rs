@@ -69,12 +69,12 @@ fn theme_picker_previews_and_cancels() {
     // The whole app previews the highlighted theme...
     let preview = app.settings.reader.theme.accent;
     assert_ne!(preview, before);
-    assert_eq!(app.reader.as_ref().unwrap().theme.accent, preview);
+    assert_eq!(app.reader.as_ref().unwrap().theme().accent, preview);
     // ...and Esc puts the old one back without saving anything.
     press(&mut app, KeyCode::Esc);
     assert!(app.picker.is_none());
     assert_eq!(app.settings.reader.theme.accent, before);
-    assert_eq!(app.reader.as_ref().unwrap().theme.accent, before);
+    assert_eq!(app.reader.as_ref().unwrap().theme().accent, before);
     assert!(!dir.path().join("config.toml").exists());
 }
 
@@ -92,7 +92,7 @@ fn picking_a_theme_saves_it() {
         std::fs::read_to_string(dir.path().join("config.toml")).unwrap(),
         format!("# mine\ntheme = \"{first}\"\nwidth = 90\n")
     );
-    let msg = app.reader.as_ref().unwrap().message.clone().unwrap();
+    let msg = app.reader.as_ref().unwrap().message().unwrap().to_string();
     assert!(msg.contains("saved to"), "{msg}");
 
     // With --theme in effect, saving says the flag still wins.
@@ -100,7 +100,7 @@ fn picking_a_theme_saves_it() {
     app.themes.overridden_by = Some("--theme".into());
     press(&mut app, KeyCode::Char('T'));
     press(&mut app, KeyCode::Enter);
-    let msg = app.reader.as_ref().unwrap().message.clone().unwrap();
+    let msg = app.reader.as_ref().unwrap().message().unwrap().to_string();
     assert!(msg.ends_with("--theme still overrides it"), "{msg}");
 }
 
@@ -133,9 +133,9 @@ fn mouse_wheel_scrolls_the_reader() {
     let mut app = App::read(reader, settings);
     assert!(app.on_event(&wheel(MouseEventKind::ScrollDown)));
     assert!(app.on_event(&wheel(MouseEventKind::ScrollDown)));
-    assert_eq!(app.reader.as_ref().unwrap().scroll, 6);
+    assert_eq!(app.reader.as_ref().unwrap().scroll(), 6);
     app.on_event(&wheel(MouseEventKind::ScrollUp));
-    assert_eq!(app.reader.as_ref().unwrap().scroll, 3);
+    assert_eq!(app.reader.as_ref().unwrap().scroll(), 3);
 }
 
 #[test]
@@ -161,7 +161,7 @@ fn i_toggles_pictures_in_every_reader() {
     loop {
         let r = app.reader.as_mut().unwrap();
         r.layout(60, 20);
-        if !r.rendered.images.is_empty() {
+        if !r.rendered().images.is_empty() {
             break;
         }
         r.tick();
@@ -171,7 +171,7 @@ fn i_toggles_pictures_in_every_reader() {
     let text = |app: &mut App| {
         let r = app.reader.as_mut().unwrap();
         r.layout(60, 20);
-        r.rendered
+        r.rendered()
             .lines
             .iter()
             .map(render::plain)
@@ -182,9 +182,9 @@ fn i_toggles_pictures_in_every_reader() {
     press(&mut app, KeyCode::Char('i'));
     let off = text(&mut app);
     let r = app.reader.as_ref().unwrap();
-    assert!(r.rendered.images.is_empty(), "{:?}", r.rendered.images);
+    assert!(r.rendered().images.is_empty(), "{:?}", r.rendered().images);
     assert!(off.contains("a red square"), "{off}");
-    assert_eq!(r.message.as_deref(), Some("images off"));
+    assert_eq!(r.message(), Some("images off"));
     // Readers opened afterwards start with pictures off too.
     assert!(
         !reader_in(&app.settings, doc::parse(""), dir.path().into())
@@ -195,6 +195,6 @@ fn i_toggles_pictures_in_every_reader() {
     press(&mut app, KeyCode::Char('i'));
     text(&mut app);
     let r = app.reader.as_ref().unwrap();
-    assert_eq!(r.rendered.images.len(), 1);
-    assert_eq!(r.message.as_deref(), Some("images on"));
+    assert_eq!(r.rendered().images.len(), 1);
+    assert_eq!(r.message(), Some("images on"));
 }

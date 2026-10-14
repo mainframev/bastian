@@ -57,13 +57,19 @@ pub fn draw(
         height: 1,
         ..inner
     };
+    // Styled spans, not lines: a line's style covers the whole header,
+    // so the count drawn over it would recolor the title.
     frame.render_widget(
-        Line::styled(title.to_string(), Style::default().fg(t.accent).bold()),
+        Line::from(Span::styled(
+            title.to_string(),
+            Style::default().fg(t.accent).bold(),
+        )),
         header,
     );
     if title.width() + 2 + info.width() <= room {
         frame.render_widget(
-            Line::styled(info.to_string(), Style::default().fg(t.muted)).right_aligned(),
+            Line::from(Span::styled(info.to_string(), Style::default().fg(t.muted)))
+                .right_aligned(),
             header,
         );
     }

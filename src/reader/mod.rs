@@ -1,6 +1,7 @@
 mod details;
 mod follow;
 mod goto;
+mod history;
 mod keys;
 mod location;
 mod reload;
@@ -9,6 +10,7 @@ mod scroll;
 mod search;
 mod toc;
 
+pub use history::{HistoryPicker, canonical};
 pub use location::Location;
 pub use search::{Match, Search};
 
@@ -51,6 +53,8 @@ pub enum Action {
     PickTheme,
     /// Switch pictures for images on or off.
     ToggleImages,
+    /// List the documents opened this session.
+    ShowHistory,
 }
 
 /// The link list opened with `L`.
@@ -118,6 +122,8 @@ pub enum Overlay {
     Prompt(Prompt),
     /// The `Line:` prompt opened with `:`.
     GoTo(Prompt),
+    /// The documents opened this session, listed with `H`.
+    History(HistoryPicker),
 }
 
 /// The document a reader shows and where it came from. The origin decides

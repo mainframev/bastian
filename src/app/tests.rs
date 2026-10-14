@@ -282,3 +282,72 @@ fn clicking_the_theme_picker_markers_resizes_it() {
     assert_eq!(app.picker_width, width + crate::pane::STEP);
     assert!(app.picker.is_some());
 }
+
+#[test]
+fn history_lists_opened_files_newest_first_and_reopens_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let (a, b) = (dir.path().join("a.md"), dir.path().join("b.md"));
+    std::fs::write(&a, "# A\n").unwrap();
+    std::fs::write(&b, "# B\n").unwrap();
+    let s = settings();
+    let reader = s.open(&a, "a.md".into()).unwrap();
+    let mut app = App::read(reader, s);
+    app.on_reader_action(reader::Action::OpenDocument {
+        path: b.clone(),
+        anchor: None,
+    });
+    press(&mut app, KeyCode::Char('H'));
+    let Some(reader::Overlay::History(picker)) = &app.reader.as_ref().unwrap().overlay else {
+        panic!("no history");
+    };
+    assert_eq!(picker.paths, [b.clone(), a.clone()]);
+    // This document is marked; the one before it is selected.
+    assert_eq!((picker.current, picker.selected), (Some(0), 1));
+    press(&mut app, KeyCode::Enter);
+    let open = app.reader.as_ref().unwrap().file().map(reader::canonical);
+    assert_eq!(open, Some(reader::canonical(&a)));
+    assert_eq!(app.opened, [a, b]);
+}
+
+#[cfg(unix)]
+#[test]
+fn history_reopens_a_symlink_by_its_own_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let (docs, shared) = (dir.path().join("docs"), dir.path().join("shared"));
+    std::fs::create_dir_all(&docs).unwrap();
+    std::fs::create_dir_all(&shared).unwrap();
+    std::fs::write(shared.join("guide.md"), "# Guide\n").unwrap();
+    let link = docs.join("guide.md");
+    std::os::unix::fs::symlink(shared.join("guide.md"), &link).unwrap();
+    let other = dir.path().join("other.md");
+    std::fs::write(&other, "# Other\n").unwrap();
+    let s = settings();
+    let reader = s.open(&link, "guide.md".into()).unwrap();
+    let mut app = App::read(reader, s);
+    app.on_reader_action(reader::Action::OpenDocument {
+        path: other.clone(),
+        anchor: None,
+    });
+    // The target by its own path is the same file: one entry, newest path.
+    app.on_reader_action(reader::Action::OpenDocument {
+        path: shared.join("guide.md"),
+        anchor: None,
+    });
+    assert_eq!(app.opened, [shared.join("guide.md"), other.clone()]);
+    app.on_reader_action(reader::Action::OpenDocument {
+        path: link.clone(),
+        anchor: None,
+    });
+    assert_eq!(app.opened, [link.clone(), other.clone()]);
+    // From the other file, H selects the guide; Enter reopens it by the
+    // symlink's path, so it keeps the symlink's directory.
+    app.on_reader_action(reader::Action::OpenDocument {
+        path: other,
+        anchor: None,
+    });
+    press(&mut app, KeyCode::Char('H'));
+    press(&mut app, KeyCode::Enter);
+    let r = app.reader.as_ref().unwrap();
+    assert_eq!(r.file(), Some(link.as_path()));
+    assert_eq!(r.base_dir(), docs.as_path());
+}

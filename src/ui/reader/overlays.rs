@@ -4,7 +4,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
-use crate::reader::{LinkPicker, Location, Reader};
+use crate::reader::{HistoryPicker, LinkPicker, Location, Reader};
 use crate::render::theme::Theme;
 use crate::text::{shorten_left, shorten_right, take_width};
 use crate::ui::status;
@@ -74,6 +74,37 @@ fn filter_title(filter: &str, cursor: Option<usize>, count: &str, max: usize) ->
     let before = shorten_left(before, room - after.width().min(room / 3));
     let after = shorten_right(after, room.saturating_sub(before.width()));
     format!(" /{before}{bar}{after} · {count}{keys} ")
+}
+
+/// The documents opened this session, most recent first, with paths
+/// shortened from the left to fit and this one marked.
+pub(super) fn draw_history(frame: &mut Frame, over: Rect, r: &Reader, picker: &HistoryPicker) {
+    let t = r.theme();
+    let area = frame.area();
+    // Leave room for the border and a margin around the box.
+    let rows = area.height.saturating_sub(6).max(1) as usize;
+    let here = "  current";
+    let max_w = (area.width.saturating_sub(10) as usize).saturating_sub(2 + here.width());
+    let lines: Vec<Line> = picker
+        .paths
+        .iter()
+        .enumerate()
+        .map(|(i, path)| {
+            let selected = i == picker.selected;
+            let shown = shorten_left(&crate::paths::tilde(path), max_w);
+            let mut spans = vec![Span::styled(shown, status::row_style(t, selected))];
+            if picker.current == Some(i) {
+                spans.push(Span::styled(here, Style::default().fg(t.muted)));
+            }
+            Line::from(spans)
+        })
+        .collect();
+    let title = format!(
+        " history {}/{} · enter open · esc close ",
+        picker.selected + 1,
+        picker.paths.len()
+    );
+    status::list_popup(frame, t, over, &title, lines, picker.selected, rows);
 }
 
 pub(super) fn draw_confirm(frame: &mut Frame, over: Rect, r: &Reader, ids: &[usize]) {

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use bastian::app::Settings;
 use bastian::doc::parse;
-use bastian::reader::{Action, Options, Reader, Source};
+use bastian::reader::{Action, Location, Options, Reader, Source};
 use bastian::remote::RemoteDoc;
 use bastian::render::theme::Theme;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -396,6 +396,139 @@ fn edit_needs_a_file() {
         "only ctrl-e edits"
     );
     assert!(matches!(ctrl(&mut r, 'e'), Action::Edit(p, _) if p == path));
+}
+
+#[test]
+fn p_shows_and_copies_the_file_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("doc.md");
+    std::fs::write(&path, "text\n").unwrap();
+    let opened = bastian::open::open(&path).unwrap();
+    let mut r = Reader::new(Source::file("doc.md".into(), opened), &Options::default());
+    r.layout(80, 10);
+    let absolute = std::fs::canonicalize(&path).unwrap().display().to_string();
+
+    key(&mut r, KeyCode::Char('p'));
+    assert!(matches!(&r.location, Some(Location::File { .. })));
+    assert!(matches!(key(&mut r, KeyCode::Char('A')), Action::Copy(p) if p == absolute));
+    assert_eq!(r.message(), Some("copied absolute path"));
+    // Outside the current directory, the relative path is the one opened.
+    let relative = path.display().to_string();
+    assert!(matches!(key(&mut r, KeyCode::Char('R')), Action::Copy(p) if p == relative));
+    assert_eq!(r.message(), Some("copied relative path"));
+    // Other keys are ignored while it's open; esc, q and p close it.
+    assert!(matches!(key(&mut r, KeyCode::Char('j')), Action::None));
+    for close in [KeyCode::Esc, KeyCode::Char('q'), KeyCode::Char('p')] {
+        assert!(r.location.is_some());
+        assert!(matches!(key(&mut r, close), Action::None));
+        assert!(r.location.is_none());
+        key(&mut r, KeyCode::Char('p'));
+    }
+}
+
+#[test]
+fn p_without_a_file() {
+    let mut r = reader("text\n");
+    key(&mut r, KeyCode::Char('p'));
+    assert_eq!(r.location, Some(Location::Unnamed("t.md".into())));
+    assert!(matches!(key(&mut r, KeyCode::Char('R')), Action::None));
+    assert_eq!(r.message(), Some("no file path to copy"));
+
+    let fetched = RemoteDoc {
+        name: "README.md".into(),
+        base: url::Url::parse("https://example.com/repo/README.md").unwrap(),
+        text: "text\n".into(),
+    };
+    let mut r = Reader::new(Source::remote(fetched), &Options::default());
+    r.layout(80, 10);
+    key(&mut r, KeyCode::Char('p'));
+    let url = "https://example.com/repo/README.md";
+    assert!(matches!(key(&mut r, KeyCode::Char('A')), Action::Copy(u) if u == url));
+    assert_eq!(r.message(), Some("copied URL"));
+}
+
+#[test]
+fn path_popup_wraps_long_paths() {
+    use bastian::ui::reader::draw;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(format!("{}.md", "x".repeat(60)));
+    std::fs::write(&path, "text\n").unwrap();
+    let opened = bastian::open::open(&path).unwrap();
+    let mut r = Reader::new(Source::file("x.md".into(), opened), &Options::default());
+    key(&mut r, KeyCode::Char('p'));
+    let mut terminal = Terminal::new(TestBackend::new(40, 20)).unwrap();
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let buf = terminal.backend().buffer();
+    let rows: Vec<String> = (0..20)
+        .map(|y| (0..40).map(|x| buf[(x, y)].symbol()).collect())
+        .collect();
+    let screen = rows.join("\n");
+    assert!(screen.contains(" File Path "), "{screen}");
+    assert!(
+        screen.contains("Relative:") && screen.contains("Absolute:"),
+        "{screen}"
+    );
+    let shown: String = screen.chars().filter(|c| !"│ \n".contains(*c)).collect();
+    let absolute = std::fs::canonicalize(&path).unwrap().display().to_string();
+    assert!(shown.contains(&absolute), "{screen}");
+    // Too narrow for the keys on one row: one per row.
+    assert!(screen.contains("R copy relative "), "{screen}");
+    assert!(screen.contains("esc close"), "{screen}");
+}
+
+/// The screen after drawing `r` on a `w`×`h` terminal, row by row.
+fn screen_of(r: &mut Reader, w: u16, h: u16) -> String {
+    use bastian::ui::reader::draw;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+    terminal.draw(|f| draw(f, r)).unwrap();
+    let buf = terminal.backend().buffer();
+    (0..h)
+        .map(|y| (0..w).map(|x| buf[(x, y)].symbol()).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn path_popup_elides_paths_too_long_for_the_screen() {
+    let dir = tempfile::tempdir().unwrap();
+    let deep = dir.path().join("a".repeat(70)).join("b".repeat(70));
+    std::fs::create_dir_all(&deep).unwrap();
+    let path = deep.join("end.md");
+    std::fs::write(&path, "text\n").unwrap();
+    let opened = bastian::open::open(&path).unwrap();
+    let mut r = Reader::new(Source::file("end.md".into(), opened), &Options::default());
+    key(&mut r, KeyCode::Char('p'));
+
+    let screen = screen_of(&mut r, 40, 12);
+    assert!(
+        screen.contains("Relative:") && screen.contains("Absolute:"),
+        "{screen}"
+    );
+    assert!(screen.contains('…'), "{screen}");
+    // The start and the file name of the absolute path stay in view.
+    let absolute = std::fs::canonicalize(&path).unwrap().display().to_string();
+    let shown: String = screen.chars().filter(|c| !"│ \n".contains(*c)).collect();
+    assert!(shown.contains(&absolute[..10]), "{screen}");
+    assert!(shown.contains("bbbb/end.md"), "{screen}");
+    // So do the keys, and the box keeps its bottom border.
+    assert!(screen.contains("esc close"), "{screen}");
+    assert!(screen.contains('┘'), "{screen}");
+}
+
+#[test]
+fn path_popup_names_stdin() {
+    let source = Source::in_memory("stdin", parse("text\n"));
+    let mut r = Reader::new(source, &Options::default());
+    key(&mut r, KeyCode::Char('p'));
+    assert_eq!(r.location, Some(Location::Unnamed("stdin".into())));
+    let screen = screen_of(&mut r, 40, 12);
+    assert!(screen.contains("(stdin)"), "{screen}");
+    assert!(screen.contains("no local file"), "{screen}");
+    assert!(screen.contains("esc close"), "{screen}");
 }
 
 #[test]

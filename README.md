@@ -56,7 +56,8 @@ In a document:
   clickable in terminals that support it;
 - images are drawn as pictures where the terminal can; `i` toggles them;
 - `<details>` blocks fold: `d` focuses one and `Enter` opens or closes it;
-- `#` shows line numbers, `y`/`c` copy a code block or the whole document;
+- `#` shows line numbers, `y`/`c` copy a code block or the whole document,
+  `p` shows and copies the file path;
 - `ctrl-e` opens your editor at the line you're reading, and the document reloads
   when the file changes;
 - `T` switches the theme;

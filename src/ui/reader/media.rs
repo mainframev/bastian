@@ -65,7 +65,7 @@ pub(super) fn draw_hyperlinks(
         }) {
             continue;
         }
-        let Some(target) = r.hyperlink_target(&link.url) else {
+        let Some(target) = r.hyperlink_targets().get(first + i).cloned().flatten() else {
             continue;
         };
         let line = &r.rendered().lines[link.line];

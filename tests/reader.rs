@@ -902,39 +902,24 @@ fn links_are_terminal_hyperlinks() {
         symbols.iter().filter(|s| s.contains("\u{1b}]8;;")).count(),
         2
     );
-    assert_eq!(r.hyperlink_target("#top"), None);
+    assert_eq!(r.hyperlink_targets()[2], None);
 }
 
 #[test]
-fn only_links_that_open_without_asking_are_clickable() {
+fn hyperlink_targets_follow_the_rendered_links() {
     let dir = tempfile::tempdir().unwrap();
     let d = dir.path();
     std::fs::write(d.join("guide.md"), "# Guide\n").unwrap();
     std::fs::write(d.join("setup.command"), "").unwrap();
     std::fs::create_dir(d.join("X.app")).unwrap();
     std::fs::create_dir(d.join("dir.md")).unwrap();
-    let source = Source {
-        base_dir: d.to_path_buf(),
-        ..Source::in_memory("t.md", parse("x\n"))
-    };
-    let r = Reader::new(source, &Options::default());
     let file = |name: &str| url::Url::from_file_path(d.join(name)).unwrap().to_string();
-
-    assert_eq!(
-        r.hyperlink_target("https://x.dev/a"),
-        Some("https://x.dev/a".into())
-    );
-    assert_eq!(
-        r.hyperlink_target("mailto:a@b.c"),
-        Some("mailto:a@b.c".into())
-    );
-    assert_eq!(r.hyperlink_target("guide.md"), Some(file("guide.md")));
-    assert_eq!(
-        r.hyperlink_target(&file("guide.md")),
-        Some(file("guide.md"))
-    );
-    for url in [
-        "setup.command".to_string(),
+    let urls = [
+        "https://x.dev/a".to_string(),
+        "mailto:a@b.c".into(),
+        "guide.md".into(),
+        file("guide.md"),
+        "setup.command".into(),
         file("setup.command"),
         "X.app".into(),
         file("X.app"),
@@ -945,22 +930,69 @@ fn only_links_that_open_without_asking_are_clickable() {
         "tel:+15551234".into(),
         "dir.md".into(),
         "missing.md".into(),
-    ] {
-        assert_eq!(r.hyperlink_target(&url), None, "{url}");
+    ];
+    let src: String = urls.iter().map(|u| format!("[x]({u})\n\n")).collect();
+    let source = Source {
+        base_dir: d.to_path_buf(),
+        ..Source::in_memory("t.md", parse(&src))
+    };
+    let mut r = Reader::new(source, &Options::default());
+    r.layout(80, 40);
+    assert_eq!(r.rendered().links.len(), urls.len());
+    // Web and mail links, and existing Markdown files, open on a click;
+    // anything that could launch an app or run a script does not.
+    let want = [
+        Some("https://x.dev/a".to_string()),
+        Some("mailto:a@b.c".into()),
+        Some(file("guide.md")),
+        Some(file("guide.md")),
+    ];
+    assert_eq!(&r.hyperlink_targets()[..4], &want);
+    for (url, target) in urls.iter().zip(r.hyperlink_targets()).skip(4) {
+        assert_eq!(*target, None, "{url}");
     }
 
     // In a remote document, only web targets.
+    let src = format!(
+        "[a](docs/guide.md)\n\n[b](vscode://file/etc/hosts)\n\n[c]({})\n",
+        file("guide.md")
+    );
     let source = Source {
         remote_base: Some(url::Url::parse("https://example.com/repo/README.md").unwrap()),
-        ..Source::in_memory("t.md", parse("x\n"))
+        ..Source::in_memory("t.md", parse(&src))
     };
-    let r = Reader::new(source, &Options::default());
+    let mut r = Reader::new(source, &Options::default());
+    r.layout(80, 40);
     assert_eq!(
-        r.hyperlink_target("docs/guide.md"),
-        Some("https://example.com/repo/docs/guide.md".into())
+        r.hyperlink_targets(),
+        [
+            Some("https://example.com/repo/docs/guide.md".to_string()),
+            None,
+            None
+        ]
     );
-    assert_eq!(r.hyperlink_target("vscode://file/etc/hosts"), None);
-    assert_eq!(r.hyperlink_target(&file("guide.md")), None);
+
+    // With hyperlinks off, nothing is worked out.
+    let opts = Options {
+        hyperlinks: false,
+        ..Options::default()
+    };
+    let mut r = Reader::new(
+        Source::in_memory("t.md", parse("[x](https://x.dev)\n")),
+        &opts,
+    );
+    r.layout(80, 40);
+    assert!(r.hyperlink_targets().is_empty());
+}
+
+#[test]
+fn code_files_always_show_line_numbers() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("main.rs"), "fn main() {}\n").unwrap();
+    let opened = bastian::open::open(&dir.path().join("main.rs")).unwrap();
+    let r = Reader::new(Source::file("main.rs".into(), opened), &Options::default());
+    assert!(r.line_numbers);
+    assert_eq!(r.base_dir(), dir.path());
 }
 
 #[test]

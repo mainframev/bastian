@@ -16,7 +16,7 @@ impl Reader {
     /// against its URL and only web targets qualify. In-document `#anchors`,
     /// other schemes and other local files have none; the link picker still
     /// follows them, behind a prompt.
-    pub fn hyperlink_target(&self, url: &str) -> Option<String> {
+    pub(super) fn hyperlink_target(&self, url: &str) -> Option<String> {
         if url.starts_with('#') {
             return None;
         }

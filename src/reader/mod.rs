@@ -226,6 +226,10 @@ pub struct Reader {
     pub hyperlinks: bool,
     /// Show a scrollbar when the document overflows.
     pub scrollbar: bool,
+    /// Where each of `rendered.links` leads as a terminal hyperlink, or
+    /// `None` for links that must not open without asking. Worked out at
+    /// layout, since it needs a look at the filesystem.
+    hyperlink_targets: Vec<Option<String>>,
     /// Where reading positions are remembered; `None` doesn't remember
     /// this document's.
     positions: Option<PathBuf>,
@@ -304,6 +308,7 @@ impl Reader {
             render_opts: opts.render,
             hyperlinks: opts.hyperlinks,
             scrollbar: opts.scrollbar,
+            hyperlink_targets: Vec::new(),
             positions: positions.cloned(),
             restore,
             restored_at: None,
@@ -402,6 +407,13 @@ impl Reader {
         &self.base_dir
     }
 
+    /// Where each of `rendered().links` leads as a terminal hyperlink;
+    /// `None` for links that only open behind a prompt. Empty when
+    /// hyperlinks are off.
+    pub fn hyperlink_targets(&self) -> &[Option<String>] {
+        &self.hyperlink_targets
+    }
+
     /// Re-render when the width or run output changed, and keep scroll in range.
     pub fn layout(&mut self, width: u16, height: u16) {
         if !self.images_requested {
@@ -422,6 +434,14 @@ impl Reader {
             self.width = width;
             self.dirty = false;
             self.refind();
+            if self.hyperlinks {
+                self.hyperlink_targets = self
+                    .rendered
+                    .links
+                    .iter()
+                    .map(|l| self.hyperlink_target(&l.url))
+                    .collect();
+            }
             let stops = self.link_stops().len();
             if self.link_focus.is_some_and(|i| i >= stops) {
                 self.link_focus = None;

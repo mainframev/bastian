@@ -34,13 +34,13 @@ impl Reader {
                 return None;
             }
             let path = abs.to_file_path().ok()?;
-            return is_markdown_file(&path).then(|| abs.to_string());
+            return crate::open::is_markdown_file(&path).then(|| abs.to_string());
         }
         let (path, fragment) = url
             .split_once('#')
             .map_or((url, None), |(p, f)| (p, Some(f)));
         let abs = std::path::absolute(self.base_dir.join(path)).ok()?;
-        if !is_markdown_file(&abs) {
+        if !crate::open::is_markdown_file(&abs) {
             return None;
         }
         let mut file = url::Url::from_file_path(abs).ok()?;
@@ -251,7 +251,7 @@ impl Reader {
             Target::Anchor(anchor) => self.describe_anchor(&anchor),
             Target::Document(path) => {
                 let shown = url.split('#').next().unwrap_or(url);
-                match document_title(&path) {
+                match crate::open::peek_title(&path) {
                     Some(title) => format!("→ {shown} · {title}"),
                     None => format!("→ {shown}"),
                 }
@@ -291,21 +291,6 @@ impl Reader {
     }
 }
 
-/// The title of the Markdown file at `path`, from its first few KiB, so
-/// previewing a link doesn't read a whole large file.
-fn document_title(path: &std::path::Path) -> Option<String> {
-    use std::io::Read;
-    let mut head = Vec::new();
-    std::fs::File::open(path)
-        .ok()?
-        .take(8 * 1024)
-        .read_to_end(&mut head)
-        .ok()?;
-    // The same parser opening it would use (MDX for .mdx); a cut-off MDX
-    // head falls back to plain Markdown.
-    doc::parse_for(&String::from_utf8_lossy(&head), Some(path)).title()
-}
-
 /// The words of `blocks`, on one line.
 fn blocks_text(blocks: &[Block]) -> String {
     let mut parts = Vec::new();
@@ -330,14 +315,6 @@ fn blocks_text(blocks: &[Block]) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-/// Whether `path` is an existing file with a Markdown extension.
-fn is_markdown_file(path: &std::path::Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(doc::is_markdown_ext)
-        && path.is_file()
 }
 
 /// `(anchor text, shown text)` of every heading.

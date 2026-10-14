@@ -70,11 +70,7 @@ pub fn resolve(url: &str, base_dir: &Path) -> Target {
     if !path.exists() {
         return Target::Missing(path);
     }
-    let is_md = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(doc::is_markdown_ext);
-    if is_md && path.is_file() {
+    if crate::open::is_markdown_file(&path) {
         Target::Document(path)
     } else {
         Target::External(path.display().to_string())

@@ -9,8 +9,8 @@ use crate::prompt::{self, Edited, Prompt};
 impl Reader {
     pub fn on_key(&mut self, key: KeyEvent) -> Action {
         self.message = None;
-        if self.help {
-            self.help = false;
+        if self.help.open {
+            self.help.on_key(&key);
             return Action::None;
         }
         if self.link_picker.is_some() {
@@ -110,7 +110,7 @@ impl Reader {
                     self.link_picker = Some(LinkPicker { links, selected: 0 });
                 }
             }
-            KeyCode::Char('?') => self.help = true,
+            KeyCode::Char('?') => self.help.show(),
             KeyCode::Char('T') => return Action::PickTheme,
             KeyCode::Char('i') => return Action::ToggleImages,
             KeyCode::Char('O') => {

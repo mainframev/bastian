@@ -22,8 +22,8 @@ impl Browser {
             return Action::None;
         }
 
-        if self.help {
-            self.help = false;
+        if self.help.open {
+            self.help.on_key(&key);
             return Action::None;
         }
 
@@ -57,7 +57,7 @@ impl Browser {
                 }
             }
             KeyCode::Char('r') => self.rescan(),
-            KeyCode::Char('?') => self.help = true,
+            KeyCode::Char('?') => self.help.show(),
             KeyCode::Char('T') => return Action::PickTheme,
             _ => {}
         }
@@ -142,10 +142,10 @@ mod tests {
         assert_eq!(b.entries.len(), 2);
 
         b.on_key(key('?'));
-        assert!(b.help);
+        assert!(b.help.open);
         // The key that closes help does nothing else.
         assert!(matches!(b.on_key(key('q')), Action::None));
-        assert!(!b.help);
+        assert!(!b.help.open);
     }
 
     #[test]

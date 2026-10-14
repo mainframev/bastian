@@ -16,6 +16,7 @@ use crate::doc::{CodeBlock, Document};
 use crate::exec::{BlockRun, Interpreters, Runner};
 use crate::images::{Images, Source as ImageSource};
 use crate::links::Link;
+use crate::nav;
 use crate::outline::Outline;
 use crate::prompt::Prompt;
 use crate::render::theme::Theme;
@@ -186,7 +187,7 @@ pub struct Reader {
     pub link_picker: Option<LinkPicker>,
     /// The heading outline opened with `O`.
     pub outline: Option<Outline>,
-    pub help: bool,
+    pub help: nav::Help,
     /// Draw a gutter of rendered line numbers.
     pub line_numbers: bool,
     /// File the document came from, watched for changes.
@@ -284,7 +285,7 @@ impl Reader {
             assume_yes: opts.assume_yes && remote_base.is_none(),
             link_picker: None,
             outline: None,
-            help: false,
+            help: nav::Help::default(),
             // Source files read from disk always show their line numbers.
             line_numbers: opts.line_numbers || (file.is_some() && code_file),
             modified: file.as_deref().and_then(reload::mtime),

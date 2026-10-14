@@ -11,6 +11,7 @@ use std::sync::mpsc::{self, Receiver};
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher};
 
+use crate::nav;
 use crate::paths;
 use crate::prompt::Prompt;
 
@@ -44,7 +45,7 @@ pub struct Browser {
     /// When the scan started, for the loading spinner.
     pub started: std::time::Instant,
     /// Key help overlay is open.
-    pub help: bool,
+    pub help: nav::Help,
     matcher: Matcher,
 }
 
@@ -67,7 +68,7 @@ impl Browser {
             height: 1,
             incoming: None,
             started: std::time::Instant::now(),
-            help: false,
+            help: nav::Help::default(),
             matcher: Matcher::new(Config::DEFAULT.match_paths()),
         };
         b.rescan();

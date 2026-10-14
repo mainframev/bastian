@@ -19,6 +19,18 @@ pub fn fit(width: u16, screen: u16) -> u16 {
     width.clamp(MIN_WIDTH, max_width(screen))
 }
 
+/// Like `fit`, beside another pane `taken` columns wide: sized against
+/// the rest of the screen, and left out unless the document keeps
+/// `MIN_SCREEN` columns.
+pub fn fit_beside(width: u16, screen: u16, taken: u16) -> u16 {
+    if taken == 0 {
+        return fit(width, screen);
+    }
+    let rest = screen.saturating_sub(taken);
+    let width = fit(width, rest).min(rest.saturating_sub(MIN_SCREEN));
+    if width < MIN_WIDTH { 0 } else { width }
+}
+
 /// The widest a pane gets on a screen `screen` columns wide.
 pub fn max_width(screen: u16) -> u16 {
     (screen / 2).max(MIN_WIDTH)
@@ -55,6 +67,16 @@ mod tests {
         assert_eq!(fit(90, 100), 50);
         assert_eq!(fit(30, MIN_SCREEN - 1), 0);
         assert_eq!(fit(30, MIN_SCREEN), 20);
+    }
+
+    #[test]
+    fn fit_beside_leaves_the_document_room() {
+        assert_eq!(fit_beside(30, 100, 0), fit(30, 100));
+        // 66 columns left, of which the document keeps 40.
+        assert_eq!(fit_beside(30, 100, 34), 26);
+        assert_eq!(fit_beside(30, 120, 34), 30);
+        // 46 left: not enough for the document and a pane.
+        assert_eq!(fit_beside(30, 80, 34), 0);
     }
 
     #[test]

@@ -125,6 +125,27 @@ fn bastian_themes_quits_once_a_theme_is_picked() {
 }
 
 #[test]
+fn theme_picker_width_carries_to_the_next_time_it_opens() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = reading(dir.path(), "nord");
+    app.reader.as_mut().unwrap().layout(80, 10);
+    press(&mut app, KeyCode::Char('t'));
+    assert!(app.reader.as_ref().unwrap().toc);
+    press(&mut app, KeyCode::Char('T'));
+    // Sized against the screen at the last draw.
+    app.picker.as_mut().unwrap().0.fit(100);
+    press(&mut app, KeyCode::Char('>'));
+    assert!(app.picker.is_some(), "resizing keeps it open");
+    // The picker has the keys: the table of contents stays as it was.
+    let toc = app.reader.as_ref().unwrap().toc_width();
+    assert_eq!(toc, crate::toc::DEFAULT_WIDTH);
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Char('T'));
+    let wider = picker::DEFAULT_WIDTH + crate::pane::STEP;
+    assert_eq!(app.picker.as_ref().unwrap().0.width, wider);
+}
+
+#[test]
 fn mouse_wheel_scrolls_the_reader() {
     let settings = settings();
     let src: String = (0..50).map(|i| format!("line {i}\n\n")).collect();

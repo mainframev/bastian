@@ -7,7 +7,7 @@ use ratatui::widgets::Paragraph;
 use crate::reader::Reader;
 use crate::text::take_width;
 use crate::toc;
-use crate::ui::pane;
+use crate::ui::pane::{self, Side};
 use crate::ui::status;
 
 /// Columns the numbers take: two digits and a space.
@@ -18,7 +18,7 @@ const NUMBER_W: usize = 3;
 /// being read highlighted and kept in view.
 pub(super) fn draw_toc(frame: &mut Frame, r: &Reader, area: Rect) {
     let t = r.theme();
-    let Some(list) = pane::draw(frame, t, area, "Table of Contents", "") else {
+    let Some(list) = pane::draw(frame, t, area, Side::Left, "Table of Contents", "") else {
         return;
     };
     let entries = r.toc_entries();

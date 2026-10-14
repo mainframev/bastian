@@ -21,9 +21,15 @@ impl Reader {
     /// wide: 0 when it's closed or doesn't fit. Remembers the screen
     /// width, which `<`, `>` and clicks size the pane against.
     pub fn fit_toc(&mut self, screen: u16) -> u16 {
+        self.fit_toc_beside(screen, 0)
+    }
+
+    /// Like `fit_toc`, beside the theme picker `taken` columns wide: left
+    /// out when the document would be too narrow between them.
+    pub fn fit_toc_beside(&mut self, screen: u16, taken: u16) -> u16 {
         self.screen = screen;
         if self.toc {
-            pane::fit(self.toc_width, screen)
+            pane::fit_beside(self.toc_width, screen, taken)
         } else {
             0
         }

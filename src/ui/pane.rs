@@ -12,15 +12,35 @@ use crate::pane;
 use crate::render::theme::Theme;
 use crate::text::take_width;
 
-/// A pane's frame in `area`, left of the document: a border on its right, a
+/// The side of the screen a pane is docked on.
+#[derive(Clone, Copy)]
+pub enum Side {
+    Left,
+    Right,
+}
+
+/// A pane's frame in `area`: a border on the side facing the document, a
 /// header with `title`, `info` at its right when both fit, and the `<`
 /// and `>` resize markers, then a rule. Returns the area under the rule
 /// for the pane's rows, or `None` when there's no room for any.
-pub fn draw(frame: &mut Frame, t: &Theme, area: Rect, title: &str, info: &str) -> Option<Rect> {
-    let block = Block::default()
-        .borders(Borders::RIGHT)
-        .border_style(Style::default().fg(t.muted))
-        .padding(Padding::left(1));
+pub fn draw(
+    frame: &mut Frame,
+    t: &Theme,
+    area: Rect,
+    side: Side,
+    title: &str,
+    info: &str,
+) -> Option<Rect> {
+    let block = match side {
+        Side::Left => Block::default()
+            .borders(Borders::RIGHT)
+            .padding(Padding::left(1)),
+        // A blank last column, like the screen's margin.
+        Side::Right => Block::default()
+            .borders(Borders::LEFT)
+            .padding(Padding::horizontal(1)),
+    }
+    .border_style(Style::default().fg(t.muted));
     let inner = block.inner(area);
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);

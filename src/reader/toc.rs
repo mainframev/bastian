@@ -18,7 +18,7 @@ impl Reader {
 
     /// Columns the table of contents takes on a screen `screen` columns
     /// wide: 0 when it's closed or doesn't fit. Remembers the screen
-    /// width, which `<` and `>` size the pane against.
+    /// width, which `<`, `>` and clicks size the pane against.
     pub fn fit_toc(&mut self, screen: u16) -> u16 {
         self.screen = screen;
         if self.toc {
@@ -72,6 +72,28 @@ impl Reader {
             }
             None => {}
         }
+    }
+
+    /// A left click at `column`, `row` of the screen: the `<` and `>`
+    /// markers on the table of contents' header resize it. Returns whether
+    /// it hit one.
+    pub fn on_click(&mut self, column: u16, row: u16) -> bool {
+        // Popups may cover the header.
+        let popup = self.help.open
+            || self.link_picker.is_some()
+            || self.confirm.is_some()
+            || self.confirm_open.is_some()
+            || self.location.is_some();
+        let width = self.fit_toc(self.screen);
+        if popup || width == 0 || row != 0 {
+            return false;
+        }
+        let (narrower, wider) = toc::markers(width);
+        if column == narrower || column == wider {
+            self.resize_toc(column == wider);
+            return true;
+        }
+        false
     }
 }
 
@@ -179,5 +201,22 @@ mod tests {
         r.fit_toc(60);
         key(&mut r, '<');
         assert_eq!(r.toc_width(), 26);
+    }
+
+    #[test]
+    fn clicks_on_the_markers_resize() {
+        let mut r = reader("# A\n");
+        assert!(!r.on_click(0, 0), "closed");
+        key(&mut r, 't');
+        let width = r.fit_toc(100);
+        let (narrower, wider) = toc::markers(width);
+        assert!(r.on_click(wider, 0));
+        assert_eq!(r.toc_width(), width + toc::STEP);
+        let (narrower_now, _) = toc::markers(r.toc_width());
+        assert!(r.on_click(narrower_now, 0));
+        assert_eq!(r.toc_width(), width);
+        assert!(!r.on_click(narrower, 1), "only the header row");
+        assert!(!r.on_click(1, 0));
+        assert_eq!(r.toc_width(), width);
     }
 }

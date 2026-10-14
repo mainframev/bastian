@@ -2,19 +2,22 @@ use std::time::Duration;
 
 use anyhow::Result;
 use ratatui::DefaultTerminal;
-use ratatui::crossterm::event::{self, Event, KeyEventKind, MouseEventKind};
+use ratatui::crossterm::event::{self, Event, KeyEventKind, MouseButton, MouseEventKind};
 
 use super::App;
 use super::terminal::suspend;
 use crate::ui;
 
-/// Events that change nothing on screen: pointer motion and clicks (only
-/// the wheel scrolls) and key releases.
+/// Events that change nothing on screen: pointer motion, clicks other than
+/// the left button (the wheel scrolls, a left click may resize the table of
+/// contents) and key releases.
 pub(super) fn is_ignored(event: &Event) -> bool {
     match event {
         Event::Mouse(m) => !matches!(
             m.kind,
-            MouseEventKind::ScrollDown | MouseEventKind::ScrollUp
+            MouseEventKind::ScrollDown
+                | MouseEventKind::ScrollUp
+                | MouseEventKind::Down(MouseButton::Left)
         ),
         Event::Key(k) => k.kind != KeyEventKind::Press,
         _ => false,

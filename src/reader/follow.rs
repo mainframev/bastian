@@ -251,7 +251,7 @@ impl Reader {
             Target::Anchor(anchor) => self.describe_anchor(&anchor),
             Target::Document(path) => {
                 let shown = url.split('#').next().unwrap_or(url);
-                match document_title(&path) {
+                match crate::open::peek_title(&path) {
                     Some(title) => format!("→ {shown} · {title}"),
                     None => format!("→ {shown}"),
                 }
@@ -289,21 +289,6 @@ impl Reader {
         });
         found.unwrap_or_else(|| format!("no heading #{anchor}"))
     }
-}
-
-/// The title of the Markdown file at `path`, from its first few KiB, so
-/// previewing a link doesn't read a whole large file.
-fn document_title(path: &std::path::Path) -> Option<String> {
-    use std::io::Read;
-    let mut head = Vec::new();
-    std::fs::File::open(path)
-        .ok()?
-        .take(8 * 1024)
-        .read_to_end(&mut head)
-        .ok()?;
-    // The same parser opening it would use (MDX for .mdx); a cut-off MDX
-    // head falls back to plain Markdown.
-    doc::parse_for(&String::from_utf8_lossy(&head), Some(path)).title()
 }
 
 /// The words of `blocks`, on one line.

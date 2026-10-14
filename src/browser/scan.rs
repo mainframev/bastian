@@ -4,7 +4,6 @@ use std::sync::mpsc::{self, Sender};
 use ignore::WalkState;
 
 use super::Entry;
-use super::entry::read_title;
 use crate::config::SortBy;
 
 /// Which files the browser lists, and in what order.
@@ -116,7 +115,7 @@ pub fn scan(root: &Path, opts: &Scan, tx: &Sender<Entry>) {
                 let entry = Entry::new(
                     path.clone(),
                     rel,
-                    read_title(&path),
+                    crate::open::peek_title(&path),
                     meta.as_ref().and_then(|m| m.modified().ok()),
                     meta.as_ref()
                         .and_then(|m| m.created().or_else(|_| m.modified()).ok()),

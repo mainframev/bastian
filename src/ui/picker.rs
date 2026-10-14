@@ -18,14 +18,16 @@ pub const HINT: &str = "enter use · esc cancel · </> narrow/widen";
 const MARK_W: usize = 2;
 /// Columns of the dark/light/any label.
 const KIND_W: usize = 5;
-/// The colors in a swatch, a column each.
-const SWATCH_W: usize = 7;
+/// The most and fewest colors in a swatch, a column each.
+const SWATCH_MAX: usize = 7;
+const SWATCH_MIN: usize = 3;
 
 /// The theme list in `area`, a pane right of the screen it previews: a
 /// header with the position in the list and the `<` and `>` resize
 /// markers, a rule, then the themes with the selected one highlighted and
-/// kept in view. Each shows its dark/light/any and a swatch of its colors
-/// when the pane is wide enough, the swatch going first.
+/// kept in view. Each shows its dark/light/any and a swatch of as many of
+/// its colors as fit, on its own surface so they read as they will; the
+/// swatch goes first when the pane narrows.
 pub fn draw(frame: &mut Frame, t: &Theme, p: &ThemePicker, area: Rect) {
     let info = format!("{}/{}", p.selected + 1, p.entries.len());
     let Some(mut list) = pane::draw(frame, t, area, Side::Right, "Themes", &info) else {
@@ -55,7 +57,12 @@ pub fn draw(frame: &mut Frame, t: &Theme, p: &ThemePicker, area: Rect) {
         .unwrap_or(0)
         .min(width.saturating_sub(MARK_W));
     let kind = MARK_W + name_w + 1 + KIND_W <= width;
-    let swatch = MARK_W + name_w + 1 + KIND_W + 1 + SWATCH_W <= width;
+    // A space, then the colors with a space of the theme's surface on
+    // either side.
+    let swatch = width
+        .saturating_sub(MARK_W + name_w + 1 + KIND_W + 1 + 2)
+        .min(SWATCH_MAX);
+    let swatch = if swatch >= SWATCH_MIN { swatch } else { 0 };
     let rows = usize::from(list.height);
     let first = pane::first_row(Some(p.selected), p.entries.len(), rows);
     let lines: Vec<Line> = p
@@ -88,9 +95,9 @@ pub fn draw(frame: &mut Frame, t: &Theme, p: &ThemePicker, area: Rect) {
                         format!(" {label:<KIND_W$}"),
                         Style::default().fg(t.muted),
                     ));
-                    if swatch {
+                    if swatch > 0 {
                         spans.push(Span::raw(" "));
-                        spans.extend(colors(theme));
+                        spans.extend(colors(theme, swatch));
                     }
                 }
                 Err(_) => spans.push(Span::styled(" broken", Style::default().fg(t.err))),
@@ -101,9 +108,13 @@ pub fn draw(frame: &mut Frame, t: &Theme, p: &ThemePicker, area: Rect) {
     frame.render_widget(Paragraph::new(lines), list);
 }
 
-/// A few of the theme's colors side by side.
-fn colors(theme: &Theme) -> Vec<Span<'static>> {
-    [
+/// The first `n` of the theme's main colors side by side, on its surface:
+/// drawn on the picker's own background, a light theme's colors wash out
+/// on a dark one and the other way round.
+fn colors(theme: &Theme, n: usize) -> Vec<Span<'static>> {
+    let surface = Style::default().bg(theme.surface);
+    let pad = || Span::styled(" ", surface);
+    let blocks = [
         theme.accent,
         theme.heading,
         theme.link,
@@ -113,8 +124,12 @@ fn colors(theme: &Theme) -> Vec<Span<'static>> {
         theme.err,
     ]
     .into_iter()
-    .map(|c: Color| Span::styled("█", Style::default().fg(c)))
-    .collect()
+    .take(n)
+    .map(|c: Color| Span::styled("█", surface.fg(c)));
+    std::iter::once(pad())
+        .chain(blocks)
+        .chain(std::iter::once(pad()))
+        .collect()
 }
 
 #[cfg(test)]
@@ -156,12 +171,16 @@ mod tests {
     }
 
     #[test]
-    fn narrow_panes_drop_the_swatch_then_the_label() {
+    fn narrow_panes_shrink_the_swatch_then_drop_it_and_the_label() {
         let p = ThemePicker::new(None, "nord", DEFAULT_WIDTH);
-        // The longest built-in name, its label and the swatch fit in 40.
-        let wide = pane(&p, 40, 30);
-        assert!(row(&wide, "nord").contains("dark  ███████"), "{wide:#?}");
-        assert!(row(&wide, "rose-pine-dawn").contains("light ███████"));
+        // The longest built-in name, its label and the full swatch fit in 42.
+        let wide = pane(&p, 42, 30);
+        assert!(row(&wide, "nord").contains("dark   ███████ "), "{wide:#?}");
+        assert!(row(&wide, "rose-pine-dawn").contains("light  ███████ "));
+        // Fewer colors as the pane narrows.
+        let mid = pane(&p, 37, 30);
+        assert!(row(&mid, "nord").contains("dark   ███ "), "{mid:#?}");
+        assert!(!row(&mid, "nord").contains("████"), "{mid:#?}");
         let default = pane(&p, DEFAULT_WIDTH, 30);
         assert!(row(&default, "nord").trim_end().ends_with("dark"));
         assert!(!default.join("").contains('█'), "{default:#?}");
@@ -196,5 +215,30 @@ mod tests {
         assert_eq!(buf[(title, 0)].fg, t.accent);
         let count = row.find(&format!("/{}", p.entries.len())).unwrap() as u16;
         assert_eq!(buf[(count, 0)].fg, t.muted);
+    }
+
+    #[test]
+    fn the_swatch_sits_on_the_themes_own_surface() {
+        let p = ThemePicker::new(None, "nord", DEFAULT_WIDTH);
+        let i = p
+            .entries
+            .iter()
+            .position(|e| e.name == "rose-pine-dawn")
+            .unwrap();
+        let light = p.entries[i].theme.as_ref().unwrap();
+        let mut term = Terminal::new(TestBackend::new(42, 40)).unwrap();
+        term.draw(|f| draw(f, &Theme::dark(), &p, f.area()))
+            .unwrap();
+        let buf = term.backend().buffer();
+        let y = (0..40)
+            .find(|&y| {
+                let row: String = (0..42).map(|x| buf[(x, y)].symbol()).collect();
+                row.contains(" rose-pine-dawn ")
+            })
+            .unwrap();
+        let x = (0..42).find(|&x| buf[(x, y)].symbol() == "█").unwrap();
+        assert_eq!(buf[(x, y)].bg, light.surface);
+        assert_eq!(buf[(x - 1, y)].bg, light.surface);
+        assert_eq!(buf[(x, y)].fg, light.accent);
     }
 }

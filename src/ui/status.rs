@@ -13,6 +13,9 @@ use crate::render::theme::Theme;
 pub enum Left<'a> {
     Text(&'a str),
     Error(&'a str),
+    /// Key hints, `(key, what it does)`, the last one kept however
+    /// narrow the bar gets.
+    Hints(&'a [(&'a str, &'a str)]),
 }
 
 /// Left side of the status bar: prompt keys while typing, else a pending
@@ -35,18 +38,38 @@ pub fn row_style(t: &Theme, selected: bool) -> Style {
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, t: &Theme, left: Left, right: &str) {
+    const NAME: &str = " bastian ";
+    // One column of padding on each side of the right-hand text.
+    let mut right = right;
+    let mut right_w = right.width() as u16 + 2;
+    let mut name = NAME;
+    // Hints keep their last one, giving up the right-hand text and then
+    // the name when the bar is too narrow for it.
+    if let Left::Hints(&[.., (key, what)]) = left {
+        let need = 1 + key.width() + 1 + what.width();
+        let room = |name: &str, right_w: u16| {
+            usize::from(area.width.saturating_sub(right_w)).saturating_sub(name.width())
+        };
+        if room(name, right_w) < need {
+            (right, right_w) = ("", 0);
+        }
+        if room(name, right_w) < need {
+            name = "";
+        }
+    }
     let mut spans = vec![Span::styled(
-        " bastian ",
+        name,
         Style::default().fg(t.h1_fg).bg(t.accent).bold(),
     )];
-    let (s, fg) = match left {
-        Left::Text(s) => (s, t.text),
-        Left::Error(s) => (s, t.err),
-    };
-    spans.push(Span::styled(format!(" {s}"), Style::default().fg(fg)));
+    match left {
+        Left::Text(s) => spans.push(Span::styled(format!(" {s}"), Style::default().fg(t.text))),
+        Left::Error(s) => spans.push(Span::styled(format!(" {s}"), Style::default().fg(t.err))),
+        Left::Hints(hints) => {
+            let room = usize::from(area.width.saturating_sub(right_w)).saturating_sub(name.width());
+            spans.extend(hint_spans(t, hints, room));
+        }
+    }
 
-    // One column of padding on each side of the right-hand text.
-    let right_w = right.width() as u16 + 2;
     let [l, r] = Layout::horizontal([Constraint::Min(1), Constraint::Length(right_w)]).areas(area);
     let bg = Style::default().bg(t.surface);
     frame.render_widget(Paragraph::new(Line::from(spans)).style(bg), l);
@@ -58,6 +81,42 @@ pub fn draw(frame: &mut Frame, area: Rect, t: &Theme, left: Left, right: &str) {
         .style(bg),
         r,
     );
+}
+
+/// `key what · key what` in `width` columns: keys in the accent, what
+/// they do muted. Hints before the last are dropped from the end until
+/// the rest fit.
+fn hint_spans(t: &Theme, hints: &[(&str, &str)], width: usize) -> Vec<Span<'static>> {
+    const SEP: &str = " · ";
+    let Some((last, rest)) = hints.split_last() else {
+        return Vec::new();
+    };
+    let w = |(k, v): &(&str, &str)| k.width() + 1 + v.width();
+    // The leading space, then the last hint.
+    let mut used = 1 + w(last);
+    let mut shown: Vec<&(&str, &str)> = rest
+        .iter()
+        .take_while(|h| {
+            used += w(h) + SEP.width();
+            used <= width
+        })
+        .collect();
+    shown.push(last);
+    let mut spans = vec![Span::raw(" ")];
+    for (i, (key, what)) in shown.into_iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled(SEP, Style::default().fg(t.subtle)));
+        }
+        spans.push(Span::styled(
+            (*key).to_string(),
+            Style::default().fg(t.accent).bold(),
+        ));
+        spans.push(Span::styled(
+            format!(" {what}"),
+            Style::default().fg(t.muted),
+        ));
+    }
+    spans
 }
 
 /// A thin vertical scrollbar in the last column of `area`, drawn only when
@@ -382,5 +441,23 @@ mod tests {
         let narrow = Rect::new(110, 0, 10, 29);
         let rect = popup_rect(screen, narrow, " t ", &lines, 0, 4);
         assert_eq!(rect.right(), screen.right());
+    }
+
+    #[test]
+    fn narrow_bars_give_up_the_counter_then_the_name_for_the_last_hint() {
+        let hints: &[(&str, &str)] = &[("j/k", "move"), ("?", "help")];
+        let bar = |w: u16| {
+            let mut term = Terminal::new(TestBackend::new(w, 1)).unwrap();
+            term.draw(|f| draw(f, f.area(), &Theme::dark(), Left::Hints(hints), "1/2"))
+                .unwrap();
+            rows(&term).remove(0)
+        };
+        let wide = bar(40);
+        assert!(wide.contains("bastian") && wide.contains("1/2"), "{wide}");
+        let twenty = bar(20);
+        assert!(twenty.contains("bastian  ? help"), "{twenty}");
+        assert!(!twenty.contains("1/2"), "{twenty}");
+        let fourteen = bar(14);
+        assert_eq!(fourteen.trim(), "? help", "{fourteen}");
     }
 }

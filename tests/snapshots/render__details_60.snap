@@ -1,0 +1,27 @@
+---
+source: tests/render.rs
+expression: to_plain(&rendered.lines)
+---
+ Details
+
+▼ Click to expand & see
+  Hidden markdown text.
+
+  • a list item
+
+                                                       ▶ sh
+   echo hi
+
+
+▼ Already open
+  Visible.
+
+  ▼ Nested
+    Inner.
+
+▼ Details
+  Raw body with no summary and no blank lines.
+
+After.
+
+<div align="center">other html</div>

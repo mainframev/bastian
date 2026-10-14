@@ -67,6 +67,7 @@ mod tests {
             interpreters: &interpreters,
             highlights: &highlights,
             images: &sizes,
+            toggled_details: None,
             opts: Options::default(),
         };
         let r = render_with_runs(&doc, 40, &Theme::dark(), cx);

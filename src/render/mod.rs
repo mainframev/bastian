@@ -1,6 +1,8 @@
 mod ansi;
 pub(crate) mod code;
 mod codeblock;
+#[cfg(feature = "mermaid")]
+mod diagram;
 mod image;
 mod links;
 mod plain;
@@ -119,6 +121,11 @@ pub struct CodeRange {
     pub frame: Option<Range<usize>>,
 }
 
+/// Whether a code fence's language names a Mermaid diagram.
+pub(crate) fn is_mermaid(lang: Option<&str>) -> bool {
+    lang.is_some_and(|l| l.eq_ignore_ascii_case("mermaid"))
+}
+
 /// The bar down the left of quotes and run output.
 const QUOTE_BAR: &str = "│ ";
 
@@ -130,12 +137,14 @@ pub fn render(doc: &Document, width: u16, theme: &Theme) -> Rendered {
 pub fn render_with(doc: &Document, width: u16, theme: &Theme, opts: Options) -> Rendered {
     let (runs, interpreters) = (HashMap::new(), Interpreters::default());
     let (highlights, images) = (Highlights::default(), ImageSizes::new());
+    let as_source = HashSet::new();
     let cx = Context {
         runs: &runs,
         interpreters: &interpreters,
         highlights: &highlights,
         images: &images,
         toggled_details: None,
+        as_source: &as_source,
         opts,
     };
     render_with_runs(doc, width, theme, cx)
@@ -165,6 +174,8 @@ pub(crate) struct Context<'a> {
     /// Ids of the details blocks opened or closed from how they start;
     /// `None` shows them all open, as printed output can't open one.
     pub toggled_details: Option<&'a HashSet<usize>>,
+    /// Diagram blocks the reader switched to show their source.
+    pub as_source: &'a HashSet<usize>,
     pub opts: Options,
 }
 
@@ -626,13 +637,14 @@ mod tests {
             image_rows: 10,
             ..Options::default()
         };
-        let (runs, interpreters, highlights) = Default::default();
+        let (runs, interpreters, highlights, as_source) = Default::default();
         let cx = Context {
             runs: &runs,
             interpreters: &interpreters,
             highlights: &highlights,
             images: &sizes,
             toggled_details: None,
+            as_source: &as_source,
             opts: short,
         };
         let r = render_with_runs(&doc, 80, &Theme::dark(), cx);

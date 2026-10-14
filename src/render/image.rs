@@ -61,13 +61,14 @@ mod tests {
         assert!(to_plain(&placeholder.lines).contains("[image: A cat]"));
 
         let sizes = ImageSizes::from([("cat.png".to_string(), (60, 40))]);
-        let (runs, interpreters, highlights) = Default::default();
+        let (runs, interpreters, highlights, as_source) = Default::default();
         let cx = Context {
             runs: &runs,
             interpreters: &interpreters,
             highlights: &highlights,
             images: &sizes,
             toggled_details: None,
+            as_source: &as_source,
             opts: Options::default(),
         };
         let r = render_with_runs(&doc, 40, &Theme::dark(), cx);

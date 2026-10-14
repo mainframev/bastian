@@ -87,6 +87,32 @@ fn code_frames_fit_every_width() {
     }
 }
 
+// Diagrams are drawn; pie charts and invalid diagrams keep their source.
+#[cfg(feature = "mermaid")]
+#[test]
+fn mermaid_80() {
+    snapshot("mermaid", 80);
+}
+
+// Too narrow for the wider diagrams, which fall back to their source.
+#[cfg(feature = "mermaid")]
+#[test]
+fn mermaid_30() {
+    snapshot("mermaid", 30);
+}
+
+#[cfg(not(feature = "mermaid"))]
+#[test]
+fn mermaid_blocks_show_source_without_the_feature() {
+    let src = std::fs::read_to_string("tests/fixtures/mermaid.md").unwrap();
+    let plain = to_plain(&render(&parse(&src), 80, &Theme::dark()).lines);
+    assert!(
+        plain.contains("A[Request] --> B{Authenticated?}"),
+        "{plain}"
+    );
+    assert!(!plain.contains('▼'), "{plain}");
+}
+
 #[test]
 fn code_ranges_cover_code_lines() {
     let src = "text\n\n```sh\na\nb\n```\n\nmore\n\n```\nc\n```\n";
@@ -101,11 +127,16 @@ fn code_ranges_cover_code_lines() {
 
 #[test]
 fn lines_never_exceed_width() {
-    let src = std::fs::read_to_string("tests/fixtures/sample.md").unwrap();
-    for width in [20u16, 37, 60, 100] {
-        let r = render(&parse(&src), width, &Theme::dark());
-        for line in &r.lines {
-            assert!(line.width() <= width as usize, "width {width}: {line:?}");
+    for name in ["sample", "mermaid"] {
+        let src = std::fs::read_to_string(format!("tests/fixtures/{name}.md")).unwrap();
+        for width in [20u16, 37, 60, 100] {
+            let r = render(&parse(&src), width, &Theme::dark());
+            for line in &r.lines {
+                assert!(
+                    line.width() <= width as usize,
+                    "{name} at {width}: {line:?}"
+                );
+            }
         }
     }
 }

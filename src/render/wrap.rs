@@ -2,6 +2,11 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
+/// Stands for a space that is part of the word next to it, like the
+/// padding around inline code: it is never broken at or dropped, and comes
+/// out as a plain space. A Unicode noncharacter, so documents don't hold it.
+pub const PAD: char = '\u{FDD0}';
+
 /// Word-wrap styled text into lines of at most `width` columns.
 /// `\n` forces a break; words longer than a line are split. Words are found
 /// across style changes, so a styled part of a word (or of CJK text with
@@ -107,7 +112,10 @@ impl Wrapper {
         self.cur_w = 0;
     }
 
-    fn push(&mut self, text: String, style: Style, w: usize) {
+    fn push(&mut self, mut text: String, style: Style, w: usize) {
+        if text.contains(PAD) {
+            text = text.replace(PAD, " ");
+        }
         self.cur.push(Span::styled(text, style));
         self.cur_w += w;
     }

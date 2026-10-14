@@ -1,6 +1,7 @@
 use bastian::doc::parse;
 use bastian::render::theme::Theme;
 use bastian::render::{render, to_plain};
+use unicode_width::UnicodeWidthChar;
 
 fn snapshot(name: &str, width: u16) {
     let src = std::fs::read_to_string(format!("tests/fixtures/{name}.md")).unwrap();
@@ -44,13 +45,55 @@ fn details_60() {
     snapshot("details", 60);
 }
 
+// Frames take the full width, wide characters wrap inside them, long
+// labels shorten, and blocks too narrow for a frame drop it.
+#[test]
+fn code_40() {
+    snapshot("code", 40);
+}
+
+#[test]
+fn code_14() {
+    snapshot("code", 14);
+}
+
+#[test]
+fn code_frames_fit_every_width() {
+    let src = std::fs::read_to_string("tests/fixtures/code.md").unwrap();
+    let doc = parse(&src);
+    for width in 0u16..=40 {
+        let r = render(&doc, width, &Theme::dark());
+        for line in &r.lines {
+            assert!(
+                line.width() <= usize::from(width.max(10)),
+                "width {width}: {line:?}"
+            );
+        }
+        for c in &r.code_blocks {
+            let lines = &r.lines[c.lines.clone()];
+            let Some(cols) = &c.frame else { continue };
+            // The corners sit at the frame's first and last columns.
+            for (line, corners) in [(&lines[0], "┌┐"), (&lines[lines.len() - 1], "└┘")] {
+                let text = bastian::render::plain(line);
+                let cells: Vec<char> = text
+                    .chars()
+                    .flat_map(|c| std::iter::repeat_n(c, c.width().unwrap_or(0)))
+                    .collect();
+                let found = [cells[cols.start], cells[cols.end - 1]];
+                assert_eq!(found.iter().collect::<String>(), corners, "{text}");
+                assert_eq!(cells.len(), cols.end, "width {width}: {text}");
+            }
+        }
+    }
+}
+
 #[test]
 fn code_ranges_cover_code_lines() {
     let src = "text\n\n```sh\na\nb\n```\n\nmore\n\n```\nc\n```\n";
     let r = render(&parse(src), 40, &Theme::dark());
     let ids: Vec<usize> = r.code_blocks.iter().map(|c| c.id).collect();
     assert_eq!(ids, [0, 1]);
-    // label line + 2 source lines + bottom padding
+    // top border + 2 source lines + bottom border
     assert_eq!(r.code_blocks[0].lines, 2..6);
     let plain = to_plain(&r.lines[r.code_blocks[0].lines.clone()]);
     assert!(plain.contains(" a") && plain.contains(" b"), "{plain}");

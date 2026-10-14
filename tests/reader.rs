@@ -495,6 +495,60 @@ fn focused_details_summary_is_highlighted() {
 }
 
 #[test]
+fn focused_code_block_frame_takes_the_accent() {
+    use bastian::ui::reader::{MARGIN, draw};
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let mut r = Reader::new(
+        Source::in_memory("t.md", parse("- item\n\n  ```sh\n  echo hi\n  ```\n")),
+        &Options::default(),
+    );
+    let (w, h) = (40u16, 10u16);
+    let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let before = r.rendered().lines.clone();
+    let rows = |t: &Terminal<TestBackend>| -> Vec<String> {
+        let buf = t.backend().buffer();
+        // All but the status bar, which names the focused block.
+        (0..h - 1)
+            .map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect())
+            .collect()
+    };
+    let text = rows(&terminal);
+    let theme = Theme::dark();
+    let corner = |t: &Terminal<TestBackend>| t.backend().buffer()[(MARGIN + 2, 2)].clone();
+    assert_eq!(corner(&terminal).symbol(), "┌");
+    assert_eq!(corner(&terminal).fg, theme.muted);
+    key(&mut r, KeyCode::Tab);
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+
+    // Focus only recolors: the lines and what's on screen stay put.
+    assert_eq!(r.rendered().lines, before);
+    assert_eq!(rows(&terminal), text);
+
+    let buf = terminal.backend().buffer();
+    let block = &r.rendered().code_blocks[0];
+    let cols = block.frame.clone().unwrap();
+    let x = |col: usize| MARGIN + col as u16;
+    // Below the blank top row.
+    let (top, bottom) = (block.lines.start as u16 + 1, block.lines.end as u16);
+    for y in top..=bottom {
+        for col in cols.clone() {
+            let cell = &buf[(x(col), y)];
+            let edge = y == top || y == bottom || col == cols.start || col == cols.end - 1;
+            if edge {
+                assert_eq!(cell.fg, theme.accent, "{col},{y} {:?}", cell.symbol());
+            } else {
+                assert_ne!(cell.fg, theme.accent, "{col},{y} {:?}", cell.symbol());
+            }
+        }
+    }
+    // Nothing in the margin or the list marker's column.
+    assert_ne!(buf[(0, top)].fg, theme.accent);
+    assert_ne!(buf[(x(0), top)].fg, theme.accent);
+}
+
+#[test]
 fn blocks_remember_their_source_lines() {
     let doc = parse("# Title\n\npara one\nstill one\n\n- a\n- b\n\n```sh\nx\n```\n");
     assert_eq!(doc.lines, [0, 2, 5, 8]);

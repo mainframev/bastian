@@ -42,3 +42,16 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Test
         run: cargo test
+
+  size:
+    name: Binary size
+    # The budget is for this platform; sizes differ elsewhere.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release binary
+        run: cargo build --release --locked
+      - name: Check size budget
+        run: .github/scripts/size-check.sh target/release/bastian .github/size-budget

@@ -129,10 +129,10 @@ open.
 Built with the `mermaid` feature (`cargo install --locked bastian --features
 mermaid`), ` ```mermaid ` blocks are drawn as box-drawing diagrams, in the
 reader and in printed output. Flowcharts, sequence, state, class and ER
-diagrams are supported. A diagram that doesn't parse, is another type or is
-wider than the window shows its source instead, and `v` switches the focused
-block between the two. The feature is off by default as it adds about 8 MB
-to the binary.
+diagrams are supported. A diagram that doesn't parse, is another type, is
+wider than the window or takes over 250 ms to lay out shows its source
+instead, and `v` switches the focused block between the two. The feature is
+off by default as it adds about 8 MB to the binary.
 
 ## Line numbers
 

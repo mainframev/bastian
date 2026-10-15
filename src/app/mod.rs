@@ -312,7 +312,7 @@ impl App {
                 self.push_reader(next);
             }
             reader::Action::OpenRemote(url) => {
-                let next = crate::remote::fetch(&crate::remote::Source::Url(url))
+                let next = crate::remote::fetch(&crate::remote::Remote::Url(url))
                     .map(|doc| Reader::new(reader::Source::remote(doc), &self.settings.reader));
                 self.push_reader(next);
             }

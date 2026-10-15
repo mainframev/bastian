@@ -1677,3 +1677,43 @@ fn hyperlinks_and_scrollbar_can_be_turned_off() {
     assert!(cells.contains("link 0"));
     assert!(!cells.contains('█'), "no scrollbar thumb");
 }
+
+#[test]
+fn the_line_gone_to_is_highlighted() {
+    use bastian::ui::reader::draw;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let src: String = (0..50).map(|i| format!("para {i}\n\n")).collect();
+    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
+    let mut terminal = Terminal::new(TestBackend::new(60, 14)).unwrap();
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let press = |r: &mut Reader, c: KeyCode| r.on_key(KeyEvent::new(c, KeyModifiers::NONE));
+    press(&mut r, KeyCode::Char(':'));
+    // Rendered line 97 is "para 48", near the end.
+    for c in "97".chars() {
+        press(&mut r, KeyCode::Char(c));
+    }
+    press(&mut r, KeyCode::Enter);
+    let current_bg = r.theme().current_bg;
+    let row_of = |terminal: &Terminal<TestBackend>, text: &str| {
+        let buf = terminal.backend().buffer();
+        (0..buf.area.height)
+            .find(|&y| {
+                let row: String = (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect();
+                row.contains(text)
+            })
+            .unwrap_or_else(|| panic!("no {text}"))
+    };
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let y = row_of(&terminal, "para 48");
+    let buf = terminal.backend().buffer();
+    let x = (0..60).find(|&x| buf[(x, y)].symbol() == "p").unwrap();
+    assert_eq!(buf[(x, y)].bg, current_bg, "the target line");
+    let other = row_of(&terminal, "para 49");
+    assert_ne!(buf[(x, other)].bg, current_bg, "only the target line");
+    // The next key clears it.
+    press(&mut r, KeyCode::Char('j'));
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let y = row_of(&terminal, "para 48");
+    assert_ne!(terminal.backend().buffer()[(x, y)].bg, current_bg);
+}

@@ -82,6 +82,11 @@ pub struct Output {
 impl Output {
     /// Render `doc` and write it out in `theme`.
     pub fn print(&self, doc: &Document, theme: &Theme, opts: render::Options) -> Result<()> {
+        // Plain text has no background to show a chip on.
+        let opts = render::Options {
+            chips: self.color,
+            ..opts
+        };
         let rendered = render::render_with(doc, self.width, theme, opts);
         let text = if self.color {
             render::to_ansi(&rendered.lines)

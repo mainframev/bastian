@@ -26,6 +26,18 @@ pub(super) const UI_KEYS: &[&str] = &[
     "warn",
 ];
 
+/// `[ui]` keys a theme may leave out, each with the key it falls back to.
+pub(super) const OPTIONAL_UI_KEYS: &[(&str, &str)] = &[
+    ("heading_2", "heading"),
+    ("heading_3", "heading"),
+    ("heading_4", "heading"),
+    ("heading_5", "heading"),
+    ("heading_underline", "muted"),
+    ("bullet_1", "accent"),
+    ("bullet_2", "accent"),
+    ("bullet_3", "accent"),
+];
+
 pub(super) const SYNTAX_KEYS: &[&str] = &[
     "comment",
     "keyword",
@@ -74,12 +86,21 @@ pub(super) const SCOPES: &[(&str, &str)] = &[
 
 /// Check a parsed file is complete and turn it into a `Theme`.
 pub(super) fn build(file: &ThemeFile, origin: &str) -> Result<Theme> {
-    check_keys(&file.ui, "ui", UI_KEYS, origin)?;
-    check_keys(&file.syntax, "syntax", SYNTAX_KEYS, origin)?;
+    let optional: Vec<&str> = OPTIONAL_UI_KEYS.iter().map(|(k, _)| *k).collect();
+    check_keys(&file.ui, "ui", UI_KEYS, &optional, origin)?;
+    check_keys(&file.syntax, "syntax", SYNTAX_KEYS, &[], origin)?;
     let appearance = file
         .appearance
         .ok_or_else(|| anyhow!("theme {origin} is missing `appearance`"))?;
-    let ui = |key: &str| color(&file.ui[key], "ui", key, origin);
+    let ui = |key: &str| {
+        // An optional key left out takes the color of its fallback.
+        let set = OPTIONAL_UI_KEYS
+            .iter()
+            .find(|(k, _)| *k == key)
+            .filter(|_| !file.ui.contains_key(key))
+            .map_or(key, |(_, fallback)| *fallback);
+        color(&file.ui[set], "ui", key, origin)
+    };
     Ok(Theme {
         text: ui("text")?,
         muted: ui("muted")?,
@@ -89,6 +110,12 @@ pub(super) fn build(file: &ThemeFile, origin: &str) -> Result<Theme> {
         h1_fg: ui("h1_fg")?,
         h1_bg: ui("h1_bg")?,
         heading: ui("heading")?,
+        heading_2: ui("heading_2")?,
+        heading_3: ui("heading_3")?,
+        heading_4: ui("heading_4")?,
+        heading_5: ui("heading_5")?,
+        heading_underline: ui("heading_underline")?,
+        bullets: [ui("bullet_1")?, ui("bullet_2")?, ui("bullet_3")?],
         link: ui("link")?,
         code: ui("code")?,
         match_bg: ui("match_bg")?,
@@ -101,14 +128,18 @@ pub(super) fn build(file: &ThemeFile, origin: &str) -> Result<Theme> {
     })
 }
 
-/// Every key in `section` is known and every known key is present.
+/// Every key in `section` is known and every required key is present.
 pub(super) fn check_keys(
     section: &BTreeMap<String, String>,
     name: &str,
     keys: &[&str],
+    optional: &[&str],
     origin: &str,
 ) -> Result<()> {
-    if let Some(unknown) = section.keys().find(|k| !keys.contains(&k.as_str())) {
+    if let Some(unknown) = section
+        .keys()
+        .find(|k| !keys.contains(&k.as_str()) && !optional.contains(&k.as_str()))
+    {
         bail!("theme {origin}: unknown key `{name}.{unknown}`");
     }
     let missing: Vec<_> = keys

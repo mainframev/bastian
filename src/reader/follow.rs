@@ -201,10 +201,13 @@ impl Reader {
         let (_, text) = heading_texts(&self.doc.blocks)
             .into_iter()
             .find(|(a, _)| links::slug(a) == anchor)?;
+        // Compare without spaces: inline code is padded with them on
+        // screen, also beside punctuation (`x`. shows as `x .`).
+        let bare = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+        let text = bare(&text);
         self.rendered.lines.iter().position(|line| {
-            let plain = render::plain(line);
-            let plain = plain.trim().trim_start_matches('#').trim();
-            !plain.is_empty() && text.starts_with(plain)
+            let plain = bare(&render::plain(line));
+            !plain.is_empty() && text.starts_with(&plain)
         })
     }
 
@@ -515,6 +518,30 @@ mod tests {
         press(&mut r, KeyCode::Esc, KeyModifiers::NONE);
         press(&mut r, KeyCode::Esc, KeyModifiers::NONE);
         assert!(!picker_open(&r));
+    }
+
+    #[test]
+    fn nested_headings_with_inline_code_are_found() {
+        let src = "intro\n\n<details open><summary>More</summary>\n\n## Use `x` here\n\nbody\n\n</details>\n";
+        let mut r = Reader::new(Source::in_memory("t", parse(src)), &Options::default());
+        r.layout(80, 20);
+        let line = r.heading_line("use-x-here").expect("found");
+        assert_eq!(
+            crate::render::plain(&r.rendered.lines[line]).trim(),
+            "Use  x  here"
+        );
+    }
+
+    #[test]
+    fn nested_headings_with_code_beside_punctuation_are_found() {
+        for (heading, anchor) in [("Use `x`.", "use-x"), ("a`b`c", "abc")] {
+            let src = format!(
+                "intro\n\n<details open><summary>More</summary>\n\n## {heading}\n\nbody\n\n</details>\n"
+            );
+            let mut r = Reader::new(Source::in_memory("t", parse(&src)), &Options::default());
+            r.layout(80, 20);
+            assert!(r.heading_line(anchor).is_some(), "{heading}");
+        }
     }
 
     #[test]

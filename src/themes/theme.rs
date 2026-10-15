@@ -15,7 +15,17 @@ pub struct Theme {
     pub accent: Color,
     pub h1_fg: Color,
     pub h1_bg: Color,
+    /// Headings below the title, unless a theme sets a color per level;
+    /// `heading_5` colors levels 5 and 6.
     pub heading: Color,
+    pub heading_2: Color,
+    pub heading_3: Color,
+    pub heading_4: Color,
+    pub heading_5: Color,
+    /// The rule under level-2 headings.
+    pub heading_underline: Color,
+    /// Bullets of unordered lists, by nesting depth; deeper lists cycle.
+    pub bullets: [Color; 3],
     pub link: Color,
     pub code: Color,
     /// Background of search matches, and of the current match.
@@ -30,6 +40,17 @@ pub struct Theme {
 }
 
 impl Theme {
+    /// Text color of a level-`level` heading below the title.
+    pub fn heading_color(&self, level: u8) -> Color {
+        match level {
+            2 => self.heading_2,
+            3 => self.heading_3,
+            4 => self.heading_4,
+            5.. => self.heading_5,
+            _ => self.heading,
+        }
+    }
+
     /// The default dark theme, Rosé Pine.
     pub fn dark() -> Self {
         super::load(super::DEFAULT_DARK, None).expect("built-in theme")

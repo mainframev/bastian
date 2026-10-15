@@ -391,6 +391,25 @@ fn renumber(blocks: &mut [Block], next: &mut Ids) {
     }
 }
 
+/// The relative link a wiki link's target stands for: `Page` is
+/// `Page.md` next to the document, and a `#Heading` part becomes that
+/// heading's anchor. Targets with an extension are kept as they are.
+pub(super) fn wiki_target(target: &str) -> String {
+    let (path, heading) = match target.split_once('#') {
+        Some((path, heading)) => (path.trim(), Some(heading)),
+        None => (target.trim(), None),
+    };
+    let mut url = path.to_string();
+    if !path.is_empty() && Path::new(path).extension().is_none() {
+        url.push_str(".md");
+    }
+    if let Some(heading) = heading {
+        url.push('#');
+        url.push_str(&crate::links::slug(heading));
+    }
+    url
+}
+
 pub fn plain_text(inlines: &[Inline]) -> String {
     inlines.iter().map(|i| i.text.as_str()).collect()
 }

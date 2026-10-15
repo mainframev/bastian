@@ -86,6 +86,8 @@ impl Reader {
             .filter(|&id| id < codes.len());
         self.codes = codes;
         self.doc = doc;
+        // Its headings may not be the ones jumped to.
+        self.toc_jump = None;
         self.highlights.clear();
         self.images_requested = false;
         self.dirty = true;

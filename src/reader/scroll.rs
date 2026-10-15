@@ -107,6 +107,7 @@ impl Reader {
     fn move_view(&mut self, to: usize) {
         if to != self.scroll {
             self.toc_jump = None;
+            self.goto_mark = None;
         }
         self.scroll = to;
     }

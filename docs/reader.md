@@ -160,7 +160,8 @@ such as `bastian main.rs`, always show them.
 
 `:` asks for a line number and scrolls that line to the top: the number the
 line numbers show, so a source line in source files. A number past the end goes
-to the end.
+to the last line. The line is highlighted, with every row it wraps onto, until
+the next key.
 
 ## Editing and live reload
 

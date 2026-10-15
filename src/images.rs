@@ -25,7 +25,7 @@ const MAX_DECODED: u64 = 256 * 1024 * 1024;
 
 /// Where an image comes from.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Source {
+pub enum ImageOrigin {
     File(PathBuf),
     Url(String),
 }
@@ -109,7 +109,7 @@ impl Images {
 
     /// Start loading `key` from `source`, unless it's already known or a
     /// format that can't be drawn.
-    pub fn request(&mut self, key: &str, source: Source) {
+    pub fn request(&mut self, key: &str, source: ImageOrigin) {
         if !self.enabled() || self.entries.contains_key(key) || !drawable(key) {
             return;
         }
@@ -192,10 +192,10 @@ fn drawable(url: &str) -> bool {
     !ext.eq_ignore_ascii_case("gif") && !ext.eq_ignore_ascii_case("svg")
 }
 
-fn load(source: &Source) -> Result<DynamicImage> {
+fn load(source: &ImageOrigin) -> Result<DynamicImage> {
     let bytes = match source {
-        Source::File(path) => crate::text::read_capped(path, MAX_BYTES)?,
-        Source::Url(url) => crate::remote::fetch_bytes(url, MAX_BYTES)?,
+        ImageOrigin::File(path) => crate::text::read_capped(path, MAX_BYTES)?,
+        ImageOrigin::Url(url) => crate::remote::fetch_bytes(url, MAX_BYTES)?,
     };
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format()?;
     // A small file can claim a huge canvas; cap what decoding allocates.
@@ -267,8 +267,8 @@ mod tests {
         std::fs::write(dir.path().join("logo.svg"), "<svg/>").unwrap();
 
         let mut images = Images::new(Some(Support::fixed(Picker::halfblocks())));
-        images.request("dot.png", Source::File(png));
-        images.request("logo.svg", Source::File(dir.path().join("logo.svg")));
+        images.request("dot.png", ImageOrigin::File(png));
+        images.request("logo.svg", ImageOrigin::File(dir.path().join("logo.svg")));
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while images.sizes().is_empty()
             || images.entries.values().any(|e| matches!(e, Entry::Loading))
@@ -288,10 +288,10 @@ mod tests {
             .save(dir.path().join("demo.png"))
             .unwrap();
         std::fs::copy(dir.path().join("demo.png"), &gif).unwrap();
-        images.request("demo.gif", Source::File(gif));
+        images.request("demo.gif", ImageOrigin::File(gif));
         images.request(
             "https://x.dev/badge.svg?style=flat",
-            Source::Url("unused".into()),
+            ImageOrigin::Url("unused".into()),
         );
         assert!(!images.entries.contains_key("demo.gif"));
         assert!(
@@ -302,12 +302,12 @@ mod tests {
         assert!(drawable("photo.JPG?raw=true") && !drawable("demo/usage.GIF#x"));
 
         // Only regular files are read.
-        let err = load(&Source::File("/dev/zero".into())).unwrap_err();
+        let err = load(&ImageOrigin::File("/dev/zero".into())).unwrap_err();
         assert!(err.to_string().contains("not a file"), "{err}");
 
         // Off: nothing is loaded.
         let mut off = Images::default();
-        off.request("dot.png", Source::File(dir.path().join("dot.png")));
+        off.request("dot.png", ImageOrigin::File(dir.path().join("dot.png")));
         assert!(off.entries.is_empty());
     }
 }

@@ -260,6 +260,12 @@ pub struct Reader {
     pub toc: bool,
     /// Columns asked for the table of contents; `<` and `>` change it.
     toc_width: u16,
+    /// The table of contents entry the last digit or `J`/`K` jump aimed
+    /// at, and the scroll it left: near the end, the view stops short of
+    /// putting the heading at the top, so the scroll alone can't say where
+    /// it went. An entry, not a row, so a new layout finds it again;
+    /// cleared when the view moves or the document is replaced.
+    toc_jump: Option<(usize, usize)>,
     /// Width of the screen at the last draw, which the table of contents
     /// is sized against.
     screen: u16,
@@ -360,6 +366,7 @@ impl Reader {
             assume_yes: opts.assume_yes && remote_base.is_none(),
             toc: false,
             toc_width: opts.toc_width,
+            toc_jump: None,
             screen: 0,
             // Source files read from disk always show their line numbers.
             line_numbers: opts.line_numbers || (file.is_some() && code_file),

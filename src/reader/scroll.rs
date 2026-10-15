@@ -81,10 +81,11 @@ impl Reader {
     /// Scroll by `delta` lines (negative is up).
     pub fn scroll_by(&mut self, delta: isize) {
         self.follow = None;
-        self.scroll = self
+        let to = self
             .scroll
             .saturating_add_signed(delta)
             .min(self.max_scroll());
+        self.move_view(to);
     }
 
     /// Scroll so `line` is visible, placing it a third of the way down.
@@ -98,7 +99,16 @@ impl Reader {
     /// Scroll so `line` is at the top, as far as the document allows.
     pub(super) fn jump_to(&mut self, line: usize) {
         self.follow = None;
-        self.scroll = line.min(self.max_scroll());
+        self.move_view(line.min(self.max_scroll()));
+    }
+
+    /// Scroll to `to`; a view that moves forgets the heading last jumped
+    /// to, even if it comes back to the same place later.
+    fn move_view(&mut self, to: usize) {
+        if to != self.scroll {
+            self.toc_jump = None;
+        }
+        self.scroll = to;
     }
 }
 

@@ -238,7 +238,7 @@ impl Builder {
                 ..
             } => {
                 let url = match link_type {
-                    LinkType::WikiLink { .. } => wiki_target(&dest_url),
+                    LinkType::WikiLink { .. } => super::wiki_target(&dest_url),
                     _ => dest_url.into_string(),
                 };
                 self.style.link = Some(url);
@@ -671,25 +671,6 @@ fn html_text(html: &str) -> String {
         .replace("&nbsp;", " ")
         .replace("&amp;", "&");
     out.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// The relative link a wiki link's target stands for: `Page` is
-/// `Page.md` next to the document, and a `#Heading` part becomes that
-/// heading's anchor. Targets with an extension are kept as they are.
-fn wiki_target(target: &str) -> String {
-    let (path, heading) = match target.split_once('#') {
-        Some((path, heading)) => (path.trim(), Some(heading)),
-        None => (target.trim(), None),
-    };
-    let mut url = path.to_string();
-    if !path.is_empty() && std::path::Path::new(path).extension().is_none() {
-        url.push_str(".md");
-    }
-    if let Some(heading) = heading {
-        url.push('#');
-        url.push_str(&crate::links::slug(heading));
-    }
-    url
 }
 
 /// The image block for a paragraph that is nothing but `[image: alt]`

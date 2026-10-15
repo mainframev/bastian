@@ -285,3 +285,92 @@ fn table_alignment() {
     assert_eq!(align, &[Align::Left, Align::Center, Align::Right]);
     assert_eq!(plain_text(&rows[0][2]), "3");
 }
+
+#[test]
+fn wiki_links_resolve_as_in_markdown() {
+    let src = "[[Other Page]] [[notes/todo|My list]] [[Guide#Getting Started]] [[#Usage]] [[spec.pdf]]\n\n\
+               `[[code]]` and \\[\\[escaped]] and **[[bold]]**.\n";
+    let mdx = parse(src).unwrap();
+    let md = crate::doc::parse(src);
+    assert_eq!(paragraphs(&mdx), paragraphs(&md));
+    assert_eq!(
+        paragraphs(&mdx)[0].1,
+        [
+            ("Other Page".into(), "Other Page.md".into()),
+            ("My list".into(), "notes/todo.md".into()),
+            (
+                "Guide#Getting Started".into(),
+                "Guide.md#getting-started".into()
+            ),
+            ("#Usage".into(), "#usage".into()),
+            ("spec.pdf".into(), "spec.pdf".into()),
+        ]
+    );
+    // Code and escapes stay text; emphasis still links.
+    assert_eq!(paragraphs(&mdx)[1].1, [("bold".into(), "bold.md".into())]);
+}
+
+/// Each details block: (id, open, summary, text of its paragraphs).
+fn details(doc: &Document) -> Vec<(usize, bool, String, Vec<String>)> {
+    let mut out = Vec::new();
+    crate::doc::visit(&doc.blocks, &mut |b| {
+        if let Block::Details {
+            id,
+            open,
+            summary,
+            blocks,
+        } = b
+        {
+            let paras = blocks
+                .iter()
+                .filter_map(|b| match b {
+                    Block::Paragraph(i) => Some(plain_text(i)),
+                    _ => None,
+                })
+                .collect();
+            out.push((*id, *open, plain_text(summary), paras));
+        }
+    });
+    out
+}
+
+#[test]
+fn details_fold_as_in_markdown() {
+    let src = "<details>\n<summary>More</summary>\n\nhidden body\n\n</details>\n\n\
+               <details open>\n<summary>Two **b**</summary>\n\nx\n\n<details>\n<summary>Inner</summary>\n\ny\n\n</details>\n\n</details>\n\n\
+               <details>\n\nno summary\n\n</details>\n";
+    let mdx = parse(src).unwrap();
+    let md = crate::doc::parse(src);
+    // Same blocks, ids and open state. Only the summary may differ: MDX reads
+    // Markdown inside JSX, while raw HTML in .md keeps `**b**` as written.
+    let without_summary = |d: &Document| {
+        details(d)
+            .into_iter()
+            .map(|(id, open, _, body)| (id, open, body))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(without_summary(&mdx), without_summary(&md));
+    assert_eq!(
+        details(&mdx),
+        [
+            (0, false, "More".into(), vec!["hidden body".into()]),
+            (1, true, "Two b".into(), vec!["x".into()]),
+            (2, false, "Inner".into(), vec!["y".into()]),
+            (3, false, "Details".into(), vec!["no summary".into()]),
+        ]
+    );
+}
+
+#[test]
+fn escaped_wiki_brackets_stay_text_beside_real_wiki_links() {
+    let src = "See [[Other Page]] and \\[\\[not]] and \\[[nor]] then [[Last]].\n";
+    let mdx = parse(src).unwrap();
+    assert_eq!(paragraphs(&mdx), paragraphs(&crate::doc::parse(src)));
+    assert_eq!(
+        paragraphs(&mdx)[0].1,
+        [
+            ("Other Page".into(), "Other Page.md".into()),
+            ("Last".into(), "Last.md".into()),
+        ]
+    );
+}

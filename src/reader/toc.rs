@@ -69,20 +69,20 @@ impl Reader {
     fn jump_to_heading(&mut self, i: usize, line: usize) {
         self.jump_to(line);
         self.toc_jump = Some((i, self.scroll));
-        self.toc_by_number = false;
     }
 
     /// Scroll to the heading numbered `n` in the table of contents: right
-    /// after a jump by number, the `n`th in that heading's section, so
-    /// `2` then `1` goes to the first heading under the second; else, or
-    /// when the section has no `n`th, the `n`th of the numbered level.
-    pub(super) fn jump_to_entry(&mut self, n: usize) {
+    /// after a jump by number (`by_number`), the `n`th in that heading's
+    /// section, so `2` then `1` goes to the first heading under the
+    /// second; else, or when the section has no `n`th, the `n`th of the
+    /// numbered level.
+    pub(super) fn jump_to_entry(&mut self, n: usize, by_number: bool) {
         let entries = self.toc_entries();
         let Some(top) = toc::numbered_depth(&entries) else {
             self.message = Some("no numbered headings".into());
             return;
         };
-        let parent = self.toc_mark().filter(|_| self.toc_by_number);
+        let parent = self.toc_mark().filter(|_| by_number);
         let inside = parent.and_then(|p| {
             entries
                 .iter()
@@ -373,5 +373,28 @@ mod tests {
         key(&mut r, 'J');
         key(&mut r, '3');
         assert_eq!(current(&r).as_deref(), Some("C"));
+    }
+
+    #[test]
+    fn keys_that_cannot_move_still_end_the_drill_down() {
+        // Fits on screen, so nothing scrolls and K has no heading before A.
+        let mut r = reader("# A\n\n## A1\n\n## A2\n\n# B\n");
+        r.layout(80, 40);
+        key(&mut r, 't');
+        let current = |r: &Reader| {
+            let e = r.toc_entries();
+            toc::current(&e, r.toc_line()).map(|i| e[i].text.clone())
+        };
+        for reset in ['g', 'k', 'K'] {
+            key(&mut r, '1');
+            key(&mut r, reset);
+            key(&mut r, '2');
+            assert_eq!(current(&r).as_deref(), Some("B"), "after {reset}");
+        }
+        // The wheel at the top, too.
+        key(&mut r, '1');
+        r.scroll_by(-1);
+        key(&mut r, '2');
+        assert_eq!(current(&r).as_deref(), Some("B"), "after the wheel");
     }
 }

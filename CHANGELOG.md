@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-10-15
+
+### Features
+
+- *(reader)* Fold HTML <details> blocks  by @mainframev in [#25](https://github.com/mainframev/bastian/pull/25) ([3c03c11](https://github.com/mainframev/bastian/commit/3c03c11f5d112c919f08c50951c613d8e16b2bcc))
+- *(doc)* Follow [[wiki links]]  by @mainframev in [#26](https://github.com/mainframev/bastian/pull/26) ([72724f8](https://github.com/mainframev/bastian/commit/72724f837823417b608a91db6710e51d6001a954))
+- *(themes)* Add terminal, neutral and high-contrast themes  by @mainframev in [#30](https://github.com/mainframev/bastian/pull/30) ([6fc4bcd](https://github.com/mainframev/bastian/commit/6fc4bcdcf37c4f6cecd9b90e0feb6f301250c000))
+- Frame code blocks and highlight the focused one  by @mainframev in [#33](https://github.com/mainframev/bastian/pull/33) ([4e1a51c](https://github.com/mainframev/bastian/commit/4e1a51c16e077a665e06499af0f2941a92e8e6af))
+- *(ui)* Group key help into sections with the version  by @mainframev in [#31](https://github.com/mainframev/bastian/pull/31) ([dabf4a3](https://github.com/mainframev/bastian/commit/dabf4a3c6907d5b5dd1b853e3149111632b40140))
+- *(reader)* Show the file path with p  by @mainframev in [#32](https://github.com/mainframev/bastian/pull/32) ([a172638](https://github.com/mainframev/bastian/commit/a1726388aae6013192619cf600e4ecb46faa51b9))
+- *(reader)* Table of contents as a left pane  by @mainframev in [#34](https://github.com/mainframev/bastian/pull/34) ([bdaf4eb](https://github.com/mainframev/bastian/commit/bdaf4eb41cb2ea55600294aea544c4eb7bb86907))
+- *(render)* Draw mermaid diagrams behind a mermaid feature  by @mainframev in [#36](https://github.com/mainframev/bastian/pull/36) ([4cdbc14](https://github.com/mainframev/bastian/commit/4cdbc14dabbac1ddfb93d29c313edbfed9e4521f))
+- *(ui)* Show the theme picker as a right pane  by @mainframev in [#37](https://github.com/mainframev/bastian/pull/37) ([67bf5e6](https://github.com/mainframev/bastian/commit/67bf5e6ab5c16c24e1889491681ef701c4aeeb58))
+- *(browser)* List the main keys in the status bar  by @mainframev in [#43](https://github.com/mainframev/bastian/pull/43) ([94bbfbd](https://github.com/mainframev/bastian/commit/94bbfbd5aee41c05eef1ba2136cf706d67cd241c))
+- *(reader)* Page and filter the links list  by @mainframev in [#47](https://github.com/mainframev/bastian/pull/47) ([e31de59](https://github.com/mainframev/bastian/commit/e31de59d652cbb4e741b3ac5fc387ae36f6041be))
+- *(reader)* Go to a line with :  by @mainframev in [#45](https://github.com/mainframev/bastian/pull/45) ([91b9257](https://github.com/mainframev/bastian/commit/91b92579f7b1d20a0cd648ddb4a936a9feae021f))
+- *(reader)* List this session's files with H  by @mainframev in [#46](https://github.com/mainframev/bastian/pull/46) ([556c148](https://github.com/mainframev/bastian/commit/556c1484832123d16d49b1904b4f2f4e44aa9e1b))
+- *(render)* Style headings, bullets, inline code and quotes by element  by @mainframev in [#49](https://github.com/mainframev/bastian/pull/49) ([2b2fbc1](https://github.com/mainframev/bastian/commit/2b2fbc1e3bbec33298e24c14fd3f152659059ed9))
+
+### Fixes
+
+- Proper syntax highlighting for common languages and token kinds  by @mainframev in [#24](https://github.com/mainframev/bastian/pull/24) ([5f59aa8](https://github.com/mainframev/bastian/commit/5f59aa8f18e5cc342ecd25f12eedadbeaa55d91a))
+- *(ui)* Center popups on the document, not the whole screen  by @mainframev in [#38](https://github.com/mainframev/bastian/pull/38) ([c780011](https://github.com/mainframev/bastian/commit/c780011d9f25cb1112f5321542e0dcbcd090a286))
+- *(ui)* Fit theme swatches to the pane on each theme's surface  by @mainframev in [#41](https://github.com/mainframev/bastian/pull/41) ([3d16658](https://github.com/mainframev/bastian/commit/3d1665875bb3dc28a0e3ef44e083ef3983536b2b))
+- *(ui)* Drop the ? row from the key help  by @mainframev in [#48](https://github.com/mainframev/bastian/pull/48) ([5e2159e](https://github.com/mainframev/bastian/commit/5e2159e96285359b88de48f1b141ad319af001f8))
+- *(reader)* Keep hyperlinks from printing over popups  by @mainframev in [#42](https://github.com/mainframev/bastian/pull/42) ([db744c8](https://github.com/mainframev/bastian/commit/db744c871a87da9ea567efbd88766aebfd077522))
+- *(reader)* Mark the heading a ToC jump aimed at near the end  by @mainframev in [#50](https://github.com/mainframev/bastian/pull/50) ([4d1e5aa](https://github.com/mainframev/bastian/commit/4d1e5aabdfd482810eb0f0e217c34a66d247e36a))
 ## [0.2.0] - 2026-10-12
 
 ### Features

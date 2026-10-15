@@ -3,6 +3,8 @@
 //! are dropped; JSX components become muted label lines around their
 //! rendered Markdown children.
 
+use std::collections::HashMap;
+
 use markdown::mdast::{AlignKind, AttributeContent, AttributeValue, Node};
 use markdown::{Constructs, MdxSignal, ParseOptions};
 
@@ -11,28 +13,33 @@ use super::{
     MAX_DEPTH, push_inline,
 };
 
-/// A quote's blocks as a GitHub alert when its first line is just a
-/// marker like `[!NOTE]` (markdown-rs doesn't parse these), else a quote.
-fn alert(mut blocks: Vec<Block>) -> Block {
-    let kind = match blocks.first() {
-        Some(Block::Paragraph(inl)) => inl.first().and_then(|first| {
-            let line = first.text.split('\n').next()?;
-            let marker = line.trim_end().strip_prefix("[!")?.strip_suffix(']')?;
-            (first.style == InlineStyle::default())
-                .then(|| CalloutKind::from_marker(marker))
-                .flatten()
-        }),
-        _ => None,
+/// The GitHub alert a quote is, when its first line is just a marker like
+/// `[!NOTE]` (markdown-rs doesn't parse these). Read from the raw tree,
+/// where the line break after the marker is still a newline.
+fn alert_kind(quote: &[Node]) -> Option<CalloutKind> {
+    let [Node::Paragraph(p), ..] = quote else {
+        return None;
     };
-    let Some(kind) = kind else {
-        return Block::Quote(blocks);
+    let [Node::Text(t), ..] = p.children.as_slice() else {
+        return None;
     };
-    if let Some(Block::Paragraph(inl)) = blocks.first_mut() {
-        let rest = inl[0].text.split_once('\n').map_or("", |(_, r)| r);
+    let line = t.value.split('\n').next()?;
+    let marker = line.trim_end().strip_prefix("[!")?.strip_suffix(']')?;
+    CalloutKind::from_marker(marker)
+}
+
+/// A quote's mapped `blocks` as a callout of `kind`, its marker dropped.
+fn alert(kind: CalloutKind, mut blocks: Vec<Block>) -> Block {
+    if let Some(Block::Paragraph(inl)) = blocks.first_mut()
+        && let Some(first) = inl.first_mut()
+    {
+        // The marker, then the space its line break became.
+        let rest = first.text.split_once(']').map_or("", |(_, r)| r);
+        let rest = rest.strip_prefix(' ').unwrap_or(rest);
         if rest.is_empty() {
             inl.remove(0);
         } else {
-            inl[0].text = rest.to_string();
+            first.text = rest.to_string();
         }
         if inl.is_empty() {
             blocks.remove(0);
@@ -74,7 +81,10 @@ pub fn parse(src: &str) -> Option<Document> {
         drop_iteratively(root);
         return None;
     }
-    let mut m = Mapper::default();
+    let mut m = Mapper {
+        definitions: definitions(&root),
+        ..Mapper::default()
+    };
     let mut blocks = Vec::new();
     let mut lines = Vec::new();
     for node in root.children()? {
@@ -99,6 +109,28 @@ struct Mapper {
     next_code_id: usize,
     next_link_id: usize,
     footnotes: Footnotes,
+    /// Link reference definitions by normalized identifier, for
+    /// `[text][id]` links and `![alt][id]` images.
+    definitions: HashMap<String, String>,
+}
+
+/// Every `[id]: url` in the tree, the first of each identifier winning as
+/// `CommonMark` says. markdown-rs leaves references unresolved.
+fn definitions(root: &Node) -> HashMap<String, String> {
+    let mut found = HashMap::new();
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        if let Node::Definition(d) = node {
+            found
+                .entry(d.identifier.clone())
+                .or_insert_with(|| d.url.clone());
+        }
+        if let Some(children) = node.children() {
+            // Reversed so the stack visits them in document order.
+            stack.extend(children.iter().rev());
+        }
+    }
+    found
 }
 
 impl Mapper {
@@ -132,6 +164,12 @@ impl Mapper {
                     alt: i.alt.clone(),
                     url: i.url.clone(),
                 }),
+                [Node::ImageReference(i)] if self.definitions.contains_key(&i.identifier) => {
+                    out.push(Block::Image {
+                        alt: i.alt.clone(),
+                        url: self.definitions[&i.identifier].clone(),
+                    });
+                }
                 children => out.push(Block::Paragraph(self.inlines(children))),
             },
             // Past `MAX_DEPTH`, quotes and lists are flattened into their
@@ -139,7 +177,13 @@ impl Mapper {
             Node::Blockquote(q) if depth >= MAX_DEPTH => {
                 out.extend(self.blocks(&q.children, depth));
             }
-            Node::Blockquote(q) => out.push(alert(self.blocks(&q.children, depth + 1))),
+            Node::Blockquote(q) => {
+                let blocks = self.blocks(&q.children, depth + 1);
+                out.push(match alert_kind(&q.children) {
+                    Some(kind) => alert(kind, blocks),
+                    None => Block::Quote(blocks),
+                });
+            }
             Node::List(l) if depth >= MAX_DEPTH => {
                 for item in &l.children {
                     out.extend(self.list_item(item, depth));
@@ -243,6 +287,16 @@ impl Mapper {
         }
     }
 
+    /// `nodes` as the text of one link to `url`.
+    fn link(&mut self, url: String, nodes: &[Node], style: &InlineStyle, out: &mut Vec<Inline>) {
+        let mut s = style.clone();
+        s.link = Some(url);
+        s.link_id = Some(self.next_link_id());
+        for n in nodes {
+            self.inline(n, &s, out);
+        }
+    }
+
     fn inlines(&mut self, nodes: &[Node]) -> Vec<Inline> {
         let mut out = Vec::new();
         for n in nodes {
@@ -263,27 +317,22 @@ impl Mapper {
             }
         };
         match node {
-            Node::Text(t) => push_inline(out, &t.value, style),
+            // A soft line break is a space, as in the Markdown front end;
+            // only `Break` is a hard one.
+            Node::Text(t) => {
+                push_inline(out, &t.value.replace("\r\n", " ").replace('\n', " "), style);
+            }
             Node::Strong(s) => children(self, &s.children, &with(&|s| s.strong = true), out),
             Node::Emphasis(e) => children(self, &e.children, &with(&|s| s.emphasis = true), out),
             Node::Delete(d) => children(self, &d.children, &with(&|s| s.strike = true), out),
             Node::InlineCode(c) => push_inline(out, &c.value, &with(&|s| s.code = true)),
             Node::InlineMath(m) => push_inline(out, &m.value, &with(&|s| s.code = true)),
             Node::Break(_) => push_inline(out, "\n", style),
-            Node::Link(l) => {
-                let url = l.url.clone();
-                let id = self.next_link_id();
-                children(
-                    self,
-                    &l.children,
-                    &with(&|s| {
-                        s.link = Some(url.clone());
-                        s.link_id = Some(id);
-                    }),
-                    out,
-                );
-            }
-            Node::LinkReference(l) => children(self, &l.children, style, out),
+            Node::Link(l) => self.link(l.url.clone(), &l.children, style, out),
+            Node::LinkReference(l) => match self.definitions.get(&l.identifier).cloned() {
+                Some(url) => self.link(url, &l.children, style, out),
+                None => children(self, &l.children, style, out),
+            },
             Node::Image(i) => push_inline(out, &super::image_placeholder(&i.alt), style),
             Node::ImageReference(i) => push_inline(out, &super::image_placeholder(&i.alt), style),
             Node::Html(h) => push_inline(out, &h.value, &with(&|s| s.muted = true)),
@@ -602,6 +651,77 @@ Use <Badge>new</Badge> for the inline API and {props.version} too.
             assert_eq!(levels, MAX_DEPTH, "{src}");
             assert!(matches!(blocks, [Block::Paragraph(i)] if plain_text(i) == "x"));
         }
+    }
+
+    /// Each paragraph's text and the links in it, as `(text, url)`.
+    fn paragraphs(doc: &Document) -> Vec<(String, Vec<(String, String)>)> {
+        doc.blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::Paragraph(inlines) => Some((
+                    plain_text(inlines),
+                    inlines
+                        .iter()
+                        .filter_map(|i| Some((i.text.clone(), i.style.link.clone()?)))
+                        .collect(),
+                )),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn soft_breaks_join_lines_as_in_markdown() {
+        let src = "first line\nsecond line\n\nhard  \nbreak\n";
+        let mdx = parse(src).unwrap();
+        assert_eq!(paragraphs(&mdx), paragraphs(&crate::doc::parse(src)));
+        assert_eq!(paragraphs(&mdx)[0].0, "first line second line");
+        assert_eq!(paragraphs(&mdx)[1].0, "hard\nbreak");
+    }
+
+    #[test]
+    fn alerts_need_the_marker_alone_on_its_line_as_in_markdown() {
+        for src in [
+            "> [!NOTE]\n> body\n",
+            "> [!NOTE] same line\n",
+            "> [!NOTE]\n",
+        ] {
+            let mdx = parse(src).unwrap();
+            let md = crate::doc::parse(src);
+            let kind = |d: &Document| match &d.blocks[0] {
+                Block::Callout { kind, blocks } => Some((*kind, blocks.len())),
+                _ => None,
+            };
+            assert_eq!(kind(&mdx), kind(&md), "{src:?}: {:?}", mdx.blocks);
+        }
+    }
+
+    #[test]
+    fn reference_links_and_images_resolve_as_in_markdown() {
+        let src = "See [the guide][g], [g][] and [g].\n\n![logo][l]\n\n\
+                   > [quoted][q]\n\n[g]: docs/guide.md\n[G]: ignored.md\n[l]: logo.png\n\n\
+                   > [q]: https://q.dev\n";
+        let mdx = parse(src).unwrap();
+        let md = crate::doc::parse(src);
+        assert_eq!(paragraphs(&mdx), paragraphs(&md));
+        let links = &paragraphs(&mdx)[0].1;
+        assert_eq!(links.len(), 3, "{links:?}");
+        assert!(
+            links.iter().all(|(_, url)| url == "docs/guide.md"),
+            "{links:?}"
+        );
+        assert!(
+            matches!(&mdx.blocks[1], Block::Image { url, alt } if url == "logo.png" && alt == "logo"),
+            "{:?}",
+            mdx.blocks[1]
+        );
+        let Block::Quote(quoted) = &mdx.blocks[2] else {
+            panic!("{:?}", mdx.blocks[2]);
+        };
+        let Block::Paragraph(inlines) = &quoted[0] else {
+            panic!("{quoted:?}");
+        };
+        assert_eq!(inlines[0].style.link.as_deref(), Some("https://q.dev"));
     }
 
     #[test]

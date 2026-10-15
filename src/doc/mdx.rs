@@ -9,7 +9,7 @@ use markdown::mdast::{AlignKind, AttributeContent, AttributeValue, Node};
 use markdown::{Constructs, MdxSignal, ParseOptions};
 
 use super::{
-    Align, Attrs, Block, CalloutKind, CodeBlock, Document, Footnotes, Inline, InlineStyle,
+    Align, Attrs, Block, CalloutKind, CodeBlock, Document, Footnotes, Ids, Inline, InlineStyle,
     MAX_DEPTH, push_inline,
 };
 
@@ -106,8 +106,7 @@ pub fn parse(src: &str) -> Option<Document> {
 
 #[derive(Default)]
 struct Mapper {
-    next_code_id: usize,
-    next_link_id: usize,
+    ids: Ids,
     footnotes: Footnotes,
     /// Link reference definitions by normalized identifier, for
     /// `[text][id]` links and `![alt][id]` images.
@@ -134,16 +133,6 @@ fn definitions(root: &Node) -> HashMap<String, String> {
 }
 
 impl Mapper {
-    fn next_link_id(&mut self) -> usize {
-        self.next_link_id += 1;
-        self.next_link_id - 1
-    }
-
-    fn next_id(&mut self) -> usize {
-        self.next_code_id += 1;
-        self.next_code_id - 1
-    }
-
     /// Map `nodes`, which sit inside `depth` quotes and list items.
     fn blocks(&mut self, nodes: &[Node], depth: usize) -> Vec<Block> {
         let mut out = Vec::new();
@@ -211,7 +200,7 @@ impl Mapper {
                     (Some(lang), None) => lang.clone(),
                     (None, _) => String::new(),
                 };
-                let id = self.next_id();
+                let id = self.ids.code();
                 out.push(Block::Code(CodeBlock {
                     id,
                     lang: super::parse::lang_of(&info),
@@ -220,7 +209,7 @@ impl Mapper {
                 }));
             }
             Node::Math(m) => out.push(Block::Code(CodeBlock {
-                id: self.next_id(),
+                id: self.ids.code(),
                 lang: Some("math".into()),
                 attrs: Attrs::default(),
                 src: format!("{}\n", m.value),
@@ -291,7 +280,7 @@ impl Mapper {
     fn link(&mut self, url: String, nodes: &[Node], style: &InlineStyle, out: &mut Vec<Inline>) {
         let mut s = style.clone();
         s.link = Some(url);
-        s.link_id = Some(self.next_link_id());
+        s.link_id = Some(self.ids.link());
         for n in nodes {
             self.inline(n, &s, out);
         }
@@ -352,7 +341,7 @@ impl Mapper {
             Node::FootnoteReference(f) => {
                 let label = f.label.as_deref().unwrap_or(&f.identifier);
                 let mut r = self.footnotes.reference(label, style);
-                r.style.link_id = Some(self.next_link_id());
+                r.style.link_id = Some(self.ids.link());
                 out.push(r);
             }
             Node::MdxTextExpression(_) => {}

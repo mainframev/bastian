@@ -9,6 +9,9 @@ impl Reader {
     pub fn on_key(&mut self, key: KeyEvent) -> Action {
         self.message = None;
         self.goto_mark = None;
+        // Only the key right after a jump by number goes into its section,
+        // whether or not the keys between could move the view.
+        let by_number = std::mem::take(&mut self.toc_by_number);
         match &mut self.overlay {
             Some(Overlay::Help(help)) => {
                 help.on_key(&key);
@@ -134,7 +137,7 @@ impl Reader {
             KeyCode::Char(c @ '0'..='9') if self.toc => {
                 // `0` is the tenth, as on a keyboard's number row.
                 let n = c.to_digit(10).unwrap_or(0) as usize;
-                self.jump_to_entry(if n == 0 { 10 } else { n });
+                self.jump_to_entry(if n == 0 { 10 } else { n }, by_number);
             }
             KeyCode::Char('J') => self.step_heading(true),
             KeyCode::Char('K') => self.step_heading(false),

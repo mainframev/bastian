@@ -269,8 +269,8 @@ pub struct Reader {
     /// Rendered rows of the line `:` went to, highlighted until the next
     /// key, a move of the view or a new layout.
     goto_mark: Option<std::ops::Range<usize>>,
-    /// Whether that jump was by number, so the next number goes into its
-    /// section.
+    /// Whether the last key was a jump by number, so a number next goes
+    /// into its section. Any other key or a turn of the wheel clears it.
     toc_by_number: bool,
     /// Width of the screen at the last draw, which the table of contents
     /// is sized against.

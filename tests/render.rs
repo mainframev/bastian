@@ -1,3 +1,6 @@
+// A test crate: helpers outside #[test] fns may unwrap too.
+#![allow(clippy::unwrap_used)]
+
 use bastian::doc::parse;
 use bastian::render::theme::Theme;
 use bastian::render::{render, to_plain};

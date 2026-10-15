@@ -10,7 +10,8 @@ use crate::toc;
 use crate::ui::pane::{self, Side};
 use crate::ui::status;
 
-/// Columns the numbers take: two digits and a space.
+/// Columns the numbers of the numbered level take: two digits and a
+/// space.
 const NUMBER_W: usize = 3;
 
 /// The table of contents in `area`, left of the document: a header with
@@ -23,11 +24,8 @@ pub(super) fn draw_toc(frame: &mut Frame, r: &Reader, area: Rect) {
     };
     let entries = r.toc_entries();
     let current = toc::current(&entries, r.toc_line());
-    let numbered = entries
-        .iter()
-        .find(|e| e.number.is_some())
-        // With nothing numbered, every heading indents by depth alone.
-        .map_or(usize::MAX, |e| e.depth);
+    // With nothing numbered, every heading indents by depth alone.
+    let numbered = toc::numbered_depth(&entries).unwrap_or(usize::MAX);
     let rows = usize::from(list.height);
     let first = pane::first_row(current, entries.len(), rows);
     let width = usize::from(list.width);
@@ -39,26 +37,29 @@ pub(super) fn draw_toc(frame: &mut Frame, r: &Reader, area: Rect) {
         .map(|(i, e)| {
             let selected = current == Some(i);
             let style = status::row_style(t, selected);
-            let lead = match e.number {
-                Some(n) => Span::styled(
-                    format!("{n:02} "),
-                    if selected {
-                        style
-                    } else {
-                        Style::default().fg(t.muted)
-                    },
-                ),
-                // Headings above the numbered level (a title, or a book
-                // and its part) indent by depth from flush left; deeper
-                // ones indent under the text of their section.
-                None if e.depth < numbered => Span::raw(" ".repeat(2 * e.depth)),
-                None => Span::raw(" ".repeat(NUMBER_W + 2 * (e.depth - numbered))),
+            let number_style = if selected {
+                style
+            } else {
+                Style::default().fg(t.muted)
             };
-            let room = width.saturating_sub(lead.width());
-            Line::from(vec![
-                lead,
-                Span::styled(take_width(&e.text, room).to_string(), style),
-            ])
+            let lead = match e.number {
+                Some(n) if e.depth == numbered => {
+                    vec![Span::styled(format!("{n:02} "), number_style)]
+                }
+                // Under a numbered heading: its number within the section,
+                // indented under the text of the heading above.
+                Some(n) => vec![
+                    Span::raw(" ".repeat(NUMBER_W + 2 * (e.depth - numbered - 1))),
+                    Span::styled(format!("{n} "), number_style),
+                ],
+                // Headings above the numbered level (a title, or a book
+                // and its part) indent by depth from flush left.
+                None => vec![Span::raw(" ".repeat(2 * e.depth))],
+            };
+            let room = width.saturating_sub(lead.iter().map(Span::width).sum());
+            let mut spans = lead;
+            spans.push(Span::styled(take_width(&e.text, room).to_string(), style));
+            Line::from(spans)
         })
         .collect();
     frame.render_widget(Paragraph::new(lines), list);

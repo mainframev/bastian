@@ -51,12 +51,16 @@ impl Reader {
     /// The line the table of contents marks the section of: the heading
     /// last jumped to while the view hasn't moved since, else the top.
     pub fn toc_line(&self) -> usize {
+        self.toc_mark()
+            .and_then(|i| self.toc_entries().get(i).map(|e| e.line))
+            .unwrap_or(self.scroll)
+    }
+
+    /// The entry last jumped to, while the view hasn't moved since.
+    fn toc_mark(&self) -> Option<usize> {
         match self.toc_jump {
-            Some((entry, at)) if at == self.scroll => self
-                .toc_entries()
-                .get(entry)
-                .map_or(self.scroll, |e| e.line),
-            _ => self.scroll,
+            Some((entry, at)) if at == self.scroll => Some(entry),
+            _ => None,
         }
     }
 
@@ -65,15 +69,34 @@ impl Reader {
     fn jump_to_heading(&mut self, i: usize, line: usize) {
         self.jump_to(line);
         self.toc_jump = Some((i, self.scroll));
+        self.toc_by_number = false;
     }
 
-    /// Scroll to the heading numbered `n` in the table of contents.
+    /// Scroll to the heading numbered `n` in the table of contents: right
+    /// after a jump by number, the `n`th in that heading's section, so
+    /// `2` then `1` goes to the first heading under the second; else, or
+    /// when the section has no `n`th, the `n`th of the numbered level.
     pub(super) fn jump_to_entry(&mut self, n: usize) {
         let entries = self.toc_entries();
-        match entries.iter().position(|e| e.number == Some(n)) {
-            Some(i) => self.jump_to_heading(i, entries[i].line),
-            None if entries.iter().all(|e| e.number.is_none()) => {
-                self.message = Some("no numbered headings".into());
+        let Some(top) = toc::numbered_depth(&entries) else {
+            self.message = Some("no numbered headings".into());
+            return;
+        };
+        let parent = self.toc_mark().filter(|_| self.toc_by_number);
+        let inside = parent.and_then(|p| {
+            entries
+                .iter()
+                .position(|e| e.parent == Some(p) && e.number == Some(n))
+        });
+        let i = inside.or_else(|| {
+            entries
+                .iter()
+                .position(|e| e.depth == top && e.number == Some(n))
+        });
+        match i {
+            Some(i) => {
+                self.jump_to_heading(i, entries[i].line);
+                self.toc_by_number = true;
             }
             None => self.message = Some(format!("no heading {n:02}")),
         }
@@ -309,6 +332,46 @@ mod tests {
         assert_eq!(r.scroll(), 0);
         assert_eq!(current(&r).as_deref(), Some("B"));
         key(&mut r, 'J');
+        assert_eq!(current(&r).as_deref(), Some("C"));
+    }
+
+    #[test]
+    fn numbers_again_go_into_the_section_jumped_to() {
+        let filler: String = (0..40).map(|i| format!("p{i}\n\n")).collect();
+        let mut r = reader(&format!(
+            "# A\n\n{filler}# B\n\n{filler}## B1\n\n{filler}## B2\n\n{filler}### B2a\n\n{filler}# C\n\n{filler}"
+        ));
+        r.layout(60, 20);
+        key(&mut r, 't');
+        let current = |r: &Reader| {
+            let e = r.toc_entries();
+            toc::current(&e, r.toc_line()).map(|i| e[i].text.clone())
+        };
+        key(&mut r, '2');
+        assert_eq!(current(&r).as_deref(), Some("B"));
+        key(&mut r, '2');
+        assert_eq!(current(&r).as_deref(), Some("B2"));
+        key(&mut r, '1');
+        assert_eq!(current(&r).as_deref(), Some("B2a"));
+        // No headings under B2a: back to the numbered level.
+        key(&mut r, '3');
+        assert_eq!(current(&r).as_deref(), Some("C"));
+        // A section without that many: the numbered level too.
+        key(&mut r, '2');
+        key(&mut r, '1');
+        assert_eq!(current(&r).as_deref(), Some("B1"));
+        key(&mut r, '2');
+        key(&mut r, '9');
+        assert_eq!(r.message(), Some("no heading 09"));
+        // Moving starts over at the numbered level.
+        key(&mut r, '2');
+        key(&mut r, 'j');
+        key(&mut r, '1');
+        assert_eq!(current(&r).as_deref(), Some("A"));
+        // So does J, which isn't a jump by number.
+        key(&mut r, '2');
+        key(&mut r, 'J');
+        key(&mut r, '3');
         assert_eq!(current(&r).as_deref(), Some("C"));
     }
 }

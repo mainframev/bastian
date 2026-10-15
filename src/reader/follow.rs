@@ -81,12 +81,11 @@ impl Reader {
             _ => None,
         };
         if let Some(motion) = motion {
-            picker.selected = nav::step(picker.selected, len, motion);
+            picker.selected.apply(motion, len);
             return Action::None;
         }
         if let Some(by) = jump {
-            let last = len.saturating_sub(1);
-            picker.selected = picker.selected.saturating_add_signed(by).min(last);
+            picker.selected.by(by, len);
             return Action::None;
         }
         match key.code {
@@ -403,7 +402,7 @@ mod tests {
         r.layout(80, 20);
         press(&mut r, KeyCode::Char('L'), KeyModifiers::NONE);
         let selected = |r: &Reader| match &r.overlay {
-            Some(Overlay::Links(p)) => p.selected,
+            Some(Overlay::Links(p)) => p.selected.get(),
             _ => panic!("no link picker"),
         };
         press(&mut r, KeyCode::Char('G'), KeyModifiers::NONE);
@@ -428,7 +427,7 @@ mod tests {
         // 20 rows of document: 17 in the list.
         r.layout(80, 20);
         press(&mut r, KeyCode::Char('L'), KeyModifiers::NONE);
-        let selected = |r: &Reader| picker(r).selected;
+        let selected = |r: &Reader| picker(r).selected.get();
         press(&mut r, KeyCode::PageDown, KeyModifiers::NONE);
         assert_eq!(selected(&r), 17);
         press(&mut r, KeyCode::Char('d'), KeyModifiers::CONTROL);
@@ -454,16 +453,16 @@ mod tests {
         // As drawn at 80×24, whatever the document's height.
         picker(&r).rows.set(18);
         press(&mut r, KeyCode::PageDown, KeyModifiers::NONE);
-        assert_eq!(picker(&r).selected, 18);
+        assert_eq!(picker(&r).selected.get(), 18);
         press(&mut r, KeyCode::Char('d'), KeyModifiers::CONTROL);
-        assert_eq!(picker(&r).selected, 27);
+        assert_eq!(picker(&r).selected.get(), 27);
         // Fewer matches than rows: the page is the matches.
         press(&mut r, KeyCode::Char('/'), KeyModifiers::NONE);
         press(&mut r, KeyCode::Char('4'), KeyModifiers::NONE);
         let shown = picker(&r).shown().len();
         assert!(shown > 4, "{shown}");
         press(&mut r, KeyCode::Char('d'), KeyModifiers::CONTROL);
-        assert_eq!(picker(&r).selected, shown / 2);
+        assert_eq!(picker(&r).selected.get(), shown / 2);
     }
 
     #[test]

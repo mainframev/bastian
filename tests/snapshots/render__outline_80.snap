@@ -6,20 +6,23 @@ expression: to_plain(&rendered.lines)
 
 Intro.
 
-## Install
+Install
+───────
 
-### From source
-
-Steps.
-
-### With a package manager
+From source
 
 Steps.
 
-## Usage
+With a package manager
 
-#### Skipped a level
+Steps.
 
-## Usage
+Usage
+─────
+
+Skipped a level
+
+Usage
+─────
 
 Duplicate titles are fine.

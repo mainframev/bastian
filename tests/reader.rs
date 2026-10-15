@@ -81,7 +81,7 @@ fn anchor_link_scrolls_to_heading() {
         .iter()
         .map(|s| s.content.as_ref())
         .collect();
-    assert_eq!(line, "## Getting Started");
+    assert_eq!(line, "Getting Started");
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn anchor_link_skips_lines_that_only_look_like_the_heading() {
     key(&mut r, KeyCode::Char('L'));
     key(&mut r, KeyCode::Enter);
     let line = bastian::render::plain(&r.rendered().lines[r.scroll()]);
-    assert_eq!(line, "## Usage");
+    assert_eq!(line, "Usage");
 }
 
 #[test]
@@ -212,7 +212,7 @@ fn link_focus_steps_previews_and_follows() {
     assert_eq!(r.link_focus, None);
     assert_eq!(
         bastian::render::plain(&r.rendered().lines[r.scroll()]),
-        "## Usage"
+        "Usage"
     );
     key(&mut r, KeyCode::Char('g'));
     key(&mut r, KeyCode::Char('s'));
@@ -1415,7 +1415,7 @@ fn toc_pane_sits_beside_the_document_and_follows_the_scroll() {
     // `2` scrolls to the second section, which the pane then highlights.
     key(&mut r, KeyCode::Char('2'));
     let top = bastian::render::plain(&r.rendered().lines[r.scroll()]);
-    assert_eq!(top.trim(), "## Usage");
+    assert_eq!(top.trim(), "Usage");
     terminal.draw(|f| draw(f, &mut r)).unwrap();
     let pane = cols(&terminal, 0, 30);
     let row = pane

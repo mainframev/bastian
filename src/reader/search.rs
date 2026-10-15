@@ -125,6 +125,27 @@ mod tests {
     }
 
     #[test]
+    fn matches_in_inline_code_count_its_padding() {
+        // "x  code  y": the code sits inside a space of padding.
+        let r = rendered("x `code` y\n");
+        let m = find(&r, "code");
+        assert_eq!(
+            m,
+            [Match {
+                line: 0,
+                start: 3,
+                end: 7
+            }]
+        );
+        let text: String = crate::render::plain(&r.lines[0])
+            .chars()
+            .skip(3)
+            .take(4)
+            .collect();
+        assert_eq!(text, "code");
+    }
+
+    #[test]
     fn search_jumps_and_cycles() {
         let src: String = (0..100).map(|i| format!("line {i}\n\n")).collect();
         let mut r = Reader::new(Source::in_memory("t", parse(&src)), &Options::default());

@@ -2,6 +2,11 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
+/// Stands for a space that is part of the word next to it, like the
+/// padding around inline code: it is never broken at or dropped, and comes
+/// out as a plain space. A Unicode noncharacter, so documents don't hold it.
+pub const PAD: char = '\u{FDD0}';
+
 /// Word-wrap styled text into lines of at most `width` columns.
 /// `\n` forces a break; words longer than a line are split. Words are found
 /// across style changes, so a styled part of a word (or of CJK text with
@@ -107,7 +112,10 @@ impl Wrapper {
         self.cur_w = 0;
     }
 
-    fn push(&mut self, text: String, style: Style, w: usize) {
+    fn push(&mut self, mut text: String, style: Style, w: usize) {
+        if text.contains(PAD) {
+            text = text.replace(PAD, " ");
+        }
         self.cur.push(Span::styled(text, style));
         self.cur_w += w;
     }
@@ -214,15 +222,17 @@ fn is_cjk(c: char) -> bool {
     )
 }
 
-/// Characters a line must not start with.
+/// Characters a line must not start with. A chip's padding stays with
+/// its code on both sides.
 fn no_break_before(c: char) -> bool {
-    "、。，．：；！？）］｝」』】〕〉》〙〗〟’”ー々ゝゞヽヾぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ・…‥｡｣､･ｧｨｩｪｫｬｭｮｯｰﾞﾟ,.:;!?)]}%"
+    c == PAD
+        || "、。，．：；！？）］｝」』】〕〉》〙〗〟’”ー々ゝゞヽヾぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ・…‥｡｣､･ｧｨｩｪｫｬｭｮｯｰﾞﾟ,.:;!?)]}%"
         .contains(c)
 }
 
 /// Characters a line must not end with.
 fn no_break_after(c: char) -> bool {
-    "（［｛「『【〔〈《〘〖〝‘“｢([{".contains(c)
+    c == PAD || "（［｛「『【〔〈《〘〖〝‘“｢([{".contains(c)
 }
 
 #[cfg(test)]
@@ -380,5 +390,19 @@ mod tests {
             .map(|l| l.iter().map(|s| s.content.as_ref()).collect())
             .collect();
         assert_eq!(t, ["0123", "4567", "89"]);
+    }
+
+    #[test]
+    fn chip_padding_stays_with_cjk_code() {
+        let pad = (PAD.to_string(), Style::default());
+        let runs = vec![
+            ("aaaaaaaa ".to_string(), Style::default()),
+            pad.clone(),
+            ("中".to_string(), Style::default()),
+            pad,
+        ];
+        let lines = text(&wrap(&runs, 10));
+        assert_eq!(lines[0].trim_end(), "aaaaaaaa", "{lines:?}");
+        assert_eq!(lines[1], " 中 ", "{lines:?}");
     }
 }

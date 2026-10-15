@@ -50,7 +50,7 @@ impl Renderer<'_> {
                 .map(|(i, &w)| {
                     let inlines = row.get(i).map_or(&[][..], Vec::as_slice);
                     let before = self.link_runs.borrow().len();
-                    let lines = wrap(&self.runs(inlines, base), w);
+                    let lines = wrap(&self.styled_runs(inlines, base, false), w);
                     let runs = self.link_runs.borrow_mut().split_off(before);
                     cell_links.push(runs_by_line(&lines, &runs, t));
                     lines

@@ -4,7 +4,8 @@ expression: to_plain(&rendered.lines)
 ---
  Mermaid diagrams
 
-## Flowchart
+Flowchart
+─────────
 
 ┌─ mermaid ──────────────────┐
 │ flowchart TD               │
@@ -15,7 +16,8 @@ expression: to_plain(&rendered.lines)
 │   C --> E[Respond]         │
 └────────────────────────────┘
 
-## Left to right
+Left to right
+─────────────
 
 ┌─ mermaid ──────────────────┐
 │ graph LR                   │
@@ -23,7 +25,8 @@ expression: to_plain(&rendered.lines)
 ┊ --> db[(Postgres)]         │
 └────────────────────────────┘
 
-## Sequence
+Sequence
+────────
 
 ┌─ mermaid ──────────────────┐
 │ ┌────────┐     ┌────────┐  │
@@ -38,7 +41,8 @@ expression: to_plain(&rendered.lines)
 │      │              │      │
 └────────────────────────────┘
 
-## State
+State
+─────
 
 ┌─ mermaid ──────────────────┐
 │ ╭─────────╮                │
@@ -66,7 +70,8 @@ expression: to_plain(&rendered.lines)
 │ └─────────┘                │
 └────────────────────────────┘
 
-## Class
+Class
+─────
 
 ┌─ mermaid ──────────────────┐
 │ ┌────────────────┐         │
@@ -83,7 +88,8 @@ expression: to_plain(&rendered.lines)
 │    └──────────┘            │
 └────────────────────────────┘
 
-## Entity relationship
+Entity relationship
+───────────────────
 
 ┌─ mermaid ──────────────────┐
 │ ┌────────┐                 │
@@ -98,7 +104,8 @@ expression: to_plain(&rendered.lines)
 │  └──────┘                  │
 └────────────────────────────┘
 
-## Not drawn as text
+Not drawn as text
+─────────────────
 
 ┌─ mermaid ──────────────────┐
 │ pie title Pets             │
@@ -106,7 +113,8 @@ expression: to_plain(&rendered.lines)
 │   "Cats" : 2               │
 └────────────────────────────┘
 
-## Invalid
+Invalid
+───────
 
 ┌─ mermaid ──────────────────┐
 │ flowchart TD               │

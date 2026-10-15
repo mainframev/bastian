@@ -266,6 +266,9 @@ pub struct Reader {
     /// it went. An entry, not a row, so a new layout finds it again;
     /// cleared when the view moves or the document is replaced.
     toc_jump: Option<(usize, usize)>,
+    /// Rendered rows of the line `:` went to, highlighted until the next
+    /// key, a move of the view or a new layout.
+    goto_mark: Option<std::ops::Range<usize>>,
     /// Width of the screen at the last draw, which the table of contents
     /// is sized against.
     screen: u16,
@@ -367,6 +370,7 @@ impl Reader {
             toc: false,
             toc_width: opts.toc_width,
             toc_jump: None,
+            goto_mark: None,
             screen: 0,
             // Source files read from disk always show their line numbers.
             line_numbers: opts.line_numbers || (file.is_some() && code_file),
@@ -540,6 +544,8 @@ impl Reader {
                 opts: self.render_opts,
             };
             self.rendered = render::render_with_runs(&self.doc, width, &self.theme, cx);
+            // Its rows may have moved.
+            self.goto_mark = None;
             self.width = width;
             self.dirty = false;
             self.refind();

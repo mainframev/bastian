@@ -133,6 +133,16 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
             Style::default().fg(t.h1_fg).bg(t.current_bg),
         );
     }
+    // The line `:` went to.
+    if let Some(rows) = r.goto_mark() {
+        for line in rows.start.max(r.scroll())..rows.end.min(end) {
+            let y = content.y + (line - r.scroll()) as u16;
+            frame.buffer_mut().set_style(
+                Rect::new(content.x, y, content.width, 1),
+                Style::default().fg(t.h1_fg).bg(t.current_bg),
+            );
+        }
+    }
     draw_images(frame, r, content, end);
     if r.scrollbar {
         status::scrollbar(

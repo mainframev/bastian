@@ -302,7 +302,7 @@ fn history_lists_opened_files_newest_first_and_reopens_one() {
     };
     assert_eq!(picker.paths, [b.clone(), a.clone()]);
     // This document is marked; the one before it is selected.
-    assert_eq!((picker.current, picker.selected), (Some(0), 1));
+    assert_eq!((picker.current, picker.selected.get()), (Some(0), 1));
     press(&mut app, KeyCode::Enter);
     let open = app.reader.as_ref().unwrap().file().map(reader::canonical);
     assert_eq!(open, Some(reader::canonical(&a)));

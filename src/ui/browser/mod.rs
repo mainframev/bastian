@@ -160,7 +160,7 @@ pub fn draw(
         .take(b.page_len())
     {
         let e = &b.entries[idx];
-        let selected = row == b.selected;
+        let selected = row == b.selected.get();
         let start = lines.len();
         let date = look
             .date_format
@@ -237,7 +237,7 @@ pub fn draw(
     let right = if b.visible.is_empty() {
         String::new()
     } else {
-        format!("{}/{}", b.selected + 1, b.visible.len())
+        format!("{}/{}", b.selected.get() + 1, b.visible.len())
     };
     status::draw(frame, status, t, left, &right);
 

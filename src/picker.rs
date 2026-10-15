@@ -52,7 +52,7 @@ pub struct Entry {
 
 pub struct ThemePicker {
     pub entries: Vec<Entry>,
-    pub selected: usize,
+    pub selected: nav::Selection,
     /// Row of the theme in use when the picker opened.
     pub current: Option<usize>,
     /// Columns asked for the pane; `<` and `>` change it.
@@ -90,7 +90,7 @@ impl ThemePicker {
             .iter()
             .position(|e| e.name == themes::canonical(current, dir));
         Self {
-            selected: current.unwrap_or(0),
+            selected: nav::Selection::at(current.unwrap_or(0)),
             current,
             entries,
             width,
@@ -127,10 +127,10 @@ impl ThemePicker {
 
     pub fn on_key(&mut self, key: KeyEvent) -> Event {
         if let Some(motion) = nav::list_motion(&key) {
-            return self.select(nav::step(self.selected, self.entries.len(), motion));
+            return self.select(self.selected.moved(motion, self.entries.len()).get());
         }
         match key.code {
-            KeyCode::Enter => match &self.entries[self.selected] {
+            KeyCode::Enter => match &self.entries[self.selected.get()] {
                 Entry {
                     name,
                     theme: Ok(theme),
@@ -151,10 +151,10 @@ impl ThemePicker {
 
     /// Move the selection to `to`, previewing the theme there.
     fn select(&mut self, to: usize) -> Event {
-        if to == self.selected {
+        if to == self.selected.get() {
             return Event::None;
         }
-        self.selected = to;
+        self.selected = nav::Selection::at(to);
         match &self.entries[to].theme {
             Ok(theme) => Event::Preview(theme.clone()),
             Err(_) => Event::None,
@@ -185,19 +185,19 @@ mod tests {
     fn moves_previews_and_picks() {
         let mut p = ThemePicker::new(None, "kanagawa", DEFAULT_WIDTH);
         let start = p.entries.iter().position(|e| e.name == "kanagawa-wave");
-        assert_eq!((p.current, p.selected), (start, start.unwrap()));
+        assert_eq!((p.current, p.selected.get()), (start, start.unwrap()));
 
         let Event::Preview(t) = key(&mut p, KeyCode::Char('j')) else {
             panic!("expected a preview");
         };
-        assert_eq!(p.entries[p.selected].name, "kanagawa-dragon");
+        assert_eq!(p.entries[p.selected.get()].name, "kanagawa-dragon");
         assert_eq!(
             t.accent,
             themes::load("kanagawa-dragon", None).unwrap().accent
         );
 
         key(&mut p, KeyCode::Char('g'));
-        assert_eq!(p.selected, 0);
+        assert_eq!(p.selected.get(), 0);
         assert!(matches!(key(&mut p, KeyCode::Up), Event::None));
         match key(&mut p, KeyCode::Enter) {
             Event::Pick { name, .. } => assert_eq!(name, p.entries[0].name),
@@ -221,7 +221,7 @@ mod tests {
         }
         assert_eq!(p.width, pane::MIN_WIDTH);
         // Resizing moves nothing.
-        assert_eq!(p.selected, p.current.unwrap());
+        assert_eq!(p.selected.get(), p.current.unwrap());
     }
 
     #[test]

@@ -97,3 +97,6 @@ format_collect = "allow"
 dbg_macro = "warn"
 todo = "warn"
 unimplemented = "warn"
+# Most unwraps sit on paths that can fail at runtime. Tests may unwrap
+# (clippy.toml); invariants say why with `expect`.
+unwrap_used = "warn"

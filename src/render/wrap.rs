@@ -222,15 +222,17 @@ fn is_cjk(c: char) -> bool {
     )
 }
 
-/// Characters a line must not start with.
+/// Characters a line must not start with. A chip's padding stays with
+/// its code on both sides.
 fn no_break_before(c: char) -> bool {
-    "、。，．：；！？）］｝」』】〕〉》〙〗〟’”ー々ゝゞヽヾぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ・…‥｡｣､･ｧｨｩｪｫｬｭｮｯｰﾞﾟ,.:;!?)]}%"
+    c == PAD
+        || "、。，．：；！？）］｝」』】〕〉》〙〗〟’”ー々ゝゞヽヾぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ・…‥｡｣､･ｧｨｩｪｫｬｭｮｯｰﾞﾟ,.:;!?)]}%"
         .contains(c)
 }
 
 /// Characters a line must not end with.
 fn no_break_after(c: char) -> bool {
-    "（［｛「『【〔〈《〘〖〝‘“｢([{".contains(c)
+    c == PAD || "（［｛「『【〔〈《〘〖〝‘“｢([{".contains(c)
 }
 
 #[cfg(test)]
@@ -388,5 +390,19 @@ mod tests {
             .map(|l| l.iter().map(|s| s.content.as_ref()).collect())
             .collect();
         assert_eq!(t, ["0123", "4567", "89"]);
+    }
+
+    #[test]
+    fn chip_padding_stays_with_cjk_code() {
+        let pad = (PAD.to_string(), Style::default());
+        let runs = vec![
+            ("aaaaaaaa ".to_string(), Style::default()),
+            pad.clone(),
+            ("中".to_string(), Style::default()),
+            pad,
+        ];
+        let lines = text(&wrap(&runs, 10));
+        assert_eq!(lines[0].trim_end(), "aaaaaaaa", "{lines:?}");
+        assert_eq!(lines[1], " 中 ", "{lines:?}");
     }
 }

@@ -90,6 +90,7 @@ impl Settings {
                     .then(crate::positions::default_store)
                     .flatten(),
                 toc_width: crate::toc::DEFAULT_WIDTH,
+                now: std::time::Instant::now,
             },
             scan,
             date_format,

@@ -212,6 +212,9 @@ pub struct Options {
     /// Columns the table of contents opens with. The app keeps it at the
     /// last width set with `<` and `>`, for the rest of the session.
     pub toc_width: u16,
+    /// The clock reloads are throttled by. Tests pass a fake one so they
+    /// don't sleep through the throttle.
+    pub now: fn() -> Instant,
 }
 
 impl Default for Options {
@@ -228,6 +231,7 @@ impl Default for Options {
             images: None,
             positions: None,
             toc_width: crate::toc::DEFAULT_WIDTH,
+            now: Instant::now,
         }
     }
 }
@@ -279,6 +283,7 @@ pub struct Reader {
     remote_base: Option<url::Url>,
     modified: Option<SystemTime>,
     last_check: Instant,
+    now: fn() -> Instant,
     interpreters: Interpreters,
     codes: Vec<CodeBlock>,
     runner: Runner,
@@ -374,7 +379,8 @@ impl Reader {
             source: file,
             text,
             remote_base,
-            last_check: Instant::now(),
+            last_check: (opts.now)(),
+            now: opts.now,
             interpreters: opts.interpreters.clone(),
             codes,
             runner: Runner::default(),

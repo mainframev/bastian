@@ -343,7 +343,11 @@ impl Renderer<'_> {
                 };
                 let style = Style::default().fg(color);
                 let mut inner = Out::from(vec![Line::styled(kind.title(), style.bold())]);
-                inner.append(self.blocks(blocks, width.saturating_sub(2), true), &[], &[]);
+                // Upright even inside a quote.
+                let outer = self.in_quote.replace(false);
+                let body = self.blocks(blocks, width.saturating_sub(2), true);
+                self.in_quote.set(outer);
+                inner.append(body, &[], &[]);
                 let bar = [Span::styled("▌ ", style)];
                 let mut out = Out::default();
                 out.append(inner, &bar, &bar);
@@ -785,6 +789,22 @@ mod tests {
             r.lines[2].spans.iter().all(|s| !italic(s)),
             "after the quote"
         );
+    }
+
+    #[test]
+    fn callouts_in_quotes_stay_upright() {
+        let src = "> quoted\n>\n> > [!NOTE]\n> > inside\n";
+        let r = render(&parse(src), 40, &Theme::dark());
+        let span = |text: &str| {
+            r.lines
+                .iter()
+                .flat_map(|l| &l.spans)
+                .find(|s| s.content.contains(text))
+                .unwrap_or_else(|| panic!("no {text}"))
+                .style
+        };
+        assert!(span("quoted").add_modifier.contains(Modifier::ITALIC));
+        assert!(!span("inside").add_modifier.contains(Modifier::ITALIC));
     }
 
     #[test]

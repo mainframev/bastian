@@ -22,7 +22,7 @@ pub(super) fn draw_toc(frame: &mut Frame, r: &Reader, area: Rect) {
         return;
     };
     let entries = r.toc_entries();
-    let current = toc::current(&entries, r.scroll());
+    let current = toc::current(&entries, r.toc_line());
     let numbered = entries
         .iter()
         .find(|e| e.number.is_some())

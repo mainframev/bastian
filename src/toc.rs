@@ -61,13 +61,13 @@ pub fn entries(doc: &Document, rendered: &Rendered) -> Vec<Entry> {
         n += 1;
         e.number = Some(n);
     }
-    for i in 0..entries.len() {
-        if entries[i].depth > numbered {
-            let before = entries[..i]
-                .iter()
-                .filter(|e| e.parent == entries[i].parent)
-                .count();
-            entries[i].number = Some(before + 1);
+    // Headings numbered so far under each entry. Below the numbered level
+    // every entry has a parent, which comes before it.
+    let mut children = vec![0; entries.len()];
+    for e in entries.iter_mut().filter(|e| e.depth > numbered) {
+        if let Some(p) = e.parent {
+            children[p] += 1;
+            e.number = Some(children[p]);
         }
     }
     entries

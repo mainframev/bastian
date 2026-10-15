@@ -260,9 +260,11 @@ pub struct Reader {
     pub toc: bool,
     /// Columns asked for the table of contents; `<` and `>` change it.
     toc_width: u16,
-    /// The heading line the last digit or `J`/`K` jump aimed at, and the
-    /// scroll it left: near the end, the view stops short of putting the
-    /// heading at the top, so the scroll alone can't say where it went.
+    /// The table of contents entry the last digit or `J`/`K` jump aimed
+    /// at, and the scroll it left: near the end, the view stops short of
+    /// putting the heading at the top, so the scroll alone can't say where
+    /// it went. An entry, not a row, so a new layout finds it again;
+    /// cleared when the view moves or the document is replaced.
     toc_jump: Option<(usize, usize)>,
     /// Width of the screen at the last draw, which the table of contents
     /// is sized against.

@@ -8,6 +8,7 @@ use crate::prompt::{Prompt, PromptEvent};
 impl Reader {
     pub fn on_key(&mut self, key: KeyEvent) -> Action {
         self.message = None;
+        self.goto_mark = None;
         match &mut self.overlay {
             Some(Overlay::Help(help)) => {
                 help.on_key(&key);

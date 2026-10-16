@@ -1,3 +1,6 @@
+// A test crate: helpers outside #[test] fns may unwrap too.
+#![allow(clippy::unwrap_used)]
+
 //! The command line, run as a user would: the built binary in a clean
 //! environment with its own config directory.
 

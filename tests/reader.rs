@@ -1,3 +1,6 @@
+// A test crate: helpers outside #[test] fns may unwrap too.
+#![allow(clippy::unwrap_used)]
+
 use std::thread;
 use std::time::Duration;
 

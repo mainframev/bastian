@@ -5,7 +5,7 @@ use anyhow::Result;
 use super::Theme;
 use super::build::ansi_index;
 use super::file::user_file;
-use super::{Appearance, builtin_names, canonical, load};
+use super::{builtin_names, canonical, load};
 use crate::paths;
 
 /// One row of `bastian themes`.
@@ -86,17 +86,9 @@ pub fn format_list(roles: &[(&str, &str)], dir: Option<&Path>, color: bool) -> S
         };
         let (appearance, colors) = match &l.theme {
             Ok(t) => {
-                let appearance = match t.appearance {
-                    Appearance::Dark => "dark",
-                    Appearance::Light => "light",
-                    Appearance::Any => "any",
-                };
-                let colors: String = [t.accent, t.heading, t.link, t.code, t.ok, t.warn, t.err]
-                    .into_iter()
-                    .map(swatch)
-                    .collect();
+                let colors: String = t.swatch().into_iter().map(swatch).collect();
                 (
-                    appearance,
+                    t.appearance.label(),
                     if color {
                         format!("{colors}  ")
                     } else {

@@ -1,50 +1,45 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
-use tui_big_text::{BigText, PixelSize};
 
 use crate::render::theme::Theme;
 
 /// Rows the logo takes up.
 pub const HEIGHT: u16 = 3;
 
-/// "bastian" in sextant big text, shaded from the theme's heading color on
-/// the left to its accent color on the right.
-pub fn draw(frame: &mut Frame, area: Rect, t: &Theme) {
-    let area = Rect {
-        height: area.height.min(HEIGHT),
-        ..area
-    };
-    let text = BigText::builder()
-        .pixel_size(PixelSize::Sextant)
-        .lines(vec!["bastian".into()])
-        .build();
-    frame.render_widget(text, area);
+/// "bastian" in sextant block glyphs.
+const ROWS: [&str; 3] = [
+    "🬨▌  🬞🬭🬏 🬞🬭🬭 🬞🬻🬭 🬞🬰  🬞🬭🬏 🬭🬭🬏",
+    "▐🬕🬨🬓🬵🬋█ 🬊🬋🬱  █🬞  █  🬵🬋█ █ █",
+    "🬂🬁🬂 🬁🬂🬁🬀🬂🬂🬀  🬁🬀 🬁🬂🬀 🬁🬂🬁🬀🬂 🬂",
+];
 
-    // Recolor the drawn cells column by column to get a horizontal gradient.
+/// The logo, shaded from the theme's heading color on the left to its
+/// accent color on the right.
+pub fn draw(frame: &mut Frame, area: Rect, t: &Theme) {
+    // The gradient spans the columns that fit, up to the last drawn glyph.
+    let width = (0..area.width)
+        .rev()
+        .find(|&x| {
+            ROWS.iter()
+                .any(|r| r.chars().nth(x.into()).is_some_and(|c| c != ' '))
+        })
+        .map_or(1, |x| x + 1);
     let buf = frame.buffer_mut();
-    let width = drawn_width(buf, area).max(1);
-    for x in area.x..area.x + width {
-        let color = mix(
-            t.heading,
-            t.accent,
-            f32::from(x - area.x) / f32::from(width),
-        );
-        for y in area.y..area.y + area.height {
-            let cell = &mut buf[(x, y)];
-            if cell.symbol() != " " {
-                cell.set_style(Style::default().fg(color));
+    for (y, row) in (area.y..area.y + area.height.min(HEIGHT)).zip(ROWS) {
+        for (x, ch) in (area.x..area.right()).zip(row.chars()) {
+            if ch != ' ' {
+                let color = mix(
+                    t.heading,
+                    t.accent,
+                    f32::from(x - area.x) / f32::from(width),
+                );
+                buf[(x, y)]
+                    .set_char(ch)
+                    .set_style(Style::default().fg(color));
             }
         }
     }
-}
-
-/// Columns up to and including the last non-blank cell.
-fn drawn_width(buf: &ratatui::buffer::Buffer, area: Rect) -> u16 {
-    (area.x..area.x + area.width)
-        .rev()
-        .find(|&x| (area.y..area.y + area.height).any(|y| buf[(x, y)].symbol() != " "))
-        .map_or(0, |x| x - area.x + 1)
 }
 
 /// Linear blend of two RGB colors; non-RGB colors fall back to `a`.

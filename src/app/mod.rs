@@ -4,12 +4,11 @@ mod terminal;
 
 pub use run::run;
 pub use settings::Settings;
-pub use terminal::{enter_terminal, leave_terminal};
+pub use terminal::{Tui, enter_terminal, leave_terminal};
 
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
-use ratatui::DefaultTerminal;
 use ratatui::crossterm::clipboard::CopyToClipboard;
 use ratatui::crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEventKind,
@@ -361,12 +360,7 @@ impl App {
 
     /// Hand the terminal to the user's editor, then take it back. An open
     /// reader picks up the changes through its file watch.
-    fn run_editor(
-        &mut self,
-        terminal: &mut DefaultTerminal,
-        path: &Path,
-        line: Option<usize>,
-    ) -> Result<()> {
+    fn run_editor(&mut self, terminal: &mut Tui, path: &Path, line: Option<usize>) -> Result<()> {
         let cmd = editor::command(self.settings.editor.as_deref());
         let result = with_terminal_released(terminal, self.settings.mouse, || {
             editor::open_with(&cmd, path, line)

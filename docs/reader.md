@@ -145,6 +145,9 @@ rendered when it's separated from the tags by blank lines, as on GitHub.
 Search only finds text in open blocks. Printed output shows every block
 open.
 
+HTML comments (`<!-- prettier-ignore -->` and the like) aren't shown. Other
+HTML shows as its source text.
+
 ## Diagrams
 
 Built with the `mermaid` feature (`cargo install --locked bastian --features

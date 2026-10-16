@@ -47,21 +47,42 @@ fn location(r: &Reader) -> Option<&Location> {
     }
 }
 
-fn reader(src: &str) -> Reader {
-    let mut r = Reader::new(Source::in_memory("t.md", parse(src)), &Options::default());
+/// A reader over `source` with default options, laid out at 80×10.
+fn open(source: Source) -> Reader {
+    let mut r = Reader::new(source, &Options::default());
     r.layout(80, 10);
     r
 }
 
+fn reader(src: &str) -> Reader {
+    open(Source::in_memory("t.md", parse(src)))
+}
+
 /// A reader over `src` whose relative links resolve from `base_dir`.
 fn reader_in(src: &str, base_dir: &std::path::Path) -> Reader {
-    let source = Source {
+    open(Source {
         base_dir: base_dir.to_path_buf(),
         ..Source::in_memory("t.md", parse(src))
-    };
-    let mut r = Reader::new(source, &Options::default());
-    r.layout(80, 10);
-    r
+    })
+}
+
+/// A reader over `src` with default options, not yet laid out.
+fn in_memory(src: &str) -> Reader {
+    Reader::new(Source::in_memory("t.md", parse(src)), &Options::default())
+}
+
+/// `text` as fetched from `https://example.com/repo/README.md`.
+fn remote(text: &str) -> Source {
+    Source::remote(RemoteDoc {
+        name: "README.md".into(),
+        base: url::Url::parse("https://example.com/repo/README.md").unwrap(),
+        text: text.into(),
+    })
+}
+
+/// `n` short paragraphs, "para 0" onwards.
+fn filler(n: usize) -> String {
+    (0..n).map(|i| format!("para {i}\n\n")).collect()
 }
 
 /// A `w`×`h` test terminal.
@@ -97,7 +118,7 @@ fn copy_focused_block() {
 
 #[test]
 fn anchor_link_scrolls_to_heading() {
-    let filler: String = (0..40).map(|i| format!("para {i}\n\n")).collect();
+    let filler = filler(40);
     let src = format!("[jump](#getting-started)\n\n{filler}## Getting Started\n\n{filler}");
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('L'));
@@ -113,7 +134,7 @@ fn anchor_link_scrolls_to_heading() {
 
 #[test]
 fn anchor_link_skips_lines_that_only_look_like_the_heading() {
-    let filler: String = (0..40).map(|i| format!("para {i}\n\n")).collect();
+    let filler = filler(40);
     let src = format!("[Usage](#usage)\n\n{filler}## Usage\n\n{filler}");
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('L'));
@@ -124,7 +145,7 @@ fn anchor_link_skips_lines_that_only_look_like_the_heading() {
 
 #[test]
 fn footnote_reference_scrolls_to_its_note() {
-    let filler: String = (0..40).map(|i| format!("para {i}\n\n")).collect();
+    let filler = filler(40);
     let src = format!("Claim[^src].\n\n{filler}[^src]: The source.\n");
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('L'));
@@ -140,7 +161,7 @@ fn footnote_reference_scrolls_to_its_note() {
 
 #[test]
 fn footnote_reference_in_a_title_is_listed_and_followed() {
-    let filler: String = (0..40).map(|i| format!("para {i}\n\n")).collect();
+    let filler = filler(40);
     let src = format!("# Title[^t]\n\n{filler}[^t]: Where the title comes from.\n");
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('L'));
@@ -163,7 +184,7 @@ fn footnote_reference_in_a_title_is_listed_and_followed() {
 #[test]
 fn footnote_targets_never_hit_a_heading() {
     // A heading whose slug looks like a footnote anchor.
-    let filler: String = (0..40).map(|i| format!("para {i}\n\n")).collect();
+    let filler = filler(40);
     let src = format!("x[^a]\n\n# fn-a\n\n# fn:a\n\n{filler}[^a]: The note.\n");
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('L'));
@@ -180,7 +201,7 @@ fn footnote_targets_never_hit_a_heading() {
 fn link_focus_steps_previews_and_follows() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("next.md"), "---\nx: 1\n---\n# Next steps\n").unwrap();
-    let filler: String = (0..30).map(|i| format!("para {i}\n\n")).collect();
+    let filler = filler(30);
     let src = format!(
         "[a very long link text that has to wrap across two lines](#usage) then \
          [next](next.md), [web](https://example.com), [gone](gone.md) and a note[^n].\n\n\
@@ -252,7 +273,7 @@ fn link_focus_steps_previews_and_follows() {
 
 #[test]
 fn link_focus_starts_in_view_and_scrolls_to_far_links() {
-    let filler: String = (0..40).map(|i| format!("para {i}\n\n")).collect();
+    let filler = filler(40);
     let src = format!("[top](#a)\n\n{filler}[far](#b)\n\n{filler}");
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('S'));
@@ -293,13 +314,8 @@ fn link_stops_follow_link_occurrences() {
 
     // In a table, a link wrapping in one cell and a link in the next cell
     // keep their own targets, and each is one stop.
-    let mut r = Reader::new(
-        Source::in_memory(
-            "t.md",
-            parse("| a | b |\n|---|---|\n| [a long link that wraps](one.md) | [two](two.md) |\n"),
-        ),
-        &Options::default(),
-    );
+    let mut r =
+        in_memory("| a | b |\n|---|---|\n| [a long link that wraps](one.md) | [two](two.md) |\n");
     r.layout(22, 10);
     assert_eq!(urls(&r), ["one.md", "two.md"]);
     assert!(r.link_stops()[0].len() > 1, "{:?}", r.rendered().links);
@@ -313,8 +329,7 @@ fn link_stops_follow_link_occurrences() {
         "[old](y) [<Badge/>new](x)\n",
         Some(std::path::Path::new("t.mdx")),
     );
-    let mut r = Reader::new(Source::in_memory("t.mdx", doc), &Options::default());
-    r.layout(80, 10);
+    let r = open(Source::in_memory("t.mdx", doc));
     assert_eq!(urls(&r), ["y", "x"]);
 }
 
@@ -488,8 +503,7 @@ fn edit_needs_a_file() {
         file: Some(path.clone()),
         ..Source::in_memory("t.md", parse("text\n"))
     };
-    let mut r = Reader::new(source, &Options::default());
-    r.layout(80, 10);
+    let mut r = open(source);
     assert!(
         matches!(key(&mut r, KeyCode::Char('e')), Action::None),
         "only ctrl-e edits"
@@ -503,8 +517,7 @@ fn p_shows_and_copies_the_file_path() {
     let path = dir.path().join("doc.md");
     std::fs::write(&path, "text\n").unwrap();
     let opened = bastian::open::open(&path).unwrap();
-    let mut r = Reader::new(Source::file("doc.md".into(), opened), &Options::default());
-    r.layout(80, 10);
+    let mut r = open(Source::file("doc.md".into(), opened));
     let absolute = std::fs::canonicalize(&path).unwrap().display().to_string();
 
     key(&mut r, KeyCode::Char('p'));
@@ -533,13 +546,7 @@ fn p_without_a_file() {
     assert!(matches!(key(&mut r, KeyCode::Char('R')), Action::None));
     assert_eq!(r.message(), Some("no file path to copy"));
 
-    let fetched = RemoteDoc {
-        name: "README.md".into(),
-        base: url::Url::parse("https://example.com/repo/README.md").unwrap(),
-        text: "text\n".into(),
-    };
-    let mut r = Reader::new(Source::remote(fetched), &Options::default());
-    r.layout(80, 10);
+    let mut r = open(remote("text\n"));
     key(&mut r, KeyCode::Char('p'));
     let url = "https://example.com/repo/README.md";
     assert!(matches!(key(&mut r, KeyCode::Char('A')), Action::Copy(u) if u == url));
@@ -651,10 +658,7 @@ fn line_number_gutter_fits_in_terminal() {
 
 #[test]
 fn focused_link_is_highlighted_and_previewed() {
-    let mut r = Reader::new(
-        Source::in_memory("t.md", parse("See [docs](https://x.dev) here.\n")),
-        &Options::default(),
-    );
+    let mut r = in_memory("See [docs](https://x.dev) here.\n");
     let (w, h) = (60u16, 8u16);
     let mut terminal = term(w, h);
     terminal.draw(|f| draw(f, &mut r)).unwrap();
@@ -676,13 +680,7 @@ fn focused_link_is_highlighted_and_previewed() {
 
 #[test]
 fn focused_details_summary_is_highlighted() {
-    let mut r = Reader::new(
-        Source::in_memory(
-            "t.md",
-            parse("intro\n\n<details>\n<summary>More</summary>\n\nhidden\n\n</details>\n"),
-        ),
-        &Options::default(),
-    );
+    let mut r = in_memory("intro\n\n<details>\n<summary>More</summary>\n\nhidden\n\n</details>\n");
     let (w, h) = (40u16, 8u16);
     let mut terminal = term(w, h);
     terminal.draw(|f| draw(f, &mut r)).unwrap();
@@ -704,10 +702,7 @@ fn focused_details_summary_is_highlighted() {
 
 #[test]
 fn focused_code_block_frame_takes_the_accent() {
-    let mut r = Reader::new(
-        Source::in_memory("t.md", parse("- item\n\n  ```sh\n  echo hi\n  ```\n")),
-        &Options::default(),
-    );
+    let mut r = in_memory("- item\n\n  ```sh\n  echo hi\n  ```\n");
     let (w, h) = (40u16, 10u16);
     let mut terminal = term(w, h);
     terminal.draw(|f| draw(f, &mut r)).unwrap();
@@ -767,8 +762,7 @@ fn edit_opens_at_the_top_visible_source_line() {
         file: Some("doc.md".into()),
         ..Source::in_memory("t.md", parse(&src))
     };
-    let mut r = Reader::new(source, &Options::default());
-    r.layout(80, 10);
+    let mut r = open(source);
     match ctrl(&mut r, 'e') {
         Action::Edit(_, line) => assert_eq!(line, Some(1)),
         _ => panic!("expected edit"),
@@ -792,8 +786,7 @@ fn c_copies_the_whole_document() {
         text: "# A\n\ntext\n".into(),
         ..Source::in_memory("t.md", parse("# A\n\ntext\n"))
     };
-    let mut r = Reader::new(source, &Options::default());
-    r.layout(80, 10);
+    let mut r = open(source);
     match key(&mut r, KeyCode::Char('c')) {
         Action::Copy(t) => assert_eq!(t, "# A\n\ntext\n"),
         _ => panic!("expected copy"),
@@ -970,13 +963,8 @@ fn open_prompt_elides_the_middle_of_a_long_target() {
 fn remote_documents_resolve_links_and_always_confirm() {
     // Built the way the app builds fetched documents, with --yes on.
     let settings = settings(true, None);
-    let fetched = RemoteDoc {
-        name: "README.md".into(),
-        base: url::Url::parse("https://example.com/repo/README.md").unwrap(),
-        text: "See [guide](docs/guide.md) and [logo](img/logo.png).\n\n```sh\necho hi\n```\n"
-            .into(),
-    };
-    let mut r = Reader::new(Source::remote(fetched), &settings.reader);
+    let src = "See [guide](docs/guide.md) and [logo](img/logo.png).\n\n```sh\necho hi\n```\n";
+    let mut r = Reader::new(remote(src), &settings.reader);
     r.layout(80, 10);
 
     key(&mut r, KeyCode::Char('L'));
@@ -1005,12 +993,7 @@ fn remote_markdown_links_with_other_schemes_ask() {
         "vscode://file/a.md",
         "mailto:user@example.md",
     ] {
-        let fetched = RemoteDoc {
-            name: "README.md".into(),
-            base: url::Url::parse("https://example.com/repo/README.md").unwrap(),
-            text: format!("[x]({target})\n"),
-        };
-        let mut r = Reader::new(Source::remote(fetched), &settings.reader);
+        let mut r = Reader::new(remote(&format!("[x]({target})\n")), &settings.reader);
         r.layout(80, 10);
         key(&mut r, KeyCode::Char('L'));
         let action = key(&mut r, KeyCode::Enter);
@@ -1063,7 +1046,7 @@ fn replaced_document_is_highlighted_afresh() {
 #[test]
 fn scrollbar_shows_only_when_the_document_overflows() {
     let column = |src: &str, scroll: usize| {
-        let mut r = Reader::new(Source::in_memory("t.md", parse(src)), &Options::default());
+        let mut r = in_memory(src);
         let mut terminal = term(40, 12);
         terminal.draw(|f| draw(f, &mut r)).unwrap();
         r.scroll_to(scroll);
@@ -1132,8 +1115,8 @@ fn links_are_terminal_hyperlinks() {
 #[test]
 fn popups_hide_hyperlinks_beneath_them() {
     let doc = "See [docs](https://x.dev/docs) and [more](https://x.dev/more) here.\n";
-    let mut r = Reader::new(Source::in_memory("t.md", parse(doc)), &Options::default());
-    r.on_key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE));
+    let mut r = in_memory(doc);
+    key(&mut r, KeyCode::Char('?'));
     let mut terminal = term(100, 30);
     let frame = terminal.draw(|f| draw(f, &mut r)).unwrap();
     let buf = frame.buffer;
@@ -1331,7 +1314,7 @@ fn toc_pane_sits_beside_the_document_and_follows_the_scroll() {
 
     let long = "word ".repeat(60);
     let src = std::fs::read_to_string("tests/fixtures/outline.md").unwrap() + "\n" + &long;
-    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
+    let mut r = in_memory(&src);
     let widest = |r: &Reader| r.rendered().lines.iter().map(Line::width).max().unwrap();
     let mut terminal = term(70, 12);
     terminal.draw(|f| draw(f, &mut r)).unwrap();
@@ -1398,7 +1381,7 @@ fn toc_pane_keeps_the_same_source_at_the_top() {
     let src: String = std::iter::once("# Title\n\n".to_string())
         .chain((0..30).map(|i| format!("p{i} {}\n\n", "word ".repeat(40))))
         .collect();
-    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
+    let mut r = in_memory(&src);
     let mut terminal = term(100, 12);
     terminal.draw(|f| draw(f, &mut r)).unwrap();
     let top = |r: &Reader| bastian::render::plain(&r.rendered().lines[r.scroll()]);
@@ -1425,10 +1408,7 @@ fn toc_pane_keeps_the_same_source_at_the_top() {
 
 #[test]
 fn focused_code_block_frame_follows_the_toc_pane() {
-    let mut r = Reader::new(
-        Source::in_memory("t.md", parse("# A\n\n```sh\necho hi\n```\n")),
-        &Options::default(),
-    );
+    let mut r = in_memory("# A\n\n```sh\necho hi\n```\n");
     let mut terminal = term(80, 12);
     terminal.draw(|f| draw(f, &mut r)).unwrap();
     key(&mut r, KeyCode::Char('t'));
@@ -1456,7 +1436,7 @@ fn focused_code_block_frame_follows_the_toc_pane() {
 #[test]
 fn theme_picker_pane_sits_right_of_the_document() {
     let src = "# Title\n\n".to_string() + &"word ".repeat(80);
-    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
+    let mut r = in_memory(&src);
     let widest = |r: &Reader| r.rendered().lines.iter().map(Line::width).max().unwrap();
     let mut terminal = term(100, 12);
     terminal.draw(|f| draw_with(f, &mut r, None)).unwrap();
@@ -1481,7 +1461,7 @@ fn theme_picker_pane_sits_right_of_the_document() {
 #[test]
 fn theme_picker_and_toc_share_the_screen_when_it_fits() {
     let src = "# A\n\ntext\n\n# B\n\nmore\n";
-    let mut r = Reader::new(Source::in_memory("t.md", parse(src)), &Options::default());
+    let mut r = in_memory(src);
     let mut p = ThemePicker::new(None, "nord", picker::DEFAULT_WIDTH);
     // Wide: the table of contents left, the picker right, the document
     // between them.
@@ -1517,10 +1497,7 @@ fn theme_picker_and_toc_share_the_screen_when_it_fits() {
 
 #[test]
 fn theme_picker_covers_a_screen_too_narrow_to_share() {
-    let mut r = Reader::new(
-        Source::in_memory("t.md", parse("# A\n\ntext\n")),
-        &Options::default(),
-    );
+    let mut r = in_memory("# A\n\ntext\n");
     let mut terminal = term(30, 12);
     terminal.draw(|f| draw_with(f, &mut r, None)).unwrap();
     let lines = r.rendered().lines.len();
@@ -1543,7 +1520,7 @@ fn theme_picker_pane_keeps_the_same_source_at_the_top() {
     let src: String = std::iter::once("# Title\n\n".to_string())
         .chain((0..30).map(|i| format!("p{i} {}\n\n", "word ".repeat(40))))
         .collect();
-    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
+    let mut r = in_memory(&src);
     let mut terminal = term(100, 12);
     terminal.draw(|f| draw_with(f, &mut r, None)).unwrap();
     let top = |r: &Reader| bastian::render::plain(&r.rendered().lines[r.scroll()]);
@@ -1595,17 +1572,15 @@ fn hyperlinks_and_scrollbar_can_be_turned_off() {
 
 #[test]
 fn the_line_gone_to_is_highlighted() {
-    let src: String = (0..50).map(|i| format!("para {i}\n\n")).collect();
-    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
+    let mut r = in_memory(&filler(50));
     let mut terminal = term(60, 14);
     terminal.draw(|f| draw(f, &mut r)).unwrap();
-    let press = |r: &mut Reader, c: KeyCode| r.on_key(KeyEvent::new(c, KeyModifiers::NONE));
-    press(&mut r, KeyCode::Char(':'));
+    key(&mut r, KeyCode::Char(':'));
     // Rendered line 97 is "para 48", near the end.
     for c in "97".chars() {
-        press(&mut r, KeyCode::Char(c));
+        key(&mut r, KeyCode::Char(c));
     }
-    press(&mut r, KeyCode::Enter);
+    key(&mut r, KeyCode::Enter);
     let current_bg = r.theme().current_bg;
     let row_of = |terminal: &Terminal<TestBackend>, text: &str| {
         let rows = columns(terminal, 0, 60);
@@ -1620,7 +1595,7 @@ fn the_line_gone_to_is_highlighted() {
     let other = row_of(&terminal, "para 49");
     assert_ne!(buf[(x, other)].bg, current_bg, "only the target line");
     // The next key clears it.
-    press(&mut r, KeyCode::Char('j'));
+    key(&mut r, KeyCode::Char('j'));
     terminal.draw(|f| draw(f, &mut r)).unwrap();
     let y = row_of(&terminal, "para 48");
     assert_ne!(terminal.backend().buffer()[(x, y)].bg, current_bg);

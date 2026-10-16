@@ -162,6 +162,8 @@ impl Builder {
                 Some(buf) => buf.push_str(&t),
                 None => self.push_text(&t),
             },
+            // Comments are notes for whoever edits the file, not text.
+            Event::InlineHtml(t) if t.starts_with("<!--") => {}
             Event::InlineHtml(t) => self.push_text(&t),
             Event::SoftBreak => self.push_text(" "),
             Event::HardBreak => self.push_text("\n"),
@@ -567,7 +569,8 @@ enum HtmlPart<'a> {
 }
 
 /// Split an HTML block into `<details>`, `<summary>…</summary>` and
-/// `</details>` tags (any case) and the text between them.
+/// `</details>` tags (any case) and the text between them. Comments are
+/// dropped; one left open runs to the end of the block.
 fn html_parts(html: &str) -> Vec<HtmlPart<'_>> {
     let mut parts = Vec::new();
     let mut text_start = 0;
@@ -584,6 +587,15 @@ fn html_parts(html: &str) -> Vec<HtmlPart<'_>> {
                     .is_some_and(|c| c == '>' || c == '/' || c.is_ascii_whitespace())
         };
         let end_of_tag = |from: usize| rest[from..].find('>').map(|e| at + from + e + 1);
+        if let Some(body) = rest.strip_prefix("<!--") {
+            if text_start < at {
+                parts.push(HtmlPart::Text(&html[text_start..at]));
+            }
+            let end = body.find("-->").map_or(html.len(), |e| at + 4 + e + 3);
+            text_start = end;
+            i = end;
+            continue;
+        }
         let (part, next) = if tag("<details") {
             let Some(end) = end_of_tag(8) else { break };
             let attrs = html[at + 8..end - 1].to_ascii_lowercase();

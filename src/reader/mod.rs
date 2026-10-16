@@ -487,6 +487,14 @@ impl Reader {
         }
     }
 
+    /// Whether a popup is drawn over the document. The search and line
+    /// prompts sit above the document, not over it.
+    pub(crate) fn popup_open(&self) -> bool {
+        self.overlay
+            .as_ref()
+            .is_some_and(|o| !matches!(o, Overlay::Prompt(_) | Overlay::GoTo(_)))
+    }
+
     /// The document as laid out by the last `layout`.
     pub fn rendered(&self) -> &Rendered {
         &self.rendered

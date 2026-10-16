@@ -3,7 +3,7 @@ use pulldown_cmark::{
 };
 
 use super::{
-    Align, Attrs, Block, CalloutKind, CodeBlock, Document, Footnotes, Inline, InlineStyle,
+    Align, Attrs, Block, CalloutKind, CodeBlock, Document, Footnotes, Ids, Inline, InlineStyle,
     MAX_DEPTH, push_inline,
 };
 
@@ -120,8 +120,7 @@ struct Builder {
     /// Inside YAML/TOML front matter, which isn't shown.
     metadata: bool,
     table: Option<TableState>,
-    next_code_id: usize,
-    next_link_id: usize,
+    ids: Ids,
     footnotes: Footnotes,
     /// Source line of the footnote definition being read.
     footnote_line: usize,
@@ -132,7 +131,6 @@ struct Builder {
     flattened: u32,
     /// The HTML block being read, gathered to find `<details>` tags in it.
     html: Option<String>,
-    next_details_id: usize,
     /// Depth (frames plus flattened containers) at which each `<details>`
     /// past `MAX_DEPTH` was opened. It gets no frame and its close tag is
     /// ignored; it's forgotten when the container it was opened in ends.
@@ -240,11 +238,11 @@ impl Builder {
                 ..
             } => {
                 let url = match link_type {
-                    LinkType::WikiLink { .. } => wiki_target(&dest_url),
+                    LinkType::WikiLink { .. } => super::wiki_target(&dest_url),
                     _ => dest_url.into_string(),
                 };
                 self.style.link = Some(url);
-                self.style.link_id = Some(self.next_link_id());
+                self.style.link_id = Some(self.ids.link());
             }
             Tag::Image { dest_url, .. } => {
                 self.images.push(dest_url.into_string());
@@ -332,7 +330,7 @@ impl Builder {
             }
             TagEnd::CodeBlock => {
                 if let Some((info, src)) = self.code.take() {
-                    let id = self.next_id();
+                    let id = self.ids.code();
                     self.push_block(Block::Code(CodeBlock {
                         id,
                         lang: lang_of(&info),
@@ -448,18 +446,8 @@ impl Builder {
     /// A footnote reference: `[n]`, linking to the footnote's anchor.
     fn footnote_ref(&mut self, label: &str) {
         let mut r = self.footnotes.reference(label, &self.style);
-        r.style.link_id = Some(self.next_link_id());
+        r.style.link_id = Some(self.ids.link());
         push_inline(&mut self.inlines, &r.text, &r.style);
-    }
-
-    fn next_link_id(&mut self) -> usize {
-        self.next_link_id += 1;
-        self.next_link_id - 1
-    }
-
-    fn next_id(&mut self) -> usize {
-        self.next_code_id += 1;
-        self.next_code_id - 1
     }
 
     /// Turn pending inline text into a paragraph. Tight list items emit text
@@ -509,8 +497,7 @@ impl Builder {
                         self.skipped_details.push(self.depth());
                         continue;
                     }
-                    let id = self.next_details_id;
-                    self.next_details_id += 1;
+                    let id = self.ids.details();
                     self.stack.push(Frame::Details {
                         id,
                         open,
@@ -684,25 +671,6 @@ fn html_text(html: &str) -> String {
         .replace("&nbsp;", " ")
         .replace("&amp;", "&");
     out.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// The relative link a wiki link's target stands for: `Page` is
-/// `Page.md` next to the document, and a `#Heading` part becomes that
-/// heading's anchor. Targets with an extension are kept as they are.
-fn wiki_target(target: &str) -> String {
-    let (path, heading) = match target.split_once('#') {
-        Some((path, heading)) => (path.trim(), Some(heading)),
-        None => (target.trim(), None),
-    };
-    let mut url = path.to_string();
-    if !path.is_empty() && std::path::Path::new(path).extension().is_none() {
-        url.push_str(".md");
-    }
-    if let Some(heading) = heading {
-        url.push('#');
-        url.push_str(&crate::links::slug(heading));
-    }
-    url
 }
 
 /// The image block for a paragraph that is nothing but `[image: alt]`

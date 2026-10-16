@@ -5,7 +5,7 @@ Terminal Markdown reader. `CONTEXT.md` is the glossary: use its terms (Document,
 ## Shape
 
 - Binary crate. The `lib` target exists so `tests/` can reach the modules; nothing outside this repo depends on it. New items are `pub(crate)` unless an integration test needs them.
-- Two Markdown front ends stay: pulldown-cmark for `.md`, markdown-rs for `.mdx`. markdown-rs measured 15x slower and super-linear on deep nesting, so it never parses `.md`. A syntax feature lands once, as post-processing over the `Block` tree in `doc/mod.rs`, never twice in the two parsers.
+- Two Markdown front ends stay: pulldown-cmark for `.md`, markdown-rs for `.mdx`. markdown-rs measured 15x slower and super-linear on deep nesting, so it never parses `.md`. Both must build the same `Block` tree for the same text: a syntax feature lands in both, sharing what it can from `doc/mod.rs` (`Ids`, `Footnotes`, `wiki_target`), with a test in `doc/mdx/tests.rs` that compares the MDX result against the Markdown front end's.
 - One thing owns the keyboard at a time: an open Overlay. Esc returns to plain reading in one step.
 
 ## Tests

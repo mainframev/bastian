@@ -65,6 +65,7 @@ pub const TEMPLATE: &str = r#"# bastian configuration. Every key is optional; co
 # mouse = false         # scroll with the mouse wheel
 # logo = true           # show the logo at the top of the file browser
 # images = true         # show pictures for images in documents (`i` toggles)
+# history = true        # list the documents opened this session with `H`
 # selector = "bar"      # marks the selected file: "bar", "thick", "block",
 #                       # "arrow" or "highlight"
 # list_layout = "cards"  # "cards" (title, path, date) or "compact" (one row)

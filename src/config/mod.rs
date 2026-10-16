@@ -48,6 +48,8 @@ pub struct Config {
     pub logo: Option<bool>,
     /// Show pictures for images in documents, where the terminal can.
     pub images: Option<bool>,
+    /// Keep the list of documents opened this session, shown with `H`.
+    pub history: Option<bool>,
     /// How the file browser marks the selected file.
     pub selector: Option<Selector>,
     /// How the file list lays out each file.

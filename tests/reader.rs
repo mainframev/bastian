@@ -899,6 +899,7 @@ fn settings(assume_yes: bool, positions: Option<std::path::PathBuf>) -> Settings
         logo: true,
         images: None,
         show_images: false,
+        history: true,
         selector: bastian::config::Selector::Bar,
         list_layout: bastian::config::ListLayout::Cards,
         background: bastian::config::PageBackground::Theme,

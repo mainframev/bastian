@@ -23,6 +23,7 @@ background = "theme"  # paint the theme's background, or keep the "terminal"'s (
 width = 100           # maximum document width
 line_numbers = false  # show line numbers in the reader (-n)
 images = true         # draw pictures; `i` toggles them (--images on|off)
+history = true        # list the documents opened this session with `H`
 image_height = 24     # rows a picture takes up at most
 tab_width = 4         # columns per tab in code
 hyperlinks = true     # clickable links (OSC 8)

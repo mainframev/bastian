@@ -164,7 +164,8 @@ off by default as it adds about 8 MB to the binary.
 `H` lists the documents read this session, most recent first, with the one
 you're reading marked and the one before it selected. `Enter` opens the
 selection, and `Esc` goes back from it as from a followed link. The list isn't
-kept after bastian exits.
+kept after bastian exits. `history = false` in the config turns the list off;
+`Esc` still goes back from followed links.
 
 ## Line numbers
 

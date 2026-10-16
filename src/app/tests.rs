@@ -720,3 +720,30 @@ fn keys_counted_as_scrolling_only_scroll() {
     // j k space f b g G, ctrl-d ctrl-u, and the arrows and paging keys.
     assert!(scrolling >= 15, "{scrolling}");
 }
+
+#[test]
+fn a_scroll_that_moves_nothing_draws_nothing() {
+    let j = || key(KeyCode::Char('j'));
+    let mut app = long_read();
+    let (handled, _) = batch(&mut app, &[j()]);
+    assert!(handled.redraw, "mid-document, j moves the view");
+
+    let (handled, _) = batch(&mut app, &[key(KeyCode::Char('G'))]);
+    assert!(handled.redraw);
+    let (handled, _) = batch(&mut app, &[j(), j()]);
+    assert!(!handled.redraw, "at the end, j changes nothing");
+    let (handled, _) = batch(&mut app, &[wheel(MouseEventKind::ScrollDown)]);
+    assert!(!handled.redraw, "nor does the wheel");
+    let (handled, _) = batch(&mut app, &[j(), key(KeyCode::Char('k'))]);
+    assert!(handled.redraw, "one of the batch moved it");
+
+    // A key clears the status bar message, which is a change to draw.
+    app.set_message("hello".into());
+    let (handled, _) = batch(&mut app, &[key(KeyCode::Char('G'))]);
+    assert!(handled.redraw);
+    assert_eq!(app.reader.as_ref().unwrap().message(), None);
+
+    // Anything else still draws, whether or not it changed anything.
+    let (handled, _) = batch(&mut app, &[key(KeyCode::Char('z'))]);
+    assert!(handled.redraw);
+}

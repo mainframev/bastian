@@ -234,6 +234,39 @@ impl Reader {
         stops
     }
 
+    /// Record where the document's text is drawn, so the link under the
+    /// pointer can be found.
+    pub(crate) fn set_content_area(&mut self, area: ratatui::layout::Rect) {
+        self.content_area = area;
+    }
+
+    /// The mouse pointer moved to `column`, `row` of the screen. Returns
+    /// whether it moved onto, off or between links.
+    pub fn on_hover(&mut self, column: u16, row: u16) -> bool {
+        let before = self.hovered();
+        self.pointer = Some((column, row));
+        before != self.hovered()
+    }
+
+    /// The link under the mouse pointer (its id, shared by all its pieces),
+    /// unless a popup covers the document.
+    pub fn hovered(&self) -> Option<usize> {
+        let (column, row) = self.pointer?;
+        let area = self.content_area;
+        if self.popup_open() || !area.contains(ratatui::layout::Position::new(column, row)) {
+            return None;
+        }
+        let line = self.scroll + usize::from(row - area.y);
+        let x = usize::from(column - area.x);
+        let links = &self.rendered.links;
+        let first = links.partition_point(|l| l.line < line);
+        links[first..]
+            .iter()
+            .take_while(|l| l.line == line)
+            .find(|l| (l.col..l.col + l.width).contains(&x))
+            .map(|l| l.id)
+    }
+
     /// `(n, total)` of the focused link, for the status bar.
     pub fn link_position(&self) -> Option<(usize, usize)> {
         let i = self.link_focus?;

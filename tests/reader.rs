@@ -719,6 +719,57 @@ fn focused_link_is_highlighted_and_previewed() {
 }
 
 #[test]
+fn hovered_link_is_shaded_until_the_pointer_leaves() {
+    let mut r = in_memory("See [docs](https://x.dev) here.\n\nAnd [more](https://y.dev).\n");
+    let (cols, rows) = (60u16, 8u16);
+    let mut terminal = term(cols, rows);
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    let theme = Theme::dark();
+    let shaded = |t: &Terminal<TestBackend>| -> Vec<(u16, u16)> {
+        let buf = t.backend().buffer();
+        (0..rows)
+            .flat_map(|y| (0..cols).map(move |x| (x, y)))
+            .filter(|&p| buf[p].bg == theme.current_bg)
+            .collect()
+    };
+    // The cell of a link's first column: below the top padding, right of
+    // the margin and gutter.
+    let x0 = MARGIN + gutter_width(&r, r.rendered().lines.len());
+    let cell = |r: &Reader, i: usize| {
+        let l = &r.rendered().links[i];
+        (x0 + l.col as u16, 1 + l.line as u16)
+    };
+    assert!(shaded(&terminal).is_empty());
+
+    let (x, y) = cell(&r, 0);
+    assert!(r.on_hover(x + 1, y), "onto a link");
+    assert!(!r.on_hover(x + 2, y), "along the same link");
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    // A hyperlink's first cell holds its whole label, so the terminal
+    // prints all of it in that cell's style; the other cells aren't sent.
+    assert_eq!(shaded(&terminal), [(x, y)]);
+    let buf = terminal.backend().buffer();
+    assert!(buf[(x, y)].symbol().contains("docs"), "{:?}", buf[(x, y)]);
+    // Shaded only: the link keeps its own colour, unlike a focused one.
+    assert_ne!(buf[(x, y)].fg, theme.h1_fg);
+
+    let (x, y) = cell(&r, 1);
+    assert!(r.on_hover(x, y), "to another link");
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    assert_eq!(shaded(&terminal), [(x, y)]);
+
+    assert!(r.on_hover(0, 0), "off the links");
+    assert_eq!(r.hovered(), None);
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    assert!(shaded(&terminal).is_empty());
+
+    // A popup over the document hides it.
+    assert!(r.on_hover(x, y));
+    key(&mut r, KeyCode::Char('?'));
+    assert_eq!(r.hovered(), None);
+}
+
+#[test]
 fn focused_details_summary_is_highlighted() {
     let mut r = in_memory("intro\n\n<details>\n<summary>More</summary>\n\nhidden\n\n</details>\n");
     let (w, h) = (40u16, 8u16);

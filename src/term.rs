@@ -231,8 +231,14 @@ impl Drop for Restore {
 /// which would turn the following read into an unbounded block.
 #[cfg(unix)]
 fn readable(fd: std::os::fd::RawFd, timeout: Duration) -> bool {
+    // select(2) can't watch a descriptor past FD_SETSIZE (libc's FD_SET
+    // panics on one), as in a process with many files open: no reply then.
+    if usize::try_from(fd).map_or(true, |fd| fd >= libc::FD_SETSIZE) {
+        return false;
+    }
     // SAFETY: an fd_set zeroed and filled with FD_ZERO/FD_SET for one
-    // descriptor we own, and a timeval on the stack, as select(2) expects.
+    // descriptor we own, below FD_SETSIZE, and a timeval on the stack, as
+    // select(2) expects.
     unsafe {
         let mut set: libc::fd_set = std::mem::zeroed();
         libc::FD_ZERO(&raw mut set);
@@ -313,6 +319,15 @@ mod tests {
         assert_eq!(from_colorfgbg("0;15"), Some(Background::Light));
         assert_eq!(from_colorfgbg("0;default;7"), Some(Background::Light));
         assert_eq!(from_colorfgbg("nonsense"), None);
+    }
+
+    /// select(2) can't wait on a descriptor past `FD_SETSIZE`.
+    #[cfg(unix)]
+    #[test]
+    fn descriptors_past_fd_setsize_are_never_readable() {
+        let fd = std::os::fd::RawFd::try_from(libc::FD_SETSIZE).unwrap();
+        assert!(!readable(fd, Duration::ZERO));
+        assert!(!readable(-1, Duration::ZERO));
     }
 
     #[test]

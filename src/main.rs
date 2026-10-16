@@ -136,7 +136,11 @@ fn main() -> Result<()> {
         return run_tui(app);
     }
 
-    let path = cli.path.unwrap_or_else(|| PathBuf::from("."));
+    // With no path, input piped or redirected into bastian is read as if
+    // `-` was given; otherwise it browses the current directory.
+    let path = cli
+        .path
+        .unwrap_or_else(|| PathBuf::from(if stdin_has_input() { "-" } else { "." }));
 
     // A URL or github.com/gitlab.com repository, unless a local file of
     // that name exists.
@@ -186,6 +190,34 @@ fn main() -> Result<()> {
 
     app.themes = theme_files;
     run_tui(app)
+}
+
+/// Whether stdin carries a document: a pipe, FIFO, socket or redirected
+/// file. A terminal is someone typing, and a non-terminal character device
+/// is `/dev/null`, which cron, CI runners and `nohup` hand a process that
+/// has no input; neither is read, since `-` would show an empty document.
+#[cfg(unix)]
+fn stdin_has_input() -> bool {
+    use std::os::fd::AsFd;
+    use std::os::unix::fs::FileTypeExt;
+
+    let stdin = std::io::stdin();
+    if stdin.is_terminal() {
+        return false;
+    }
+    // A closed stdin fails to clone or stat: nothing to read.
+    let Ok(fd) = stdin.as_fd().try_clone_to_owned() else {
+        return false;
+    };
+    std::fs::File::from(fd).metadata().is_ok_and(|m| {
+        let t = m.file_type();
+        t.is_fifo() || t.is_socket() || t.is_file()
+    })
+}
+
+#[cfg(not(unix))]
+fn stdin_has_input() -> bool {
+    !std::io::stdin().is_terminal()
 }
 
 fn run_tui(app: app::App) -> Result<()> {

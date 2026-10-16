@@ -9,6 +9,7 @@ them instead of opening the reader, for pipes, pagers and scripts.
 
 ```sh {norun}
 bastian                           # browse the current directory
+cat notes.md | bastian            # with no path, piped input is read
 bastian docs/                     # browse another directory
 bastian README.md                 # read a file
 bastian src/main.rs               # source files are highlighted, with line numbers
@@ -18,6 +19,14 @@ bastian github.com/owner/repo                      # a repository's README
 bastian gitlab.com/group/project                   # GitLab too
 bastian https://github.com/o/r/blob/main/docs/guide.md   # file pages are read raw
 ```
+
+With no path, bastian reads stdin when something is piped or redirected
+into it (`cat notes.md | bastian`, `bastian < notes.md`), just like
+`bastian -`, and browses the current directory otherwise. Stdin from
+`/dev/null`, which cron and CI runners give, counts as no input and browses;
+`bastian -` there reads it and shows an empty document. Where stdin is a
+pipe nobody writes to, such as some IDE run panes, name the directory:
+`bastian .`.
 
 See [the reader](reader.md#remote-documents) for how links in remote
 documents are followed.

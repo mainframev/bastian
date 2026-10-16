@@ -181,6 +181,43 @@ fn reads_stdin() {
 }
 
 #[test]
+fn piped_input_is_read_without_a_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = bastian_with_stdin(
+        dir.path(),
+        &["-p"],
+        &[],
+        Some("# Piped in\n\nNo path given.\n"),
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(
+        text.contains("Piped in") && text.contains("No path given."),
+        "{text}"
+    );
+}
+
+/// `/dev/null` on stdin, as cron and CI give, is no input: without a path
+/// bastian browses the current directory as it would from a terminal.
+#[test]
+fn null_stdin_without_a_path_browses() {
+    let dir = tempfile::tempdir().unwrap();
+    let docs = dir.path().join("docs");
+    std::fs::create_dir(&docs).unwrap();
+    std::fs::write(docs.join("guide.md"), "# Guide\n").unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_bastian"))
+        .arg("-p")
+        .current_dir(&docs)
+        .env("XDG_CONFIG_HOME", dir.path())
+        .env_remove("BASTIAN_CONFIG")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(stdout(&out), "guide.md\n");
+}
+
+#[test]
 fn themes_are_listed_when_piped() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("bastian/themes")).unwrap();

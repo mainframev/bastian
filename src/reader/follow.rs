@@ -198,13 +198,19 @@ impl Reader {
             return self.rendered.block_starts.get(i).copied();
         }
         // Headings nested in quotes, lists or components: match by text.
-        let (_, text) = heading_texts(&self.doc.blocks)
-            .into_iter()
-            .find(|(a, _)| links::slug(a) == anchor)?;
+        let mut text = None;
+        doc::visit(&self.doc.blocks, &mut |b| {
+            if let Block::Heading { inlines, .. } = b
+                && text.is_none()
+                && links::slug(&doc::anchor_text(inlines)) == anchor
+            {
+                text = Some(doc::plain_text(inlines));
+            }
+        });
         // Compare without spaces: inline code is padded with them on
         // screen, also beside punctuation (`x`. shows as `x .`).
         let bare = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
-        let text = bare(&text);
+        let text = bare(&text?);
         self.rendered.lines.iter().position(|line| {
             let plain = bare(&render::plain(line));
             !plain.is_empty() && text.starts_with(&plain)
@@ -349,17 +355,6 @@ fn blocks_text(blocks: &[Block]) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-/// `(anchor text, shown text)` of every heading.
-pub(super) fn heading_texts(blocks: &[Block]) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    doc::visit(blocks, &mut |b| {
-        if let Block::Heading { inlines, .. } = b {
-            out.push((doc::anchor_text(inlines), doc::plain_text(inlines)));
-        }
-    });
-    out
 }
 
 #[cfg(test)]

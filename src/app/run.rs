@@ -1,11 +1,10 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{self, Event, KeyEventKind, MouseButton, MouseEventKind};
 
 use super::App;
-use super::terminal::suspend;
+use super::terminal::{Tui, suspend};
 use crate::ui;
 
 /// Events that change nothing on screen: pointer motion (unless it moves
@@ -29,7 +28,7 @@ pub(super) fn is_ignored(event: &Event) -> bool {
 pub(super) const TICK: Duration = Duration::from_millis(100);
 
 /// Run the TUI until the user quits. Returns a note to print afterwards.
-pub fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<Option<String>> {
+pub fn run(terminal: &mut Tui, mut app: App) -> Result<Option<String>> {
     let mut redraw = true;
     loop {
         if let Some(r) = &mut app.reader {

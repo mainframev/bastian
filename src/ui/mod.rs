@@ -6,7 +6,11 @@ pub mod reader;
 mod status;
 pub(crate) mod text;
 
+use ratatui::Frame;
 use ratatui::layout::Rect;
+use ratatui::style::Style;
+
+use crate::themes::Theme;
 
 /// Columns of space on each side of the content.
 pub const MARGIN: u16 = 2;
@@ -17,6 +21,15 @@ pub(crate) fn rows(buf: &ratatui::buffer::Buffer) -> Vec<String> {
     (0..buf.area.height)
         .map(|y| (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect())
         .collect()
+}
+
+/// Paint the theme's page background over the whole frame, under
+/// everything drawn after; `Reset` leaves the terminal's.
+fn paint_page(frame: &mut Frame, t: &Theme) {
+    let area = frame.area();
+    frame
+        .buffer_mut()
+        .set_style(area, Style::default().bg(t.background));
 }
 
 /// `area` with `MARGIN` taken off the left and right.

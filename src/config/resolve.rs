@@ -73,80 +73,41 @@ pub struct Resolved {
 /// `cli` holds the settings given as flags (its `interpreters` are unused).
 /// Invalid environment values are errors naming the variable.
 pub fn resolve(file: Config, env: &EnvMap, cli: Config) -> Result<Resolved> {
+    // Every setting's key is its field's name.
+    macro_rules! set {
+        ($key:ident, $default:expr) => {
+            setting(stringify!($key), $default, file.$key, cli.$key, env)?
+        };
+    }
     Ok(Resolved {
-        theme: setting("theme", "auto".into(), file.theme, cli.theme, env)?,
-        dark_theme: setting(
-            "dark_theme",
-            themes::DEFAULT_DARK.into(),
-            file.dark_theme,
-            cli.dark_theme,
-            env,
-        )?,
-        light_theme: setting(
-            "light_theme",
-            themes::DEFAULT_LIGHT.into(),
-            file.light_theme,
-            cli.light_theme,
-            env,
-        )?,
-        width: setting("width", 100, file.width, cli.width, env)?,
-        confirm: setting("confirm", Confirm::Always, file.confirm, cli.confirm, env)?,
-        line_numbers: setting(
-            "line_numbers",
-            false,
-            file.line_numbers,
-            cli.line_numbers,
-            env,
-        )?,
-        color: setting("color", ColorMode::Auto, file.color, cli.color, env)?,
-        pager: setting("pager", false, file.pager, cli.pager, env)?,
-        all: setting("all", false, file.all, cli.all, env)?,
-        mouse: setting("mouse", false, file.mouse, cli.mouse, env)?,
-        logo: setting("logo", true, file.logo, cli.logo, env)?,
-        images: setting("images", true, file.images, cli.images, env)?,
-        selector: setting(
-            "selector",
-            Selector::default(),
-            file.selector,
-            cli.selector,
-            env,
-        )?,
-        list_layout: setting(
-            "list_layout",
-            ListLayout::default(),
-            file.list_layout,
-            cli.list_layout,
-            env,
-        )?,
-        sort: setting("sort", SortBy::default(), file.sort, cli.sort, env)?,
-        dates: setting("dates", true, file.dates, cli.dates, env)?,
-        date_format: setting(
-            "date_format",
-            DATE_FORMAT.into(),
-            file.date_format,
-            cli.date_format,
-            env,
-        )?,
-        extensions: setting(
-            "extensions",
-            EXTENSIONS.iter().map(ToString::to_string).collect(),
-            file.extensions,
-            cli.extensions,
-            env,
-        )?,
-        ignore: setting("ignore", Vec::new(), file.ignore, cli.ignore, env)?,
-        image_height: setting("image_height", 24, file.image_height, cli.image_height, env)?,
-        tab_width: setting("tab_width", 4, file.tab_width, cli.tab_width, env)?,
-        hyperlinks: setting("hyperlinks", true, file.hyperlinks, cli.hyperlinks, env)?,
-        scrollbar: setting("scrollbar", true, file.scrollbar, cli.scrollbar, env)?,
-        remember_position: setting(
-            "remember_position",
-            true,
-            file.remember_position,
-            cli.remember_position,
-            env,
-        )?,
-        editor: setting("editor", String::new(), file.editor, cli.editor, env)?,
+        theme: set!(theme, "auto".into()),
+        dark_theme: set!(dark_theme, themes::DEFAULT_DARK.into()),
+        light_theme: set!(light_theme, themes::DEFAULT_LIGHT.into()),
+        width: set!(width, 100),
+        confirm: set!(confirm, Confirm::Always),
+        line_numbers: set!(line_numbers, false),
+        color: set!(color, ColorMode::Auto),
+        pager: set!(pager, false),
+        all: set!(all, false),
+        mouse: set!(mouse, false),
+        logo: set!(logo, true),
+        images: set!(images, true),
+        selector: set!(selector, Selector::default()),
+        list_layout: set!(list_layout, ListLayout::default()),
+        sort: set!(sort, SortBy::default()),
+        dates: set!(dates, true),
+        date_format: set!(date_format, DATE_FORMAT.into()),
+        extensions: set!(
+            extensions,
+            EXTENSIONS.iter().map(ToString::to_string).collect()
+        ),
+        ignore: set!(ignore, Vec::new()),
+        image_height: set!(image_height, 24),
+        tab_width: set!(tab_width, 4),
+        hyperlinks: set!(hyperlinks, true),
+        scrollbar: set!(scrollbar, true),
+        remember_position: set!(remember_position, true),
+        editor: set!(editor, String::new()),
         interpreters: file.interpreters,
     })
 }

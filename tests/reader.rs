@@ -648,6 +648,19 @@ fn line_number_gutter_fits_in_terminal() {
 }
 
 #[test]
+fn line_numbers_leave_one_column_before_the_text() {
+    let opts = Options {
+        line_numbers: true,
+        ..Options::default()
+    };
+    let mut r = Reader::new(Source::in_memory("t.md", parse("abc\n")), &opts);
+    let mut terminal = term(40, 6);
+    terminal.draw(|f| draw(f, &mut r)).unwrap();
+    // The margin, the number, one blank column, then the text.
+    assert!(columns(&terminal, 0, 40)[1].starts_with("  1 abc"));
+}
+
+#[test]
 fn focused_link_is_highlighted_and_previewed() {
     let mut r = in_memory("See [docs](https://x.dev) here.\n");
     let (w, h) = (60u16, 8u16);

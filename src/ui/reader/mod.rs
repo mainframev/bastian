@@ -262,7 +262,7 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
 }
 
 /// Blank columns between the line numbers and the text.
-pub const GUTTER_GAP: u16 = 3;
+pub const GUTTER_GAP: u16 = 1;
 
 /// Columns for the line-number gutter: the digits of `lines` plus the gap
 /// to the text, or nothing when line numbers are off.

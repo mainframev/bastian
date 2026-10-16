@@ -6,16 +6,11 @@ use std::time::{Duration, Instant};
 
 use bastian::doc::parse;
 use bastian::exec::Status;
-use bastian::reader::{Match, Options, Overlay, Reader, Source};
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use bastian::reader::{Match, Options, Reader, Source};
+use ratatui::crossterm::event::KeyCode;
 
-/// The blocks a run confirmation is waiting on.
-fn confirm(r: &Reader) -> Option<&[usize]> {
-    match &r.overlay {
-        Some(Overlay::RunConfirm(ids)) => Some(ids),
-        _ => None,
-    }
-}
+mod common;
+use common::{confirm, key};
 
 fn reader(src: &str) -> Reader {
     reader_with(src, std::env::temp_dir(), false)
@@ -38,10 +33,6 @@ fn reader_with(src: &str, base_dir: std::path::PathBuf, assume_yes: bool) -> Rea
     let mut r = Reader::new(source, &opts);
     r.layout(80, 40);
     r
-}
-
-fn key(r: &mut Reader, code: KeyCode) {
-    r.on_key(KeyEvent::new(code, KeyModifiers::NONE));
 }
 
 /// Tick until nothing is running, then return each block's final status.

@@ -6,25 +6,20 @@ use std::time::Duration;
 
 use bastian::app::Settings;
 use bastian::doc::parse;
+use bastian::picker::{self, ThemePicker};
 use bastian::reader::{Action, Location, Options, Overlay, Reader, Source};
 use bastian::remote::RemoteDoc;
 use bastian::render::theme::Theme;
+use bastian::ui::reader::{GUTTER_GAP, MARGIN, draw, draw_with, gutter_width};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::text::Line;
+use ratatui::{Terminal, backend::TestBackend};
 
-fn key(r: &mut Reader, code: KeyCode) -> Action {
-    r.on_key(KeyEvent::new(code, KeyModifiers::NONE))
-}
+mod common;
+use common::{confirm, key};
 
 fn ctrl(r: &mut Reader, c: char) -> Action {
     r.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL))
-}
-
-/// The blocks a run confirmation is waiting on.
-fn confirm(r: &Reader) -> Option<&[usize]> {
-    match &r.overlay {
-        Some(Overlay::RunConfirm(ids)) => Some(ids),
-        _ => None,
-    }
 }
 
 /// The target an open-external confirmation is waiting on.
@@ -43,21 +38,62 @@ fn location(r: &Reader) -> Option<&Location> {
     }
 }
 
-fn reader(src: &str) -> Reader {
-    let mut r = Reader::new(Source::in_memory("t.md", parse(src)), &Options::default());
+/// A reader over `source` with default options, laid out at 80×10.
+fn open(source: Source) -> Reader {
+    let mut r = Reader::new(source, &Options::default());
     r.layout(80, 10);
     r
 }
 
+fn reader(src: &str) -> Reader {
+    open(Source::in_memory("t.md", parse(src)))
+}
+
 /// A reader over `src` whose relative links resolve from `base_dir`.
 fn reader_in(src: &str, base_dir: &std::path::Path) -> Reader {
-    let source = Source {
+    open(Source {
         base_dir: base_dir.to_path_buf(),
         ..Source::in_memory("t.md", parse(src))
-    };
-    let mut r = Reader::new(source, &Options::default());
-    r.layout(80, 10);
-    r
+    })
+}
+
+/// A reader over `src` with default options, not yet laid out.
+fn in_memory(src: &str) -> Reader {
+    Reader::new(Source::in_memory("t.md", parse(src)), &Options::default())
+}
+
+/// `text` as fetched from `https://example.com/repo/README.md`.
+fn remote(text: &str) -> Source {
+    Source::remote(RemoteDoc {
+        name: "README.md".into(),
+        base: url::Url::parse("https://example.com/repo/README.md").unwrap(),
+        text: text.into(),
+    })
+}
+
+/// `n` short paragraphs, "para 0" onwards.
+fn filler(n: usize) -> String {
+    (0..n).map(|i| format!("para {i}\n\n")).collect()
+}
+
+/// A `w`×`h` test terminal.
+fn term(w: u16, h: u16) -> Terminal<TestBackend> {
+    Terminal::new(TestBackend::new(w, h)).unwrap()
+}
+
+/// Columns `from..to` of each row of the screen.
+fn columns(t: &Terminal<TestBackend>, from: u16, to: u16) -> Vec<String> {
+    let buf = t.backend().buffer();
+    (0..buf.area.height)
+        .map(|y| (from..to).map(|x| buf[(x, y)].symbol()).collect())
+        .collect()
+}
+
+/// The screen after drawing `r` on a `w`×`h` terminal, row by row.
+fn screen_of(r: &mut Reader, w: u16, h: u16) -> String {
+    let mut terminal = term(w, h);
+    terminal.draw(|f| draw(f, r)).unwrap();
+    columns(&terminal, 0, w).join("\n")
 }
 
 #[test]
@@ -73,7 +109,7 @@ fn copy_focused_block() {
 
 #[test]
 fn anchor_link_scrolls_to_heading() {
-    let filler: String = (0..40).map(|i| format!("para {i}\n\n")).collect();
+    let filler = filler(40);
     let src = format!("[jump](#getting-started)\n\n{filler}## Getting Started\n\n{filler}");
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('L'));
@@ -89,7 +125,7 @@ fn anchor_link_scrolls_to_heading() {
 
 #[test]
 fn anchor_link_skips_lines_that_only_look_like_the_heading() {
-    let filler: String = (0..40).map(|i| format!("para {i}\n\n")).collect();
+    let filler = filler(40);
     let src = format!("[Usage](#usage)\n\n{filler}## Usage\n\n{filler}");
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('L'));
@@ -100,7 +136,7 @@ fn anchor_link_skips_lines_that_only_look_like_the_heading() {
 
 #[test]
 fn footnote_reference_scrolls_to_its_note() {
-    let filler: String = (0..40).map(|i| format!("para {i}\n\n")).collect();
+    let filler = filler(40);
     let src = format!("Claim[^src].\n\n{filler}[^src]: The source.\n");
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('L'));
@@ -116,7 +152,7 @@ fn footnote_reference_scrolls_to_its_note() {
 
 #[test]
 fn footnote_reference_in_a_title_is_listed_and_followed() {
-    let filler: String = (0..40).map(|i| format!("para {i}\n\n")).collect();
+    let filler = filler(40);
     let src = format!("# Title[^t]\n\n{filler}[^t]: Where the title comes from.\n");
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('L'));
@@ -139,7 +175,7 @@ fn footnote_reference_in_a_title_is_listed_and_followed() {
 #[test]
 fn footnote_targets_never_hit_a_heading() {
     // A heading whose slug looks like a footnote anchor.
-    let filler: String = (0..40).map(|i| format!("para {i}\n\n")).collect();
+    let filler = filler(40);
     let src = format!("x[^a]\n\n# fn-a\n\n# fn:a\n\n{filler}[^a]: The note.\n");
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('L'));
@@ -156,7 +192,7 @@ fn footnote_targets_never_hit_a_heading() {
 fn link_focus_steps_previews_and_follows() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("next.md"), "---\nx: 1\n---\n# Next steps\n").unwrap();
-    let filler: String = (0..30).map(|i| format!("para {i}\n\n")).collect();
+    let filler = filler(30);
     let src = format!(
         "[a very long link text that has to wrap across two lines](#usage) then \
          [next](next.md), [web](https://example.com), [gone](gone.md) and a note[^n].\n\n\
@@ -228,7 +264,7 @@ fn link_focus_steps_previews_and_follows() {
 
 #[test]
 fn link_focus_starts_in_view_and_scrolls_to_far_links() {
-    let filler: String = (0..40).map(|i| format!("para {i}\n\n")).collect();
+    let filler = filler(40);
     let src = format!("[top](#a)\n\n{filler}[far](#b)\n\n{filler}");
     let mut r = reader(&src);
     key(&mut r, KeyCode::Char('S'));
@@ -269,13 +305,8 @@ fn link_stops_follow_link_occurrences() {
 
     // In a table, a link wrapping in one cell and a link in the next cell
     // keep their own targets, and each is one stop.
-    let mut r = Reader::new(
-        Source::in_memory(
-            "t.md",
-            parse("| a | b |\n|---|---|\n| [a long link that wraps](one.md) | [two](two.md) |\n"),
-        ),
-        &Options::default(),
-    );
+    let mut r =
+        in_memory("| a | b |\n|---|---|\n| [a long link that wraps](one.md) | [two](two.md) |\n");
     r.layout(22, 10);
     assert_eq!(urls(&r), ["one.md", "two.md"]);
     assert!(r.link_stops()[0].len() > 1, "{:?}", r.rendered().links);
@@ -289,8 +320,7 @@ fn link_stops_follow_link_occurrences() {
         "[old](y) [<Badge/>new](x)\n",
         Some(std::path::Path::new("t.mdx")),
     );
-    let mut r = Reader::new(Source::in_memory("t.mdx", doc), &Options::default());
-    r.layout(80, 10);
+    let r = open(Source::in_memory("t.mdx", doc));
     assert_eq!(urls(&r), ["y", "x"]);
 }
 
@@ -464,8 +494,7 @@ fn edit_needs_a_file() {
         file: Some(path.clone()),
         ..Source::in_memory("t.md", parse("text\n"))
     };
-    let mut r = Reader::new(source, &Options::default());
-    r.layout(80, 10);
+    let mut r = open(source);
     assert!(
         matches!(key(&mut r, KeyCode::Char('e')), Action::None),
         "only ctrl-e edits"
@@ -479,8 +508,7 @@ fn p_shows_and_copies_the_file_path() {
     let path = dir.path().join("doc.md");
     std::fs::write(&path, "text\n").unwrap();
     let opened = bastian::open::open(&path).unwrap();
-    let mut r = Reader::new(Source::file("doc.md".into(), opened), &Options::default());
-    r.layout(80, 10);
+    let mut r = open(Source::file("doc.md".into(), opened));
     let absolute = std::fs::canonicalize(&path).unwrap().display().to_string();
 
     key(&mut r, KeyCode::Char('p'));
@@ -509,13 +537,7 @@ fn p_without_a_file() {
     assert!(matches!(key(&mut r, KeyCode::Char('R')), Action::None));
     assert_eq!(r.message(), Some("no file path to copy"));
 
-    let fetched = RemoteDoc {
-        name: "README.md".into(),
-        base: url::Url::parse("https://example.com/repo/README.md").unwrap(),
-        text: "text\n".into(),
-    };
-    let mut r = Reader::new(Source::remote(fetched), &Options::default());
-    r.layout(80, 10);
+    let mut r = open(remote("text\n"));
     key(&mut r, KeyCode::Char('p'));
     let url = "https://example.com/repo/README.md";
     assert!(matches!(key(&mut r, KeyCode::Char('A')), Action::Copy(u) if u == url));
@@ -524,22 +546,13 @@ fn p_without_a_file() {
 
 #[test]
 fn path_popup_wraps_long_paths() {
-    use bastian::ui::reader::draw;
-    use ratatui::{Terminal, backend::TestBackend};
-
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(format!("{}.md", "x".repeat(60)));
     std::fs::write(&path, "text\n").unwrap();
     let opened = bastian::open::open(&path).unwrap();
     let mut r = Reader::new(Source::file("x.md".into(), opened), &Options::default());
     key(&mut r, KeyCode::Char('p'));
-    let mut terminal = Terminal::new(TestBackend::new(40, 20)).unwrap();
-    terminal.draw(|f| draw(f, &mut r)).unwrap();
-    let buf = terminal.backend().buffer();
-    let rows: Vec<String> = (0..20)
-        .map(|y| (0..40).map(|x| buf[(x, y)].symbol()).collect())
-        .collect();
-    let screen = rows.join("\n");
+    let screen = screen_of(&mut r, 40, 20);
     assert!(screen.contains(" File Path "), "{screen}");
     assert!(
         screen.contains("Relative:") && screen.contains("Absolute:"),
@@ -551,20 +564,6 @@ fn path_popup_wraps_long_paths() {
     // Too narrow for the keys on one row: one per row.
     assert!(screen.contains("R copy relative "), "{screen}");
     assert!(screen.contains("esc close"), "{screen}");
-}
-
-/// The screen after drawing `r` on a `w`×`h` terminal, row by row.
-fn screen_of(r: &mut Reader, w: u16, h: u16) -> String {
-    use bastian::ui::reader::draw;
-    use ratatui::{Terminal, backend::TestBackend};
-
-    let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
-    terminal.draw(|f| draw(f, r)).unwrap();
-    let buf = terminal.backend().buffer();
-    (0..h)
-        .map(|y| (0..w).map(|x| buf[(x, y)].symbol()).collect::<String>())
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 #[test]
@@ -618,9 +617,6 @@ fn hash_toggles_line_numbers() {
 
 #[test]
 fn line_number_gutter_fits_in_terminal() {
-    use bastian::ui::reader::{GUTTER_GAP, MARGIN, draw, gutter_width};
-    use ratatui::{Terminal, backend::TestBackend};
-
     let src = std::fs::read_to_string("tests/fixtures/sample.md").unwrap();
     let opts = Options {
         max_width: 200,
@@ -629,7 +625,7 @@ fn line_number_gutter_fits_in_terminal() {
     };
     let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &opts);
     let (w, h) = (60u16, 20u16);
-    let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+    let mut terminal = term(w, h);
     terminal.draw(|f| draw(f, &mut r)).unwrap();
 
     let gutter = gutter_width(&r, r.rendered().lines.len());
@@ -641,8 +637,7 @@ fn line_number_gutter_fits_in_terminal() {
 
     // Numbers sit right after the margin, right-aligned, starting at 1, on
     // the first row below the top padding, with a gap before the text.
-    let buf = terminal.backend().buffer();
-    let row: String = (0..w).map(|x| buf[(x, 1)].symbol().to_string()).collect();
+    let row = &columns(&terminal, 0, w)[1];
     let digits = usize::from(gutter - GUTTER_GAP);
     let start = usize::from(MARGIN);
     let gap = usize::from(GUTTER_GAP);
@@ -654,15 +649,9 @@ fn line_number_gutter_fits_in_terminal() {
 
 #[test]
 fn focused_link_is_highlighted_and_previewed() {
-    use bastian::ui::reader::draw;
-    use ratatui::{Terminal, backend::TestBackend};
-
-    let mut r = Reader::new(
-        Source::in_memory("t.md", parse("See [docs](https://x.dev) here.\n")),
-        &Options::default(),
-    );
+    let mut r = in_memory("See [docs](https://x.dev) here.\n");
     let (w, h) = (60u16, 8u16);
-    let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+    let mut terminal = term(w, h);
     terminal.draw(|f| draw(f, &mut r)).unwrap();
     key(&mut r, KeyCode::Char('s'));
     terminal.draw(|f| draw(f, &mut r)).unwrap();
@@ -675,27 +664,16 @@ fn focused_link_is_highlighted_and_previewed() {
         .map(|p| buf[p].symbol().to_string())
         .collect();
     assert_eq!(highlighted, "docs");
-    let status: String = (0..w)
-        .map(|x| buf[(x, h - 1)].symbol().to_string())
-        .collect();
+    let status = &columns(&terminal, 0, w)[usize::from(h - 1)];
     assert!(status.contains("→ https://x.dev"), "{status}");
     assert!(status.contains("link 1/1"), "{status}");
 }
 
 #[test]
 fn focused_details_summary_is_highlighted() {
-    use bastian::ui::reader::draw;
-    use ratatui::{Terminal, backend::TestBackend};
-
-    let mut r = Reader::new(
-        Source::in_memory(
-            "t.md",
-            parse("intro\n\n<details>\n<summary>More</summary>\n\nhidden\n\n</details>\n"),
-        ),
-        &Options::default(),
-    );
+    let mut r = in_memory("intro\n\n<details>\n<summary>More</summary>\n\nhidden\n\n</details>\n");
     let (w, h) = (40u16, 8u16);
-    let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+    let mut terminal = term(w, h);
     terminal.draw(|f| draw(f, &mut r)).unwrap();
     key(&mut r, KeyCode::Char('d'));
     terminal.draw(|f| draw(f, &mut r)).unwrap();
@@ -715,24 +693,13 @@ fn focused_details_summary_is_highlighted() {
 
 #[test]
 fn focused_code_block_frame_takes_the_accent() {
-    use bastian::ui::reader::{MARGIN, draw};
-    use ratatui::{Terminal, backend::TestBackend};
-
-    let mut r = Reader::new(
-        Source::in_memory("t.md", parse("- item\n\n  ```sh\n  echo hi\n  ```\n")),
-        &Options::default(),
-    );
+    let mut r = in_memory("- item\n\n  ```sh\n  echo hi\n  ```\n");
     let (w, h) = (40u16, 10u16);
-    let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+    let mut terminal = term(w, h);
     terminal.draw(|f| draw(f, &mut r)).unwrap();
     let before = r.rendered().lines.clone();
-    let rows = |t: &Terminal<TestBackend>| -> Vec<String> {
-        let buf = t.backend().buffer();
-        // All but the status bar, which names the focused block.
-        (0..h - 1)
-            .map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect())
-            .collect()
-    };
+    // All but the status bar, which names the focused block.
+    let rows = |t: &Terminal<TestBackend>| columns(t, 0, w)[..usize::from(h - 1)].to_vec();
     let text = rows(&terminal);
     let theme = Theme::dark();
     let corner = |t: &Terminal<TestBackend>| t.backend().buffer()[(MARGIN + 2, 2)].clone();
@@ -786,8 +753,7 @@ fn edit_opens_at_the_top_visible_source_line() {
         file: Some("doc.md".into()),
         ..Source::in_memory("t.md", parse(&src))
     };
-    let mut r = Reader::new(source, &Options::default());
-    r.layout(80, 10);
+    let mut r = open(source);
     match ctrl(&mut r, 'e') {
         Action::Edit(_, line) => assert_eq!(line, Some(1)),
         _ => panic!("expected edit"),
@@ -811,8 +777,7 @@ fn c_copies_the_whole_document() {
         text: "# A\n\ntext\n".into(),
         ..Source::in_memory("t.md", parse("# A\n\ntext\n"))
     };
-    let mut r = Reader::new(source, &Options::default());
-    r.layout(80, 10);
+    let mut r = open(source);
     match key(&mut r, KeyCode::Char('c')) {
         Action::Copy(t) => assert_eq!(t, "# A\n\ntext\n"),
         _ => panic!("expected copy"),
@@ -946,41 +911,24 @@ fn other_links_ask_before_opening() {
 
 #[test]
 fn open_prompt_shows_the_whole_target() {
-    use bastian::ui::reader::draw;
-    use ratatui::{Terminal, backend::TestBackend};
-
     let target = format!("vscode://file/{}/end", "x".repeat(60));
     let mut r = picking(&target, std::path::Path::new("."));
     key(&mut r, KeyCode::Enter);
-    let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
-    terminal.draw(|f| draw(f, &mut r)).unwrap();
-    let buf = terminal.backend().buffer();
-    let screen: String = (0..12)
-        .flat_map(|y| (0..40).map(move |x| (x, y)))
-        .map(|(x, y)| buf[(x, y)].symbol().to_string())
-        .collect();
+    let screen = screen_of(&mut r, 40, 12);
     // Wrapped across rows, with no cell lost to the box edge.
-    let shown: String = screen.chars().filter(|c| !"│ ".contains(*c)).collect();
+    let shown: String = screen.chars().filter(|c| !"│ \n".contains(*c)).collect();
     assert!(shown.contains(&target), "{screen}");
 }
 
 #[test]
 fn open_prompt_elides_the_middle_of_a_long_target() {
-    use bastian::ui::reader::draw;
-    use ratatui::{Terminal, backend::TestBackend};
-
     // About 15 rows at 36 columns, where 7 fit.
     let target = format!("vscode://host/{}/tail/setup.command", "x".repeat(500));
     let mut r = picking(&target, std::path::Path::new("."));
     key(&mut r, KeyCode::Enter);
     assert_eq!(confirm_open(&r), Some(target.as_str()));
-    let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
-    terminal.draw(|f| draw(f, &mut r)).unwrap();
-    let buf = terminal.backend().buffer();
-    let rows: Vec<String> = (0..12)
-        .map(|y| (0..40).map(|x| buf[(x, y)].symbol()).collect())
-        .collect();
-    let screen = rows.join("\n");
+    let screen = screen_of(&mut r, 40, 12);
+    let rows: Vec<&str> = screen.lines().collect();
     let shown: String = screen.chars().filter(|c| !"│ \n".contains(*c)).collect();
     assert!(shown.contains("vscode://host/xxx"), "{screen}");
     assert!(shown.contains("xxx/tail/setup.command"), "{screen}");
@@ -996,13 +944,8 @@ fn open_prompt_elides_the_middle_of_a_long_target() {
 
     // Even a screen too short for the question keeps the keys.
     for height in 3..8 {
-        let mut terminal = Terminal::new(TestBackend::new(40, height)).unwrap();
-        terminal.draw(|f| draw(f, &mut r)).unwrap();
-        let buf = terminal.backend().buffer();
-        let has_keys = (0..height).any(|y| {
-            let row: String = (0..40).map(|x| buf[(x, y)].symbol()).collect();
-            row.contains("y open")
-        });
+        let screen = screen_of(&mut r, 40, height);
+        let has_keys = screen.lines().any(|row| row.contains("y open"));
         assert!(has_keys, "height {height}");
     }
 }
@@ -1011,13 +954,8 @@ fn open_prompt_elides_the_middle_of_a_long_target() {
 fn remote_documents_resolve_links_and_always_confirm() {
     // Built the way the app builds fetched documents, with --yes on.
     let settings = settings(true, None);
-    let fetched = RemoteDoc {
-        name: "README.md".into(),
-        base: url::Url::parse("https://example.com/repo/README.md").unwrap(),
-        text: "See [guide](docs/guide.md) and [logo](img/logo.png).\n\n```sh\necho hi\n```\n"
-            .into(),
-    };
-    let mut r = Reader::new(Source::remote(fetched), &settings.reader);
+    let src = "See [guide](docs/guide.md) and [logo](img/logo.png).\n\n```sh\necho hi\n```\n";
+    let mut r = Reader::new(remote(src), &settings.reader);
     r.layout(80, 10);
 
     key(&mut r, KeyCode::Char('L'));
@@ -1046,12 +984,7 @@ fn remote_markdown_links_with_other_schemes_ask() {
         "vscode://file/a.md",
         "mailto:user@example.md",
     ] {
-        let fetched = RemoteDoc {
-            name: "README.md".into(),
-            base: url::Url::parse("https://example.com/repo/README.md").unwrap(),
-            text: format!("[x]({target})\n"),
-        };
-        let mut r = Reader::new(Source::remote(fetched), &settings.reader);
+        let mut r = Reader::new(remote(&format!("[x]({target})\n")), &settings.reader);
         r.layout(80, 10);
         key(&mut r, KeyCode::Char('L'));
         let action = key(&mut r, KeyCode::Enter);
@@ -1103,20 +1036,14 @@ fn replaced_document_is_highlighted_afresh() {
 
 #[test]
 fn scrollbar_shows_only_when_the_document_overflows() {
-    use bastian::ui::reader::draw;
-    use ratatui::{Terminal, backend::TestBackend};
-
     let column = |src: &str, scroll: usize| {
-        let mut r = Reader::new(Source::in_memory("t.md", parse(src)), &Options::default());
-        let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
+        let mut r = in_memory(src);
+        let mut terminal = term(40, 12);
         terminal.draw(|f| draw(f, &mut r)).unwrap();
         r.scroll_to(scroll);
         terminal.draw(|f| draw(f, &mut r)).unwrap();
-        let buf = terminal.backend().buffer();
         // Document rows, between the top and bottom padding, in the last column.
-        (1..10)
-            .map(|y| buf[(39, y)].symbol().to_string())
-            .collect::<String>()
+        columns(&terminal, 39, 40)[1..10].concat()
     };
     let short = column("# Short\n\ntext\n", 0);
     assert!(short.trim().is_empty(), "{short:?}");
@@ -1133,9 +1060,6 @@ fn scrollbar_shows_only_when_the_document_overflows() {
 
 #[test]
 fn links_are_terminal_hyperlinks() {
-    use bastian::ui::reader::draw;
-    use ratatui::{Terminal, backend::TestBackend};
-
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("guide.md"), "# Guide\n").unwrap();
     let source = Source {
@@ -1148,7 +1072,7 @@ fn links_are_terminal_hyperlinks() {
     let mut r = Reader::new(source, &Options::default());
     let mut guide = url::Url::from_file_path(dir.path().join("guide.md")).unwrap();
     guide.set_fragment(Some("setup"));
-    let mut terminal = Terminal::new(TestBackend::new(80, 6)).unwrap();
+    let mut terminal = term(80, 6);
     // The frame as drawn; the test backend can't measure OSC 8 cells.
     let frame = terminal.draw(|f| draw(f, &mut r)).unwrap();
     let buf = frame.buffer;
@@ -1181,13 +1105,10 @@ fn links_are_terminal_hyperlinks() {
 
 #[test]
 fn popups_hide_hyperlinks_beneath_them() {
-    use bastian::ui::reader::draw;
-    use ratatui::{Terminal, backend::TestBackend};
-
     let doc = "See [docs](https://x.dev/docs) and [more](https://x.dev/more) here.\n";
-    let mut r = Reader::new(Source::in_memory("t.md", parse(doc)), &Options::default());
-    r.on_key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE));
-    let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+    let mut r = in_memory(doc);
+    key(&mut r, KeyCode::Char('?'));
+    let mut terminal = term(100, 30);
     let frame = terminal.draw(|f| draw(f, &mut r)).unwrap();
     let buf = frame.buffer;
     let cells: String = (0..30)
@@ -1332,8 +1253,6 @@ fn image_sources_resolve_like_links() {
 #[test]
 fn pictures_partly_scrolled_off_show_their_visible_rows() {
     use bastian::images::Support;
-    use bastian::ui::reader::draw;
-    use ratatui::{Terminal, backend::TestBackend};
     use ratatui_image::picker::Picker;
 
     let dir = tempfile::tempdir().unwrap();
@@ -1352,7 +1271,7 @@ fn pictures_partly_scrolled_off_show_their_visible_rows() {
     };
     let mut r = Reader::new(source, &opts);
 
-    let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+    let mut terminal = term(60, 20);
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     while r.rendered().images.is_empty() {
         terminal.draw(|f| draw(f, &mut r)).unwrap();
@@ -1382,23 +1301,13 @@ fn pictures_partly_scrolled_off_show_their_visible_rows() {
 
 #[test]
 fn toc_pane_sits_beside_the_document_and_follows_the_scroll() {
-    use bastian::ui::reader::draw;
     use ratatui::style::Modifier;
-    use ratatui::text::Line;
-    use ratatui::{Terminal, backend::TestBackend};
 
     let long = "word ".repeat(60);
     let src = std::fs::read_to_string("tests/fixtures/outline.md").unwrap() + "\n" + &long;
-    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
+    let mut r = in_memory(&src);
     let widest = |r: &Reader| r.rendered().lines.iter().map(Line::width).max().unwrap();
-    let mut terminal = Terminal::new(TestBackend::new(70, 12)).unwrap();
-    // Columns `from..to` of each screen row.
-    let cols = |t: &Terminal<TestBackend>, from: u16, to: u16| -> Vec<String> {
-        let buf = t.backend().buffer();
-        (0..12)
-            .map(|y| (from..to).map(|x| buf[(x, y)].symbol()).collect())
-            .collect()
-    };
+    let mut terminal = term(70, 12);
     terminal.draw(|f| draw(f, &mut r)).unwrap();
     // The document fills the screen less its margins.
     assert!(widest(&r) > 40, "{}", widest(&r));
@@ -1407,7 +1316,7 @@ fn toc_pane_sits_beside_the_document_and_follows_the_scroll() {
     terminal.draw(|f| draw(f, &mut r)).unwrap();
     // Re-wrapped beside the 30-column pane, within its own margins.
     assert!(widest(&r) <= 70 - 30 - 4, "{}", widest(&r));
-    let pane = cols(&terminal, 0, 30);
+    let pane = columns(&terminal, 0, 30);
     assert_eq!(pane[0], " Table of Contents       < > │");
     assert!(pane[1].contains("────"), "{pane:#?}");
     // The lone title isn't numbered; its sections are, and deeper
@@ -1428,7 +1337,7 @@ fn toc_pane_sits_beside_the_document_and_follows_the_scroll() {
             " 03 Usage",
         ]
     );
-    let doc = cols(&terminal, 30, 70);
+    let doc = columns(&terminal, 30, 70);
     assert!(doc[1].starts_with("   Guide"), "{doc:#?}");
 
     // `2` scrolls to the second section, which the pane then highlights.
@@ -1436,7 +1345,7 @@ fn toc_pane_sits_beside_the_document_and_follows_the_scroll() {
     let top = bastian::render::plain(&r.rendered().lines[r.scroll()]);
     assert_eq!(top.trim(), "Usage");
     terminal.draw(|f| draw(f, &mut r)).unwrap();
-    let pane = cols(&terminal, 0, 30);
+    let pane = columns(&terminal, 0, 30);
     let row = pane
         .iter()
         .position(|r| r.starts_with(" 02 Usage"))
@@ -1459,15 +1368,12 @@ fn toc_pane_sits_beside_the_document_and_follows_the_scroll() {
 
 #[test]
 fn toc_pane_keeps_the_same_source_at_the_top() {
-    use bastian::ui::reader::draw;
-    use ratatui::{Terminal, backend::TestBackend};
-
     // Long paragraphs, so the rendered rows above one change with the width.
     let src: String = std::iter::once("# Title\n\n".to_string())
         .chain((0..30).map(|i| format!("p{i} {}\n\n", "word ".repeat(40))))
         .collect();
-    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
-    let mut terminal = Terminal::new(TestBackend::new(100, 12)).unwrap();
+    let mut r = in_memory(&src);
+    let mut terminal = term(100, 12);
     terminal.draw(|f| draw(f, &mut r)).unwrap();
     let top = |r: &Reader| bastian::render::plain(&r.rendered().lines[r.scroll()]);
     let p20 = r
@@ -1493,14 +1399,8 @@ fn toc_pane_keeps_the_same_source_at_the_top() {
 
 #[test]
 fn focused_code_block_frame_follows_the_toc_pane() {
-    use bastian::ui::reader::{MARGIN, draw};
-    use ratatui::{Terminal, backend::TestBackend};
-
-    let mut r = Reader::new(
-        Source::in_memory("t.md", parse("# A\n\n```sh\necho hi\n```\n")),
-        &Options::default(),
-    );
-    let mut terminal = Terminal::new(TestBackend::new(80, 12)).unwrap();
+    let mut r = in_memory("# A\n\n```sh\necho hi\n```\n");
+    let mut terminal = term(80, 12);
     terminal.draw(|f| draw(f, &mut r)).unwrap();
     key(&mut r, KeyCode::Char('t'));
     key(&mut r, KeyCode::Tab);
@@ -1524,29 +1424,12 @@ fn focused_code_block_frame_follows_the_toc_pane() {
     assert_ne!(buf[(x(cols.start) - 1, y)].fg, theme.accent);
 }
 
-/// Columns `from..to` of each row of the screen.
-fn columns(
-    t: &ratatui::Terminal<ratatui::backend::TestBackend>,
-    from: u16,
-    to: u16,
-) -> Vec<String> {
-    let buf = t.backend().buffer();
-    (0..buf.area.height)
-        .map(|y| (from..to).map(|x| buf[(x, y)].symbol()).collect())
-        .collect()
-}
-
 #[test]
 fn theme_picker_pane_sits_right_of_the_document() {
-    use bastian::picker::{self, ThemePicker};
-    use bastian::ui::reader::draw_with;
-    use ratatui::text::Line;
-    use ratatui::{Terminal, backend::TestBackend};
-
     let src = "# Title\n\n".to_string() + &"word ".repeat(80);
-    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
+    let mut r = in_memory(&src);
     let widest = |r: &Reader| r.rendered().lines.iter().map(Line::width).max().unwrap();
-    let mut terminal = Terminal::new(TestBackend::new(100, 12)).unwrap();
+    let mut terminal = term(100, 12);
     terminal.draw(|f| draw_with(f, &mut r, None)).unwrap();
     assert!(widest(&r) > 70, "{}", widest(&r));
 
@@ -1568,16 +1451,12 @@ fn theme_picker_pane_sits_right_of_the_document() {
 
 #[test]
 fn theme_picker_and_toc_share_the_screen_when_it_fits() {
-    use bastian::picker::{self, ThemePicker};
-    use bastian::ui::reader::draw_with;
-    use ratatui::{Terminal, backend::TestBackend};
-
     let src = "# A\n\ntext\n\n# B\n\nmore\n";
-    let mut r = Reader::new(Source::in_memory("t.md", parse(src)), &Options::default());
+    let mut r = in_memory(src);
     let mut p = ThemePicker::new(None, "nord", picker::DEFAULT_WIDTH);
     // Wide: the table of contents left, the picker right, the document
     // between them.
-    let mut terminal = Terminal::new(TestBackend::new(120, 12)).unwrap();
+    let mut terminal = term(120, 12);
     terminal.draw(|f| draw_with(f, &mut r, None)).unwrap();
     key(&mut r, KeyCode::Char('t'));
     terminal
@@ -1590,7 +1469,7 @@ fn theme_picker_and_toc_share_the_screen_when_it_fits() {
 
     // At 80 columns there's no room for both: the table of contents makes
     // way for the picker while it's open.
-    let mut terminal = Terminal::new(TestBackend::new(80, 12)).unwrap();
+    let mut terminal = term(80, 12);
     terminal
         .draw(|f| draw_with(f, &mut r, Some(&mut p)))
         .unwrap();
@@ -1609,15 +1488,8 @@ fn theme_picker_and_toc_share_the_screen_when_it_fits() {
 
 #[test]
 fn theme_picker_covers_a_screen_too_narrow_to_share() {
-    use bastian::picker::{self, ThemePicker};
-    use bastian::ui::reader::draw_with;
-    use ratatui::{Terminal, backend::TestBackend};
-
-    let mut r = Reader::new(
-        Source::in_memory("t.md", parse("# A\n\ntext\n")),
-        &Options::default(),
-    );
-    let mut terminal = Terminal::new(TestBackend::new(30, 12)).unwrap();
+    let mut r = in_memory("# A\n\ntext\n");
+    let mut terminal = term(30, 12);
     terminal.draw(|f| draw_with(f, &mut r, None)).unwrap();
     let lines = r.rendered().lines.len();
     let mut p = ThemePicker::new(None, "nord", picker::DEFAULT_WIDTH);
@@ -1636,16 +1508,11 @@ fn theme_picker_covers_a_screen_too_narrow_to_share() {
 
 #[test]
 fn theme_picker_pane_keeps_the_same_source_at_the_top() {
-    use bastian::picker::{self, ThemePicker};
-    use bastian::ui::reader::draw_with;
-    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use ratatui::{Terminal, backend::TestBackend};
-
     let src: String = std::iter::once("# Title\n\n".to_string())
         .chain((0..30).map(|i| format!("p{i} {}\n\n", "word ".repeat(40))))
         .collect();
-    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
-    let mut terminal = Terminal::new(TestBackend::new(100, 12)).unwrap();
+    let mut r = in_memory(&src);
+    let mut terminal = term(100, 12);
     terminal.draw(|f| draw_with(f, &mut r, None)).unwrap();
     let top = |r: &Reader| bastian::render::plain(&r.rendered().lines[r.scroll()]);
     let p20 = r
@@ -1673,9 +1540,6 @@ fn theme_picker_pane_keeps_the_same_source_at_the_top() {
 
 #[test]
 fn hyperlinks_and_scrollbar_can_be_turned_off() {
-    use bastian::ui::reader::draw;
-    use ratatui::{Terminal, backend::TestBackend};
-
     let long: String = (0..60)
         .map(|i| format!("[link {i}](https://x.dev/{i})\n\n"))
         .collect();
@@ -1685,7 +1549,7 @@ fn hyperlinks_and_scrollbar_can_be_turned_off() {
         ..Options::default()
     };
     let mut r = Reader::new(Source::in_memory("t.md", parse(&long)), &opts);
-    let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
+    let mut terminal = term(40, 12);
     let frame = terminal.draw(|f| draw(f, &mut r)).unwrap();
     let buf = frame.buffer;
     let cells: String = (0..12)
@@ -1699,29 +1563,20 @@ fn hyperlinks_and_scrollbar_can_be_turned_off() {
 
 #[test]
 fn the_line_gone_to_is_highlighted() {
-    use bastian::ui::reader::draw;
-    use ratatui::{Terminal, backend::TestBackend};
-
-    let src: String = (0..50).map(|i| format!("para {i}\n\n")).collect();
-    let mut r = Reader::new(Source::in_memory("t.md", parse(&src)), &Options::default());
-    let mut terminal = Terminal::new(TestBackend::new(60, 14)).unwrap();
+    let mut r = in_memory(&filler(50));
+    let mut terminal = term(60, 14);
     terminal.draw(|f| draw(f, &mut r)).unwrap();
-    let press = |r: &mut Reader, c: KeyCode| r.on_key(KeyEvent::new(c, KeyModifiers::NONE));
-    press(&mut r, KeyCode::Char(':'));
+    key(&mut r, KeyCode::Char(':'));
     // Rendered line 97 is "para 48", near the end.
     for c in "97".chars() {
-        press(&mut r, KeyCode::Char(c));
+        key(&mut r, KeyCode::Char(c));
     }
-    press(&mut r, KeyCode::Enter);
+    key(&mut r, KeyCode::Enter);
     let current_bg = r.theme().current_bg;
     let row_of = |terminal: &Terminal<TestBackend>, text: &str| {
-        let buf = terminal.backend().buffer();
-        (0..buf.area.height)
-            .find(|&y| {
-                let row: String = (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect();
-                row.contains(text)
-            })
-            .unwrap_or_else(|| panic!("no {text}"))
+        let rows = columns(terminal, 0, 60);
+        let y = rows.iter().position(|row| row.contains(text));
+        y.unwrap_or_else(|| panic!("no {text}")) as u16
     };
     terminal.draw(|f| draw(f, &mut r)).unwrap();
     let y = row_of(&terminal, "para 48");
@@ -1731,7 +1586,7 @@ fn the_line_gone_to_is_highlighted() {
     let other = row_of(&terminal, "para 49");
     assert_ne!(buf[(x, other)].bg, current_bg, "only the target line");
     // The next key clears it.
-    press(&mut r, KeyCode::Char('j'));
+    key(&mut r, KeyCode::Char('j'));
     terminal.draw(|f| draw(f, &mut r)).unwrap();
     let y = row_of(&terminal, "para 48");
     assert_ne!(terminal.backend().buffer()[(x, y)].bg, current_bg);

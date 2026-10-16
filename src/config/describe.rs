@@ -36,6 +36,7 @@ pub fn describe(r: &Resolved, file: Option<&Path>) -> String {
         row("mouse", &r.mouse),
         row("logo", &r.logo),
         row("images", &r.images),
+        row("history", &r.history),
         row("selector", &r.selector),
         row("list_layout", &r.list_layout),
         row("sort", &r.sort),

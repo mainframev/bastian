@@ -31,6 +31,8 @@ pub struct Settings {
     pub images: Option<images::Support>,
     /// Draw pictures for images; off leaves them as their alt text.
     pub show_images: bool,
+    /// Keep the documents opened this session for the `H` list.
+    pub history: bool,
     /// How the file browser marks the selected file.
     pub selector: config::Selector,
     /// How the file list lays out each file.
@@ -102,6 +104,7 @@ impl Settings {
             logo: r.logo.value,
             images,
             show_images: r.images.value,
+            history: r.history.value,
             selector: r.selector.value,
             list_layout: r.list_layout.value,
             background: r.background.value,

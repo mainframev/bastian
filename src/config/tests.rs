@@ -29,6 +29,7 @@ fn precedence_is_default_file_env_flag() {
     );
     assert_eq!(r.width.value, 100);
     assert_eq!(r.background.value, PageBackground::Theme);
+    assert!(r.history.value);
 
     let r = resolve(file(), &env(&[]), none.clone()).unwrap();
     assert_eq!(
@@ -204,6 +205,19 @@ fn env_values_are_parsed_and_validated() {
 }
 
 #[test]
+fn history_can_be_turned_off_from_the_environment() {
+    let e = env(&[("BASTIAN_HISTORY", "false")]);
+    let r = resolve(Config::default(), &e, Config::default()).unwrap();
+    assert_eq!(
+        r.history,
+        Setting {
+            value: false,
+            source: Source::Env
+        }
+    );
+}
+
+#[test]
 fn parses_all_fields() {
     let c: Config = toml::from_str(
         r#"
@@ -226,6 +240,7 @@ fn parses_all_fields() {
             hyperlinks = false
             scrollbar = false
             remember_position = false
+            history = false
             editor = "nvim -p"
             [interpreters]
             ruby = ["ruby", "-e"]
@@ -252,6 +267,7 @@ fn parses_all_fields() {
     assert_eq!(c.hyperlinks, Some(false));
     assert_eq!(c.scrollbar, Some(false));
     assert_eq!(c.remember_position, Some(false));
+    assert_eq!(c.history, Some(false));
     assert_eq!(c.editor.as_deref(), Some("nvim -p"));
     assert_eq!(c.interpreters["ruby"], ["ruby", "-e"]);
     let fish = &c.interpreters["fish"];

@@ -23,6 +23,7 @@ fn settings() -> Settings {
         logo: true,
         images: None,
         show_images: false,
+        history: true,
         selector: crate::config::Selector::Bar,
         list_layout: crate::config::ListLayout::Cards,
         background: crate::config::PageBackground::Theme,
@@ -335,6 +336,33 @@ fn history_lists_opened_files_newest_first_and_reopens_one() {
     let open = app.reader.as_ref().unwrap().file().map(reader::canonical);
     assert_eq!(open, Some(reader::canonical(&a)));
     assert_eq!(app.opened, [a, b]);
+}
+
+#[test]
+fn history_off_keeps_no_list_but_back_still_works() {
+    let dir = tempfile::tempdir().unwrap();
+    let (a, b) = (dir.path().join("a.md"), dir.path().join("b.md"));
+    std::fs::write(&a, "# A\n").unwrap();
+    std::fs::write(&b, "# B\n").unwrap();
+    let s = Settings {
+        history: false,
+        ..settings()
+    };
+    let reader = s.open(&a, "a.md".into()).unwrap();
+    let mut app = App::read(reader, s);
+    app.on_reader_action(reader::Action::OpenDocument {
+        path: b,
+        anchor: None,
+    });
+    assert!(app.opened.is_empty());
+    press(&mut app, KeyCode::Char('H'));
+    let r = app.reader.as_ref().unwrap();
+    assert!(r.overlay.is_none());
+    assert_eq!(r.message(), Some("history is off (history = false)"));
+    // Going back from the opened document doesn't depend on the list.
+    press(&mut app, KeyCode::Esc);
+    let open = app.reader.as_ref().unwrap().file().map(reader::canonical);
+    assert_eq!(open, Some(reader::canonical(&a)));
 }
 
 #[cfg(unix)]

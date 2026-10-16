@@ -160,10 +160,7 @@ mod tests {
     fn pane(p: &ThemePicker, w: u16, h: u16) -> Vec<String> {
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| draw(f, &Theme::dark(), p, f.area())).unwrap();
-        let buf = term.backend().buffer();
-        (0..h)
-            .map(|y| (0..w).map(|x| buf[(x, y)].symbol()).collect())
-            .collect()
+        crate::ui::rows(term.backend().buffer())
     }
 
     fn row<'a>(rows: &'a [String], name: &str) -> &'a str {
@@ -225,7 +222,7 @@ mod tests {
         let mut term = Terminal::new(TestBackend::new(DEFAULT_WIDTH, 30)).unwrap();
         term.draw(|f| draw(f, &t, &p, f.area())).unwrap();
         let buf = term.backend().buffer();
-        let row: String = (0..DEFAULT_WIDTH).map(|x| buf[(x, 0)].symbol()).collect();
+        let row = &crate::ui::rows(buf)[0];
         let title = row.find("Themes").unwrap() as u16;
         assert_eq!(buf[(title, 0)].fg, t.accent);
         let count = row.find(&format!("/{}", p.entries.len())).unwrap() as u16;
@@ -245,12 +242,10 @@ mod tests {
         term.draw(|f| draw(f, &Theme::dark(), &p, f.area()))
             .unwrap();
         let buf = term.backend().buffer();
-        let y = (0..40)
-            .find(|&y| {
-                let row: String = (0..42).map(|x| buf[(x, y)].symbol()).collect();
-                row.contains(" rose-pine-dawn ")
-            })
-            .unwrap();
+        let y = crate::ui::rows(buf)
+            .iter()
+            .position(|row| row.contains(" rose-pine-dawn "))
+            .unwrap() as u16;
         let x = (0..42).find(|&x| buf[(x, y)].symbol() == "█").unwrap();
         assert_eq!(buf[(x, y)].bg, light.surface);
         assert_eq!(buf[(x - 1, y)].bg, light.surface);

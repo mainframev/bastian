@@ -365,9 +365,9 @@ mod tests {
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| status::help(f, &Theme::dark(), f.area(), HELP, scroll))
             .unwrap();
-        let buf = term.backend().buffer();
-        (0..h)
-            .map(|y| (0..w).map(|x| buf[(x, y)].symbol()).collect::<String>() + "\n")
+        crate::ui::rows(term.backend().buffer())
+            .into_iter()
+            .map(|row| row + "\n")
             .collect()
     }
 
@@ -403,7 +403,7 @@ mod tests {
         let mut term = Terminal::new(TestBackend::new(100, 20)).unwrap();
         term.draw(|f| draw_with(f, &mut r, Some(&mut p))).unwrap();
         let buf = term.backend().buffer();
-        let status: String = (0..100).map(|x| buf[(x, 19)].symbol()).collect();
+        let status = &crate::ui::rows(buf)[19];
         assert!(status.contains(super::super::picker::HINT), "{status}");
         assert!(!status.contains("reloaded"), "{status}");
     }

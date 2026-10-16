@@ -362,13 +362,7 @@ mod tests {
     use ratatui::backend::TestBackend;
 
     use super::*;
-
-    fn rows(t: &Terminal<TestBackend>) -> Vec<String> {
-        let buf = t.backend().buffer();
-        (0..buf.area.height)
-            .map(|y| (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect())
-            .collect()
-    }
+    use crate::ui::rows;
 
     const SECTIONS: &[HelpSection] = &[
         ("Move", &[("j/k", "scroll")]),
@@ -381,7 +375,7 @@ mod tests {
         let mut term = Terminal::new(TestBackend::new(80, 20)).unwrap();
         term.draw(|f| help(f, &Theme::dark(), f.area(), SECTIONS, &mut 0))
             .unwrap();
-        let screen = rows(&term);
+        let screen = rows(term.backend().buffer());
         assert!(screen.iter().any(|r| r.contains(" Help ")), "{screen:#?}");
         let version = format!("bastian {}", env!("CARGO_PKG_VERSION"));
         assert!(screen.iter().any(|r| r.contains(&version)), "{screen:#?}");
@@ -401,7 +395,7 @@ mod tests {
         let mut term = Terminal::new(TestBackend::new(30, 20)).unwrap();
         term.draw(|f| help(f, &Theme::dark(), f.area(), SECTIONS, &mut 0))
             .unwrap();
-        let screen = rows(&term);
+        let screen = rows(term.backend().buffer());
         let move_row = screen.iter().position(|r| r.contains("Move"));
         let search_row = screen.iter().position(|r| r.contains("Search"));
         assert!(move_row < search_row, "{screen:#?}");
@@ -414,7 +408,7 @@ mod tests {
         let mut term = Terminal::new(TestBackend::new(30, 10)).unwrap();
         term.draw(|f| list_popup(f, &theme, f.area(), " t ", lines.clone(), 15, 4))
             .unwrap();
-        let screen = rows(&term);
+        let screen = rows(term.backend().buffer());
         let marked: Vec<&String> = screen.iter().filter(|r| r.contains('▶')).collect();
         assert_eq!(marked.len(), 1, "{screen:#?}");
         assert!(marked[0].contains("▶ item 15"), "{screen:#?}");
@@ -451,7 +445,7 @@ mod tests {
             let mut term = Terminal::new(TestBackend::new(w, 1)).unwrap();
             term.draw(|f| draw(f, f.area(), &Theme::dark(), Left::Hints(hints), "1/2"))
                 .unwrap();
-            rows(&term).remove(0)
+            rows(term.backend().buffer()).remove(0)
         };
         let wide = bar(40);
         assert!(wide.contains("bastian") && wide.contains("1/2"), "{wide}");

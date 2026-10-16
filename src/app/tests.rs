@@ -578,3 +578,145 @@ fn a_resize_lays_the_next_frame_out_at_the_new_size() {
     let frame = out.chunks().pop().unwrap();
     assert!(frame.windows(4).any(|w| w == b"\x1b[2J"), "{frame:?}");
 }
+
+impl run::Input for std::collections::VecDeque<Event> {
+    fn ready(&mut self) -> std::io::Result<bool> {
+        Ok(!self.is_empty())
+    }
+
+    fn read(&mut self) -> std::io::Result<Event> {
+        self.pop_front()
+            .ok_or_else(|| std::io::Error::other("no event waiting"))
+    }
+}
+
+fn key(code: KeyCode) -> Event {
+    Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
+}
+
+/// An app reading 50 short paragraphs, laid out at 80x10.
+fn long_read() -> App {
+    let s = settings();
+    let src: String = (0..50).map(|i| format!("line {i}\n\n")).collect();
+    let mut reader = reader_in(&s, doc::parse(&src), PathBuf::from("."));
+    reader.layout(80, 10);
+    App::read(reader, s)
+}
+
+/// Handle `events` as the run loop does: the first, then a batch of those
+/// waiting behind it. Returns what was handled and the events left.
+fn batch(app: &mut App, events: &[Event]) -> (run::Handled, Vec<Event>) {
+    let mut waiting: std::collections::VecDeque<Event> = events.iter().cloned().collect();
+    let first = waiting.pop_front().unwrap();
+    let handled = run::handle_batch(app, &mut waiting, first).unwrap();
+    (handled, waiting.into())
+}
+
+#[test]
+fn waiting_scroll_keys_are_handled_together_in_order() {
+    let mut app = long_read();
+    let end = app.reader.as_ref().unwrap().max_scroll();
+    let (handled, left) = batch(
+        &mut app,
+        &[
+            key(KeyCode::Char('G')),
+            key(KeyCode::Char('k')),
+            key(KeyCode::Char('k')),
+        ],
+    );
+    assert!(left.is_empty());
+    assert!(handled.redraw && !handled.quit);
+    // G first, then up twice: in any other order the view would end at G.
+    assert_eq!(app.reader.as_ref().unwrap().scroll(), end - 2);
+}
+
+#[test]
+fn a_batch_stops_at_the_cap() {
+    let mut app = long_read();
+    let held = vec![wheel(MouseEventKind::ScrollDown); run::BATCH + 10];
+    let (_, left) = batch(&mut app, &held);
+    assert_eq!(left.len(), 10);
+}
+
+#[test]
+fn anything_but_a_scroll_waits_for_the_frame_before_it() {
+    let j = || key(KeyCode::Char('j'));
+    // Line numbers narrow the text, and s picks a link from the view: they
+    // wait for the frame that shows the j before them.
+    for code in [KeyCode::Char('#'), KeyCode::Char('s')] {
+        let mut app = long_read();
+        let (handled, left) = batch(&mut app, &[j(), key(code), j()]);
+        assert!(handled.redraw);
+        assert_eq!(handled.next, Some(key(code)));
+        assert_eq!(left, [j()]);
+        let r = app.reader.as_ref().unwrap();
+        assert!(!r.line_numbers && r.link_focus.is_none());
+    }
+
+    // So does a resize.
+    let mut app = long_read();
+    let (handled, left) = batch(&mut app, &[j(), Event::Resize(40, 12), j()]);
+    assert_eq!(handled.resize, None);
+    assert_eq!(handled.next, Some(Event::Resize(40, 12)));
+    assert_eq!(left, [j()]);
+    // Handled first in the next batch, it's passed on, and drawn before
+    // the keys behind it.
+    let (handled, left) = batch(&mut app, &[Event::Resize(40, 12), j()]);
+    assert_eq!(handled.resize, Some(ratatui::layout::Size::new(40, 12)));
+    assert_eq!(left, [j()]);
+
+    // Quitting reads nothing after it.
+    let mut app = long_read();
+    let (handled, left) = batch(&mut app, &[key(KeyCode::Char('q')), j()]);
+    assert!(handled.quit);
+    assert_eq!(left, [j()]);
+
+    // An Overlay takes the keys after it: they wait for it to be drawn.
+    let mut app = long_read();
+    let slash = key(KeyCode::Char('/'));
+    let (handled, left) = batch(&mut app, &[slash, j(), j()]);
+    assert_eq!(handled.next, None);
+    assert_eq!(left, [j(), j()]);
+}
+
+#[test]
+fn keys_counted_as_scrolling_only_scroll() {
+    let codes = (' '..='~').map(KeyCode::Char).chain([
+        KeyCode::Up,
+        KeyCode::Down,
+        KeyCode::PageUp,
+        KeyCode::PageDown,
+        KeyCode::Home,
+        KeyCode::End,
+        KeyCode::Enter,
+        KeyCode::Esc,
+        KeyCode::Tab,
+    ]);
+    let mut scrolling = 0;
+    for code in codes {
+        for modifiers in [KeyModifiers::NONE, KeyModifiers::CONTROL] {
+            let mut app = long_read();
+            let k = KeyEvent::new(code, modifiers);
+            if !app.only_moves(&Event::Key(k)) {
+                continue;
+            }
+            scrolling += 1;
+            assert!(app.on_event(&Event::Key(k)), "{k:?}");
+            let r = app.reader.as_ref().unwrap();
+            let still = r.overlay.is_none()
+                && r.focus.is_none()
+                && r.link_focus.is_none()
+                && r.details_focus.is_none()
+                && r.search.is_none()
+                && !r.toc
+                && !r.line_numbers
+                && r.message().is_none()
+                && app.edit.is_none()
+                && !app.suspend
+                && app.picker.is_none();
+            assert!(still, "{k:?} did more than scroll");
+        }
+    }
+    // j k space f b g G, ctrl-d ctrl-u, and the arrows and paging keys.
+    assert!(scrolling >= 15, "{scrolling}");
+}

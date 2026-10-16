@@ -419,3 +419,25 @@ fn html_formatting_elements_style_like_markdown() {
     };
     assert_eq!(plain_text(md), plain_text(inl));
 }
+
+#[test]
+fn math_reads_as_in_markdown() {
+    let src = "# Euler $e^{i\\pi}$\n\n\
+               Since $\\alpha^2 \\leq \\beta_1$, it costs $5 and $10.\n\n\
+               $$\n\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}\n$$\n\n\
+               Before $$\\sqrt{x}$$ after, *$$y$$* stays inline.\n\n\
+               ```math\n\\int_0^1 f\\,dx\n```\n\n\
+               | a |\n|---|\n| $x_2$ |\n\n\
+               Unknown $\\foo{x}$ stays.\n";
+    let mdx = parse(src).unwrap();
+    let md = crate::doc::parse(src);
+    assert_eq!(mdx.blocks, md.blocks);
+    assert_eq!(mdx.blocks[2], Block::Math("∑ᵢ₌₁ⁿ i = (n(n+1))/2".into()));
+    assert_eq!(
+        plain_text(match &mdx.blocks[1] {
+            Block::Paragraph(inl) => inl,
+            b => panic!("expected paragraph, got {b:?}"),
+        }),
+        "Since α² ≤ β₁, it costs $5 and $10."
+    );
+}

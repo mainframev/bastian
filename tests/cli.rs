@@ -210,6 +210,27 @@ fn front_matter_prints_as_a_table_unless_hidden() {
 }
 
 #[test]
+fn printing_shows_math_the_same_for_markdown_and_mdx() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = "Since $\\alpha^2 \\leq \\beta$:\n\n$$\n\\frac{a+b}{2} \\to \\infty\n$$\n";
+    let mut printed = Vec::new();
+    for name in ["a.md", "a.mdx"] {
+        let doc = dir.path().join(name);
+        std::fs::write(&doc, src).unwrap();
+        let out = bastian(dir.path(), &["-p", "-w", "20", doc.to_str().unwrap()], &[]);
+        assert!(out.status.success(), "{}", stderr(&out));
+        printed.push(stdout(&out));
+    }
+    assert_eq!(printed[0], printed[1]);
+    // Display math is centered on its own line.
+    assert!(
+        printed[0].contains("Since α² ≤ β:\n\n    (a+b)/2 → ∞\n"),
+        "{}",
+        printed[0]
+    );
+}
+
+#[test]
 fn reads_stdin() {
     let dir = tempfile::tempdir().unwrap();
     let out = bastian_with_stdin(

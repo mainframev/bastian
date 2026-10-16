@@ -276,7 +276,7 @@ const HELP: &[status::HelpSection] = &[
     (
         "Navigation",
         &[
-            ("j/k  ↓/↑", "scroll"),
+            ("j/k  ↓/↑", "scroll; ToC: heading"),
             ("ctrl-d/u", "half page"),
             ("space/b", "page down/up"),
             ("g/G, :", "top/bottom, go to line"),

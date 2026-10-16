@@ -536,20 +536,9 @@ impl Builder {
         else {
             return;
         };
-        let summary = summary.unwrap_or_else(|| {
-            vec![Inline {
-                text: "Details".into(),
-                style: InlineStyle::default(),
-            }]
-        });
         // At the root, the block belongs to the line of its opening tag.
         let start = std::mem::replace(&mut self.block_start, line);
-        self.push_block(Block::Details {
-            id: 0,
-            open,
-            summary,
-            blocks,
-        });
+        self.push_block(super::details(open, summary, blocks));
         self.block_start = start;
     }
 

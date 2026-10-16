@@ -235,6 +235,23 @@ fn code_block(info: &str, src: String) -> Block {
     })
 }
 
+/// A details block with its `blocks`, summed up as "Details" when it has
+/// no `<summary>`.
+fn details(open: bool, summary: Option<Vec<Inline>>, blocks: Vec<Block>) -> Block {
+    let summary = summary.unwrap_or_else(|| {
+        vec![Inline {
+            text: "Details".into(),
+            style: InlineStyle::default(),
+        }]
+    });
+    Block::Details {
+        id: 0,
+        open,
+        summary,
+        blocks,
+    }
+}
+
 /// Language token of a fence info string: `sh {name=x}` and `sh{name=x}` give `sh`.
 fn lang_of(info: &str) -> Option<String> {
     let lang = info

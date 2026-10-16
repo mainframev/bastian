@@ -292,18 +292,7 @@ impl Mapper<'_> {
             }
             children => (None, self.blocks(children, depth + 1)),
         };
-        let summary = summary.unwrap_or_else(|| {
-            vec![Inline {
-                text: "Details".into(),
-                style: InlineStyle::default(),
-            }]
-        });
-        Block::Details {
-            id: 0,
-            open,
-            summary,
-            blocks: rest,
-        }
+        super::details(open, summary, rest)
     }
 
     /// An item's blocks, at the `depth` of the item itself.

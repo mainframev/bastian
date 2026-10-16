@@ -29,8 +29,7 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
     // screen too narrow for the document beside it, the picker covers it.
     let [top, status] =
         Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
-    let side = picker.as_deref_mut().map_or(0, |p| p.fit(top.width));
-    let docked = if side < top.width { side } else { 0 };
+    let (side, docked) = super::picker::dock(picker.as_deref_mut(), top.width);
     let pane = r.fit_toc_beside(top.width, docked);
     let [toc, main, _] = Layout::horizontal([
         Constraint::Length(pane),
@@ -209,14 +208,7 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
     if pane > 0 {
         draw_toc(frame, r, toc);
     }
-    if let Some(p) = &picker {
-        let area = Rect {
-            x: top.right() - side,
-            width: side,
-            ..top
-        };
-        super::picker::draw(frame, r.theme(), p, area);
-    }
+    super::picker::draw_docked(frame, r.theme(), picker.as_deref(), top, side);
 
     let pct = if r.max_scroll() == 0 {
         100

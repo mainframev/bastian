@@ -4,6 +4,7 @@ use anyhow::Result;
 use ratatui::crossterm::event::{self, Event, KeyEventKind, MouseButton, MouseEventKind};
 
 use super::App;
+use super::screen::draw_frame;
 use super::terminal::{Tui, suspend};
 use crate::ui;
 
@@ -41,7 +42,7 @@ pub fn run(terminal: &mut Tui, mut app: App) -> Result<Option<String>> {
             redraw |= b.tick();
         }
         if std::mem::take(&mut redraw) {
-            terminal.draw(|f| {
+            draw_frame(terminal, |f| {
                 let picker = app.picker.as_mut().map(|(p, _)| p);
                 if let Some(r) = &mut app.reader {
                     ui::reader::draw_with(f, r, picker);

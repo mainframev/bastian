@@ -1,23 +1,16 @@
-use std::io::{BufWriter, Stdout};
+use std::io::{self, Stdout};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{Context, Result};
 use ratatui::Terminal;
-use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{EnterAlternateScreen, enable_raw_mode};
 
-/// The terminal the TUI draws on. Frames go through a buffer big enough
-/// for a whole screen, so each goes out in one write rather than in the
-/// pieces stdout's line buffer would cut it into. ratatui flushes it at
-/// the end of every draw, so nothing is left in it between frames for
-/// writes straight to stdout (OSC 52, leaving the terminal) to overtake.
-pub type Tui = Terminal<CrosstermBackend<BufWriter<Stdout>>>;
+use super::screen::Screen;
 
-/// Bytes buffered per frame: a full 200x50 screen of styled text is about
-/// 13 KB, so this holds most frames whole.
-const FRAME_BUFFER: usize = 64 * 1024;
+/// The terminal the TUI draws on.
+pub type Tui = Terminal<Screen<Stdout>>;
 
 /// Whether mouse capture is on, for the panic hook to undo.
 static MOUSE: AtomicBool = AtomicBool::new(false);
@@ -28,15 +21,14 @@ static MOUSE: AtomicBool = AtomicBool::new(false);
 /// leaves the terminal as it was.
 pub fn enter_terminal(mouse: bool) -> Result<Tui> {
     install_panic_hook();
-    let setup = || -> std::io::Result<Tui> {
+    let setup = || -> io::Result<Tui> {
         enable_raw_mode()?;
-        execute!(std::io::stdout(), EnterAlternateScreen)?;
+        execute!(io::stdout(), EnterAlternateScreen)?;
         if mouse {
-            execute!(std::io::stdout(), EnableMouseCapture)?;
+            execute!(io::stdout(), EnableMouseCapture)?;
             MOUSE.store(true, Ordering::Relaxed);
         }
-        let out = BufWriter::with_capacity(FRAME_BUFFER, std::io::stdout());
-        Terminal::new(CrosstermBackend::new(out))
+        Terminal::new(Screen::new(io::stdout()))
     };
     setup()
         .inspect_err(|_| leave_terminal(mouse))
@@ -54,7 +46,7 @@ fn install_panic_hook() {
             // ratatui's restore doesn't undo mouse capture, which would
             // leave the shell printing escapes on every click.
             if MOUSE.load(Ordering::Relaxed) {
-                let _ = execute!(std::io::stdout(), DisableMouseCapture);
+                let _ = execute!(io::stdout(), DisableMouseCapture);
             }
             ratatui::restore();
             previous(info);
@@ -64,7 +56,7 @@ fn install_panic_hook() {
 
 pub fn leave_terminal(mouse: bool) {
     if mouse {
-        let _ = execute!(std::io::stdout(), DisableMouseCapture);
+        let _ = execute!(io::stdout(), DisableMouseCapture);
         MOUSE.store(false, Ordering::Relaxed);
     }
     ratatui::restore();

@@ -1,38 +1,62 @@
-use anyhow::Result;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use anyhow::{Context, Result};
 use ratatui::DefaultTerminal;
+use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use ratatui::crossterm::execute;
+use ratatui::crossterm::terminal::{EnterAlternateScreen, enable_raw_mode};
 
-/// Take over the terminal: ratatui's setup, plus mouse capture when the
-/// mouse option is on. Undo with `leave_terminal`.
+/// Whether mouse capture is on, for the panic hook to undo.
+static MOUSE: AtomicBool = AtomicBool::new(false);
+
+/// Take over the terminal: raw mode and the alternate screen, as
+/// `ratatui::init` does, plus mouse capture when the mouse option is on.
+/// Undo with `leave_terminal`. An error (no controlling terminal, say)
+/// leaves the terminal as it was.
 pub fn enter_terminal(mouse: bool) -> Result<DefaultTerminal> {
-    let terminal = ratatui::init();
-    if mouse {
-        // ratatui's panic hook restores the screen but not mouse capture,
-        // which would leave the shell printing escapes on every click.
-        static HOOK: std::sync::Once = std::sync::Once::new();
-        HOOK.call_once(|| {
-            let restore = std::panic::take_hook();
-            std::panic::set_hook(Box::new(move |info| {
-                let _ = execute!(std::io::stdout(), DisableMouseCapture);
-                restore(info);
-            }));
-        });
-        if let Err(e) = execute!(std::io::stdout(), EnableMouseCapture) {
-            leave_terminal(mouse);
-            return Err(e.into());
+    install_panic_hook();
+    let setup = || -> std::io::Result<DefaultTerminal> {
+        enable_raw_mode()?;
+        execute!(std::io::stdout(), EnterAlternateScreen)?;
+        if mouse {
+            execute!(std::io::stdout(), EnableMouseCapture)?;
+            MOUSE.store(true, Ordering::Relaxed);
         }
-    }
-    Ok(terminal)
+        Terminal::new(CrosstermBackend::new(std::io::stdout()))
+    };
+    setup()
+        .inspect_err(|_| leave_terminal(mouse))
+        .context("taking over the terminal")
+}
+
+/// Restore the terminal before a panic message prints. Installed once:
+/// `ratatui::init` adds a hook on every call, and the terminal is taken
+/// over again after each editor round trip and ctrl-z.
+fn install_panic_hook() {
+    static HOOK: std::sync::Once = std::sync::Once::new();
+    HOOK.call_once(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            // ratatui's restore doesn't undo mouse capture, which would
+            // leave the shell printing escapes on every click.
+            if MOUSE.load(Ordering::Relaxed) {
+                let _ = execute!(std::io::stdout(), DisableMouseCapture);
+            }
+            ratatui::restore();
+            previous(info);
+        }));
+    });
 }
 
 pub fn leave_terminal(mouse: bool) {
     if mouse {
         let _ = execute!(std::io::stdout(), DisableMouseCapture);
+        MOUSE.store(false, Ordering::Relaxed);
     }
     ratatui::restore();
 }
-
 /// Give the terminal back to the shell while `f` runs, then take it over
 /// again with a clean screen.
 pub(super) fn with_terminal_released<T>(

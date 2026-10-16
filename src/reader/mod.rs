@@ -505,12 +505,6 @@ impl Reader {
         self.scroll
     }
 
-    /// Put rendered line `line` at the top of the view, as far as the
-    /// document allows. Counts as the user moving: it ends a restore.
-    pub fn scroll_to(&mut self, line: usize) {
-        self.jump_to(line);
-    }
-
     /// The one-shot status bar message, if any.
     pub fn message(&self) -> Option<&str> {
         self.message.as_deref()
@@ -610,7 +604,7 @@ impl Reader {
         }
         if let Some(anchor) = self.pending_anchor.take() {
             match self.heading_line(&anchor) {
-                Some(line) => self.jump_to(line),
+                Some(line) => self.scroll_to(line),
                 None => self.message = Some(format!("no heading #{anchor}")),
             }
         }

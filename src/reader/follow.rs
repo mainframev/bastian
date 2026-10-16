@@ -139,7 +139,7 @@ impl Reader {
             Target::External(target) => self.open_external(target),
             Target::Anchor(anchor) => {
                 match self.heading_line(&anchor) {
-                    Some(line) => self.jump_to(line),
+                    Some(line) => self.scroll_to(line),
                     None => self.message = Some(format!("no heading #{anchor}")),
                 }
                 Action::None

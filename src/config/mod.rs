@@ -44,6 +44,8 @@ pub struct Config {
     pub all: Option<bool>,
     /// Scroll with the mouse wheel.
     pub mouse: Option<bool>,
+    /// Show a document's front matter as a table, or hide it.
+    pub front_matter: Option<FrontMatter>,
     /// Show the logo at the top of the file browser.
     pub logo: Option<bool>,
     /// Show pictures for images in documents, where the terminal can.
@@ -90,6 +92,17 @@ pub enum PageBackground {
     #[default]
     Theme,
     Terminal,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum FrontMatter {
+    // A table of its keys and values at the top of the document (the
+    // default), or nothing. A plain comment: a doc comment would switch
+    // `--help` to clap's long layout.
+    #[default]
+    Table,
+    Hide,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, clap::ValueEnum)]

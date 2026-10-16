@@ -29,6 +29,7 @@ tab_width = 4         # columns per tab in code
 hyperlinks = true     # clickable links (OSC 8)
 scrollbar = true      # show scrollbars
 mouse = false         # scroll with the mouse wheel (--mouse)
+front_matter = "table"  # front matter as a key/value table, or "hide" it (--front-matter)
 remember_position = true  # reopen files where you left off
 
 # File list

@@ -86,6 +86,7 @@ impl Settings {
                     tab_width: r.tab_width.value,
                     ..render::Options::default()
                 },
+                front_matter: r.front_matter.value == config::FrontMatter::Table,
                 hyperlinks: r.hyperlinks.value,
                 scrollbar: r.scrollbar.value,
                 images: images.clone(),

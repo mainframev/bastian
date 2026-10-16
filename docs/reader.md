@@ -227,7 +227,24 @@ run in the current directory and always ask first, even with `--yes`. Set
 
 ## MDX and front matter
 
-`.mdx` files are parsed as MDX: front matter, `import`/`export` and
-`{/* comments */}` are hidden, components show as muted tag lines around their
-rendered content, and code blocks inside components can still be run. Front
-matter is hidden in plain `.md` files too.
+`.mdx` files are parsed as MDX: `import`/`export` and `{/* comments */}` are
+hidden, components show as muted tag lines around their rendered content, and
+code blocks inside components can still be run.
+
+YAML (`---`) and TOML (`+++`) front matter, in `.md` and `.mdx` files alike,
+shows at the top of the document as a table of its keys and values:
+
+```text {norun}
+ Key             │ Value
+─────────────────┼─────────────────────
+ title           │ Release notes
+ tags            │ rust, cli
+ seo.description │ What changed in 0.4
+```
+
+Lists are joined with commas, nested keys are written `parent.child`, and the
+tables of a TOML array of tables show as `{key: value}`. Front matter that can't be read
+this way, such as YAML with a list of maps, shows as its source in a code block
+instead. `front_matter = "hide"` (or `--front-matter hide`,
+`BASTIAN_FRONT_MATTER=hide`) leaves it out. Either way, a `title:` in it still
+names the file in the [file list](file-list.md).

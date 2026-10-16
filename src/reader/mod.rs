@@ -203,6 +203,8 @@ pub struct Options {
     pub line_numbers: bool,
     /// Image size and tab width settings.
     pub render: render::Options,
+    /// Show the front matter table; off leaves it out.
+    pub front_matter: bool,
     /// Make links clickable terminal hyperlinks.
     pub hyperlinks: bool,
     /// Show a scrollbar when the document overflows.
@@ -228,6 +230,7 @@ impl Default for Options {
             interpreters: Interpreters::default(),
             line_numbers: false,
             render: render::Options::default(),
+            front_matter: true,
             hyperlinks: true,
             scrollbar: true,
             images: None,
@@ -326,6 +329,8 @@ pub struct Reader {
     as_source: HashSet<usize>,
     /// Image size and tab width settings.
     render_opts: render::Options,
+    /// Show the front matter table.
+    front_matter: bool,
     /// Make links clickable terminal hyperlinks.
     pub hyperlinks: bool,
     /// Show a scrollbar when the document overflows.
@@ -359,6 +364,10 @@ impl Reader {
             file,
             remote_base,
         } = source;
+        let mut doc = doc;
+        if !opts.front_matter {
+            doc.hide_front_matter();
+        }
         let codes = collect_code(&doc.blocks);
         let code_file = doc.code_file;
         // Only files are remembered, and never where a source file was.
@@ -415,6 +424,7 @@ impl Reader {
             as_source: HashSet::new(),
             details_focus: None,
             render_opts: opts.render,
+            front_matter: opts.front_matter,
             hyperlinks: opts.hyperlinks,
             scrollbar: opts.scrollbar,
             hyperlink_targets: Vec::new(),

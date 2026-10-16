@@ -33,7 +33,10 @@ impl Reader {
 
     /// Swap in a new version of the document, keeping scroll and any run
     /// state whose block still exists.
-    pub fn replace_doc(&mut self, doc: Document) {
+    pub fn replace_doc(&mut self, mut doc: Document) {
+        if !self.front_matter {
+            doc.hide_front_matter();
+        }
         let codes = collect_code(&doc.blocks);
         let moved = match_blocks(&self.codes, &codes);
         // A pending prompt or queue names blocks by index. Once the blocks
@@ -154,6 +157,20 @@ mod tests {
         assert_eq!(r.as_source.iter().collect::<Vec<_>>(), [&1]);
         r.replace_doc(parse("```sh\necho new\n```\n"));
         assert!(r.as_source.is_empty(), "the diagram is gone");
+    }
+
+    #[test]
+    fn hidden_front_matter_stays_hidden_on_reload() {
+        let opts = Options {
+            front_matter: false,
+            ..Options::default()
+        };
+        let src = "---\ntitle: x\n---\n\n```sh\necho a\n```\n";
+        let mut r = Reader::new(Source::in_memory("t", parse(src)), &opts);
+        assert!(matches!(&r.doc().blocks[..], [crate::doc::Block::Code(c)] if c.id == 0));
+        r.replace_doc(parse("---\ntitle: y\n---\n\n```sh\necho b\n```\n"));
+        assert!(!r.doc().front_matter);
+        assert_eq!(r.doc().blocks.len(), 1);
     }
 
     fn settle(r: &mut Reader) {

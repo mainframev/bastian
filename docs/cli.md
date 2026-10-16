@@ -62,6 +62,7 @@ instead of opening the TUI.
 | `-y`, `--yes`              | run code blocks without asking ([code blocks](code-blocks.md))       |
 | `--mouse`                  | scroll with the mouse wheel                                          |
 | `--images <on\|off>`       | draw pictures, or keep alt text                                      |
+| `--front-matter <HOW>`     | `table` or `hide` ([front matter](reader.md#mdx-and-front-matter))   |
 | `--no-logo`                | hide the logo above the file list                                    |
 | `--selector <STYLE>`       | how the file list marks the selected file                            |
 | `--list-layout <LAYOUT>`   | `cards` or `compact` file list                                       |

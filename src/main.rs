@@ -97,16 +97,9 @@ fn main() -> Result<()> {
         resolved.dark_theme.value = themes::DEFAULT_DARK.into();
         resolved.light_theme.value = themes::DEFAULT_LIGHT.into();
     }
-    let theme_files = app::ThemeFiles {
-        dir: themes_dir.clone(),
-        config: located.as_ref().map(|(p, _)| p.clone()),
-        current: String::new(),
-        overridden_by: match resolved.theme.source {
-            config::Source::Flag => Some("--theme".into()),
-            config::Source::Env => Some(config::env_var("theme")),
-            _ => None,
-        },
-    };
+    let theme_source = resolved.theme.source;
+    let overridden_by = matches!(theme_source, config::Source::Flag | config::Source::Env)
+        .then(|| config::theme_origin("theme", theme_source));
     let out = output::Output {
         width: output::print_width(
             &resolved.width,
@@ -126,8 +119,10 @@ fn main() -> Result<()> {
         stdout_tty,
     )?;
     let theme_files = app::ThemeFiles {
+        dir: themes_dir,
+        config: located.map(|(p, _)| p),
         current,
-        ..theme_files
+        overridden_by,
     };
 
     if pick_theme {

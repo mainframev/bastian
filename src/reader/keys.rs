@@ -164,6 +164,28 @@ impl Reader {
         Action::None
     }
 
+    /// Whether `key` does nothing but scroll the view (through `scroll_by`
+    /// or `scroll_to`): a scroll key with no Overlay open. Kept beside
+    /// `on_key` so the two agree.
+    pub(crate) fn only_scrolls(&self, key: &KeyEvent) -> bool {
+        if self.overlay.is_some() {
+            return false;
+        }
+        let ctrl = nav::ctrl(key);
+        match key.code {
+            KeyCode::Char('d' | 'u') => ctrl,
+            KeyCode::Char('g') => !ctrl,
+            // With the table of contents open, j and k move through it.
+            KeyCode::Char('j' | 'k') | KeyCode::Down | KeyCode::Up => !self.toc,
+            KeyCode::Char(' ' | 'f' | 'b' | 'G')
+            | KeyCode::PageDown
+            | KeyCode::PageUp
+            | KeyCode::Home
+            | KeyCode::End => true,
+            _ => false,
+        }
+    }
+
     /// Nothing focused and no search: Esc has nothing left to dismiss.
     fn reading_plainly(&self) -> bool {
         self.link_focus.is_none()

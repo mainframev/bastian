@@ -213,6 +213,25 @@ impl App {
         }
     }
 
+    /// Whether `event` only moves the open reader's view: the wheel, or a
+    /// scroll key with no Overlay or theme picker open. It changes no
+    /// layout, so the next event can be handled before a draw.
+    fn only_moves(&self, event: &Event) -> bool {
+        let Some(r) = &self.reader else {
+            return false;
+        };
+        match event {
+            Event::Mouse(m) => matches!(
+                m.kind,
+                MouseEventKind::ScrollDown | MouseEventKind::ScrollUp
+            ),
+            Event::Key(k) => {
+                k.kind == KeyEventKind::Press && self.picker.is_none() && r.only_scrolls(k)
+            }
+            _ => false,
+        }
+    }
+
     /// Returns false when the app should exit.
     fn on_event(&mut self, event: &Event) -> bool {
         if let Event::Mouse(m) = event {

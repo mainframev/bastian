@@ -33,31 +33,26 @@ pub fn list(dir: Option<&Path>) -> Vec<Listing> {
         })
         .collect();
     user.sort();
+    // User files load from `dir`, built-ins from nowhere else.
+    let listing = |name: String, path: Option<PathBuf>, overrides| Listing {
+        theme: load(&name, path.as_ref().and(dir)),
+        name,
+        path,
+        overrides,
+    };
     let mut rows: Vec<Listing> = builtin_names()
         .map(|name| match user.iter().position(|(n, _)| n == name) {
             Some(i) => {
                 let (name, path) = user.remove(i);
-                Listing {
-                    theme: load(&name, dir),
-                    name,
-                    path: Some(path),
-                    overrides: true,
-                }
+                listing(name, Some(path), true)
             }
-            None => Listing {
-                name: name.to_string(),
-                path: None,
-                overrides: false,
-                theme: load(name, None),
-            },
+            None => listing(name.to_string(), None, false),
         })
         .collect();
-    rows.extend(user.into_iter().map(|(name, path)| Listing {
-        theme: load(&name, dir),
-        name,
-        path: Some(path),
-        overrides: false,
-    }));
+    rows.extend(
+        user.into_iter()
+            .map(|(name, path)| listing(name, Some(path), false)),
+    );
     rows
 }
 

@@ -290,7 +290,7 @@ const HELP: &[status::HelpSection] = &[
         "Table of contents",
         &[
             ("t, </>", "show/hide, narrow/widen"),
-            ("1-9, 0", "jump; again: deeper"),
+            ("1-9, 0", "jump; again: walk section"),
         ],
     ),
     ("General", &[("T, H", "themes, history"), ("q", "quit")]),

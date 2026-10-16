@@ -82,7 +82,7 @@ impl Reader {
     pub fn scroll_by(&mut self, delta: isize) {
         self.follow = None;
         // The wheel ends a drill-down too, even at the top or the end.
-        self.toc_by_number = false;
+        self.toc_walk = None;
         let to = self
             .scroll
             .saturating_add_signed(delta)

@@ -23,6 +23,7 @@ pub fn draw(frame: &mut Frame, r: &mut Reader) {
 
 /// `draw`, with the theme picker beside the document when it's open.
 pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut ThemePicker>) {
+    super::paint_page(frame, r.theme());
     // The table of contents, when open, takes the left of everything but
     // the status bar, and the theme picker the right; the document lays
     // out in what's left, so the picker previews it as it will read. On a

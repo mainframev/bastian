@@ -68,6 +68,7 @@ pub fn draw(
     look: Look,
     mut picker: Option<&mut ThemePicker>,
 ) {
+    super::paint_page(frame, t);
     let show_logo = look.logo;
     // The theme picker, when open, takes the right of everything but the
     // status bar, as in the reader, and the list narrows beside it.
@@ -491,5 +492,26 @@ mod tests {
         let guide = row_of(&rows, "Guide");
         assert!(rows[guide + 1].contains("docs/guide.md"), "{text}");
         assert!(rows[guide].find("Guide") < rows[guide].find('│'), "{text}");
+    }
+
+    #[test]
+    fn the_theme_paints_the_page_behind_the_list() {
+        let unpainted = |buf: &ratatui::buffer::Buffer, to: u16| {
+            (0..buf.area.height)
+                .flat_map(|y| (0..to).map(move |x| (x, y)))
+                .filter(|&(x, y)| buf[(x, y)].bg == ratatui::style::Color::Reset)
+                .count()
+        };
+        // The logo, the cards, the scrollbar and the status bar.
+        let look = Look {
+            logo: true,
+            ..look(Selector::Bar, ListLayout::Cards)
+        };
+        let buf = styled_screen(30, look, 20);
+        assert_eq!(unpainted(&buf, 50), 0);
+        // Beside the theme picker too, up to its border.
+        let mut p = ThemePicker::new(None, "nord", crate::picker::DEFAULT_WIDTH);
+        let buf = styled_screen_with(0, look, 20, Some(&mut p));
+        assert_eq!(unpainted(&buf, 27), 0);
     }
 }

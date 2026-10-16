@@ -127,15 +127,11 @@ impl App {
             s.images = Some(crate::images::Support::detect());
         }
         s.reader.images = s.image_support();
+        let state = if s.show_images { "on" } else { "off" };
         let support = s.reader.images.clone();
         for r in self.reader.iter_mut().chain(self.history.iter_mut()) {
             r.set_images(support.clone());
         }
-        let state = if self.settings.show_images {
-            "on"
-        } else {
-            "off"
-        };
         self.set_message(format!("images {state}"));
     }
 

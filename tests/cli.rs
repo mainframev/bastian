@@ -168,6 +168,48 @@ fn printing_is_plain_unless_color_is_asked_for() {
 }
 
 #[test]
+fn front_matter_prints_as_a_table_unless_hidden() {
+    let dir = tempfile::tempdir().unwrap();
+    let doc = dir.path().join("a.md");
+    std::fs::write(
+        &doc,
+        "---\ntitle: Notes\ntags: [rust, cli]\nseo:\n  image: a.png\n---\n\n# Notes\n",
+    )
+    .unwrap();
+    let doc = doc.to_str().unwrap();
+
+    let table = bastian(dir.path(), &["-p", "-w", "40", doc], &[]);
+    assert!(table.status.success(), "{}", stderr(&table));
+    let text = stdout(&table);
+    let top: Vec<&str> = text.lines().take(5).map(str::trim_end).collect();
+    assert_eq!(
+        top,
+        [
+            " Key       │ Value",
+            "───────────┼───────────",
+            " title     │ Notes",
+            " tags      │ rust, cli",
+            " seo.image │ a.png",
+        ],
+        "{text}"
+    );
+
+    for hidden in [
+        bastian(dir.path(), &["-p", "--front-matter", "hide", doc], &[]),
+        bastian(
+            dir.path(),
+            &["-p", doc],
+            &[("BASTIAN_FRONT_MATTER", "hide")],
+        ),
+    ] {
+        assert!(hidden.status.success(), "{}", stderr(&hidden));
+        let text = stdout(&hidden);
+        assert!(!text.contains("Key"), "{text}");
+        assert!(text.contains("Notes"), "{text}");
+    }
+}
+
+#[test]
 fn reads_stdin() {
     let dir = tempfile::tempdir().unwrap();
     let out = bastian_with_stdin(

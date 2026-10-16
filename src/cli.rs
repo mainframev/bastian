@@ -82,6 +82,10 @@ pub struct Cli {
     #[arg(long, value_enum, value_name = "WHICH")]
     pub background: Option<config::PageBackground>,
 
+    /// Show a document's front matter as a table, or hide it [default: table].
+    #[arg(long, value_enum, value_name = "HOW")]
+    pub front_matter: Option<config::FrontMatter>,
+
     /// How the file browser marks the selected file [default: bar].
     #[arg(long, value_enum, value_name = "STYLE")]
     pub selector: Option<config::Selector>,
@@ -173,6 +177,7 @@ impl Cli {
             pager: self.pager.then_some(true),
             all: self.all.then_some(true),
             mouse: self.mouse.then_some(true),
+            front_matter: self.front_matter,
             logo: self.no_logo.then_some(false),
             images: self.images.map(|s| s == Switch::On),
             selector: self.selector,

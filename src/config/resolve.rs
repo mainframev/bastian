@@ -4,8 +4,8 @@ use anyhow::{Result, anyhow};
 
 use super::value::Value;
 use super::{
-    ColorMode, Config, Confirm, DATE_FORMAT, EXTENSIONS, ListLayout, PageBackground, Selector,
-    SortBy,
+    ColorMode, Config, Confirm, DATE_FORMAT, EXTENSIONS, FrontMatter, ListLayout, PageBackground,
+    Selector, SortBy,
 };
 use crate::themes;
 
@@ -54,6 +54,7 @@ pub struct Resolved {
     pub pager: Setting<bool>,
     pub all: Setting<bool>,
     pub mouse: Setting<bool>,
+    pub front_matter: Setting<FrontMatter>,
     pub logo: Setting<bool>,
     pub images: Setting<bool>,
     pub history: Setting<bool>,
@@ -96,6 +97,7 @@ pub fn resolve(file: Config, env: &EnvMap, cli: Config) -> Result<Resolved> {
         pager: set!(pager, false),
         all: set!(all, false),
         mouse: set!(mouse, false),
+        front_matter: set!(front_matter, FrontMatter::default()),
         logo: set!(logo, true),
         images: set!(images, true),
         history: set!(history, true),

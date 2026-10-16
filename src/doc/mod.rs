@@ -1,5 +1,6 @@
 mod attrs;
 mod front_matter;
+mod math;
 mod mdx;
 mod parse;
 
@@ -169,6 +170,9 @@ pub enum Block {
         rows: Vec<Vec<Vec<Inline>>>,
     },
     Rule,
+    /// Display math (`$$…$$` or a `math` fence), its TeX already read as
+    /// Unicode text: one line per row.
+    Math(String),
     /// A muted single-line marker, e.g. an MDX component's opening or
     /// closing tag.
     Label(String),
@@ -242,14 +246,52 @@ pub struct CodeBlock {
     pub src: String,
 }
 
-/// A code block from its fence's `info` string, e.g. `sh {name=x}`.
+/// A code block from its fence's `info` string, e.g. `sh {name=x}`. A
+/// `math` fence is display math, as on GitHub.
 fn code_block(info: &str, src: String) -> Block {
+    let lang = lang_of(info);
+    if lang.as_deref() == Some("math") {
+        return math_block(&src);
+    }
     Block::Code(CodeBlock {
         id: 0,
-        lang: lang_of(info),
+        lang,
         attrs: Attrs::parse(info),
         src,
     })
+}
+
+/// Display math from its TeX source.
+fn math_block(tex: &str) -> Block {
+    Block::Math(math::to_unicode(tex))
+}
+
+/// Append inline math from its TeX source. It reads as emphasis, the
+/// italic TeX sets math in, so it needs no style or theme color of its
+/// own and wraps like the prose around it.
+fn push_math(out: &mut Vec<Inline>, tex: &str, style: &InlineStyle) {
+    let mut style = style.clone();
+    style.emphasis = true;
+    push_inline(out, &math::inline(tex), &style);
+}
+
+/// Trim the whitespace at both ends of a paragraph's `inlines`, dropping
+/// runs left empty: what is left of a paragraph that display math split.
+fn trim_inlines(inlines: &mut Vec<Inline>) {
+    while let Some(first) = inlines.first_mut() {
+        first.text = first.text.trim_start().to_string();
+        if !first.text.is_empty() {
+            break;
+        }
+        inlines.remove(0);
+    }
+    while let Some(last) = inlines.last_mut() {
+        last.text.truncate(last.text.trim_end().len());
+        if !last.text.is_empty() {
+            break;
+        }
+        inlines.pop();
+    }
 }
 
 /// A details block with its `blocks`, summed up as "Details" when it has
@@ -506,7 +548,11 @@ fn each_inlines(blocks: &mut [Block], f: &mut impl FnMut(&mut Vec<Inline>)) {
                     each_inlines(item, f);
                 }
             }
-            Block::Code(_) | Block::Rule | Block::Label(_) | Block::Image { .. } => {}
+            Block::Code(_)
+            | Block::Math(_)
+            | Block::Rule
+            | Block::Label(_)
+            | Block::Image { .. } => {}
         }
     }
 }

@@ -17,7 +17,8 @@ pub fn parse(src: &str) -> Document {
         | Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS
         | Options::ENABLE_GFM
         | Options::ENABLE_FOOTNOTES
-        | Options::ENABLE_WIKILINKS;
+        | Options::ENABLE_WIKILINKS
+        | Options::ENABLE_MATH;
     let newlines: Vec<usize> = src.match_indices('\n').map(|(i, _)| i).collect();
     let line_of = |offset: usize| newlines.partition_point(|&n| n < offset);
     let mut b = Builder::default();
@@ -129,6 +130,9 @@ struct Builder {
     footnote_line: usize,
     /// Inside a repeated footnote definition, which is skipped.
     discarding: bool,
+    /// Display math just split a paragraph: the text after it starts the
+    /// next one, without the space before it.
+    after_math: bool,
     /// Open quotes, lists and items past `MAX_DEPTH`, which get no frame:
     /// their content lands in the deepest frame.
     flattened: u32,
@@ -195,7 +199,8 @@ impl Builder {
                 }
             }
             Event::FootnoteReference(label) => self.footnote_ref(&label),
-            Event::InlineMath(_) | Event::DisplayMath(_) => {}
+            Event::InlineMath(t) => super::push_math(&mut self.inlines, &t, &self.style),
+            Event::DisplayMath(t) => self.display_math(&t),
         }
     }
 
@@ -461,6 +466,20 @@ impl Builder {
         push_inline(&mut self.inlines, text, &self.style);
     }
 
+    /// `$$…$$`: a block of its own, splitting the paragraph it sits in,
+    /// unless it's inside a heading, a table cell, emphasis or a link,
+    /// where it stays inline.
+    fn display_math(&mut self, tex: &str) {
+        if self.table.is_some() || self.heading.is_some() || self.style != InlineStyle::default() {
+            super::push_math(&mut self.inlines, tex, &self.style);
+            return;
+        }
+        super::trim_inlines(&mut self.inlines);
+        self.flush();
+        self.push_block(super::math_block(tex));
+        self.after_math = true;
+    }
+
     /// A footnote reference: `[n]`, linking to the footnote's anchor.
     fn footnote_ref(&mut self, label: &str) {
         let r = self
@@ -472,7 +491,13 @@ impl Builder {
     /// Turn pending inline text into a paragraph. Tight list items emit text
     /// without paragraph tags, so this also runs at item and container edges.
     fn flush(&mut self) {
-        if self.table.is_some() || self.heading.is_some() || self.inlines.is_empty() {
+        if self.table.is_some() || self.heading.is_some() {
+            return;
+        }
+        if std::mem::take(&mut self.after_math) {
+            super::trim_inlines(&mut self.inlines);
+        }
+        if self.inlines.is_empty() {
             return;
         }
         let inlines = std::mem::take(&mut self.inlines);

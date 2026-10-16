@@ -10,6 +10,7 @@ pub enum Background {
 }
 
 impl Background {
+    /// `Light` when `light`, else `Dark`.
     fn light_if(light: bool) -> Self {
         if light { Self::Light } else { Self::Dark }
     }

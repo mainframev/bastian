@@ -36,6 +36,17 @@ pub enum Appearance {
     Any,
 }
 
+impl Appearance {
+    /// How lists of themes name it.
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Appearance::Dark => "dark",
+            Appearance::Light => "light",
+            Appearance::Any => "any",
+        }
+    }
+}
+
 /// Whether `name` is a theme bastian can load: a file in `dir` (the user's
 /// themes directory) or a built-in.
 pub fn exists(name: &str, dir: Option<&Path>) -> bool {
@@ -246,9 +257,9 @@ mod tests {
                 .map(|k| format!("{k} = \"#101010\"\n"))
                 .collect::<String>()
             + "heading = \"#202020\"\nmuted = \"#303030\"\n[syntax]\n"
-            + &build::SYNTAX_KEYS
+            + &build::SCOPES
                 .iter()
-                .map(|k| format!("{k} = \"#101010\"\n"))
+                .map(|(k, _)| format!("{k} = \"#101010\"\n"))
                 .collect::<String>();
         // TOML rejects the repeated keys, so drop the first `heading` and `muted`.
         let src =

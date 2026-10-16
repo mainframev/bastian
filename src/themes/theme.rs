@@ -51,13 +51,21 @@ impl Theme {
         }
     }
 
+    /// The main colors, in the order theme lists show them side by side.
+    pub(crate) fn swatch(&self) -> [Color; 7] {
+        [
+            self.accent,
+            self.heading,
+            self.link,
+            self.code,
+            self.ok,
+            self.warn,
+            self.err,
+        ]
+    }
+
     /// The default dark theme, Rosé Pine.
     pub fn dark() -> Self {
         super::load(super::DEFAULT_DARK, None).expect("built-in theme")
-    }
-
-    /// The default light theme, Rosé Pine Dawn.
-    pub fn light() -> Self {
-        super::load(super::DEFAULT_LIGHT, None).expect("built-in theme")
     }
 }

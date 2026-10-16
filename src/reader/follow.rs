@@ -6,7 +6,7 @@ use super::{Action, Overlay, Reader};
 use crate::doc::{self, Block};
 use crate::links::{self, Target};
 use crate::nav::{self, Motion};
-use crate::prompt::{Prompt, PromptEvent};
+use crate::prompt::{self, Edited, Prompt};
 use crate::render;
 
 impl Reader {
@@ -96,17 +96,13 @@ impl Reader {
                 self.overlay = None;
                 return self.follow_link(&url);
             }
-            KeyCode::Esc if typing => {
-                picker.prompt = None;
-                picker.set_filter(String::new());
-            }
-            _ if typing => {
-                let prompt = picker.prompt.as_mut().expect("typing");
-                if prompt.on_key(key) == PromptEvent::Changed {
-                    let text = prompt.text().to_string();
-                    picker.set_filter(text);
-                }
-            }
+            // Enter never gets here, so the prompt only closes on Esc,
+            // which drops the filter too.
+            _ if typing => match prompt::drive(&mut picker.prompt, key) {
+                Some(Edited::Text(text)) => picker.set_filter(text),
+                Some(Edited::Cancelled) => picker.set_filter(String::new()),
+                None => {}
+            },
             KeyCode::Char('/') => picker.prompt = Some(Prompt::new(&picker.filter)),
             KeyCode::Esc if !picker.filter.is_empty() => picker.set_filter(String::new()),
             KeyCode::Esc | KeyCode::Char('q' | 'L') => self.overlay = None,
@@ -138,10 +134,7 @@ impl Reader {
             },
             Target::External(target) => self.open_external(target),
             Target::Anchor(anchor) => {
-                match self.heading_line(&anchor) {
-                    Some(line) => self.jump_to(line),
-                    None => self.message = Some(format!("no heading #{anchor}")),
-                }
+                self.go_to_heading(&anchor);
                 Action::None
             }
             Target::Missing(path) => {
@@ -163,16 +156,24 @@ impl Reader {
     }
 
     pub(super) fn on_open_confirm_key(&mut self, key: KeyEvent) -> Action {
-        match key.code {
-            KeyCode::Char('y' | 'Y') | KeyCode::Enter => {
+        match nav::yes_no(&key) {
+            Some(true) => {
                 if let Some(Overlay::OpenConfirm(target)) = self.overlay.take() {
                     return Action::OpenExternal(target);
                 }
             }
-            KeyCode::Char('n' | 'N' | 'q') | KeyCode::Esc => self.overlay = None,
-            _ => {}
+            Some(false) => self.overlay = None,
+            None => {}
         }
         Action::None
+    }
+
+    /// Scroll to the heading whose slug is `anchor`, or say there's none.
+    pub(super) fn go_to_heading(&mut self, anchor: &str) {
+        match self.heading_line(anchor) {
+            Some(line) => self.scroll_to(line),
+            None => self.message = Some(format!("no heading #{anchor}")),
+        }
     }
 
     /// Rendered line of the heading whose GitHub-style slug is `anchor`.
@@ -197,13 +198,19 @@ impl Reader {
             return self.rendered.block_starts.get(i).copied();
         }
         // Headings nested in quotes, lists or components: match by text.
-        let (_, text) = heading_texts(&self.doc.blocks)
-            .into_iter()
-            .find(|(a, _)| links::slug(a) == anchor)?;
+        let mut text = None;
+        doc::visit(&self.doc.blocks, &mut |b| {
+            if let Block::Heading { inlines, .. } = b
+                && text.is_none()
+                && links::slug(&doc::anchor_text(inlines)) == anchor
+            {
+                text = Some(doc::plain_text(inlines));
+            }
+        });
         // Compare without spaces: inline code is padded with them on
         // screen, also beside punctuation (`x`. shows as `x .`).
         let bare = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
-        let text = bare(&text);
+        let text = bare(&text?);
         self.rendered.lines.iter().position(|line| {
             let plain = bare(&render::plain(line));
             !plain.is_empty() && text.starts_with(&plain)
@@ -237,28 +244,16 @@ impl Reader {
     /// view (or the last, going back).
     pub(super) fn move_link_focus(&mut self, forward: bool) {
         let stops = self.link_stops();
-        if stops.is_empty() {
+        let links = &self.rendered.links;
+        let ends = |i: usize| {
+            let s: &[usize] = &stops[i];
+            (links[s[0]].line, links[s[s.len() - 1]].line)
+        };
+        let Some(next) = self.next_stop(stops.len(), self.link_focus, forward, ends) else {
             self.message = Some("no links in this document".into());
             return;
-        }
-        let links = &self.rendered.links;
-        let first_line = |s: &[usize]| links[s[0]].line;
-        let last_line = |s: &[usize]| links[s[s.len() - 1]].line;
-        let next = match (self.link_focus, forward) {
-            (Some(i), true) => (i + 1).min(stops.len() - 1),
-            (Some(i), false) => i.saturating_sub(1),
-            // The first link with any part in view (or below it).
-            (None, true) => stops
-                .iter()
-                .position(|s| last_line(s) >= self.scroll)
-                .unwrap_or(stops.len() - 1),
-            (None, false) => stops
-                .iter()
-                .rposition(|s| first_line(s) < self.scroll + self.height)
-                .unwrap_or(0),
         };
-        let first = first_line(&stops[next]);
-        let last = last_line(&stops[next]);
+        let (first, last) = ends(next);
         let url = links[stops[next][0]].url.clone();
         self.focus = None;
         self.link_focus = Some(next);
@@ -360,17 +355,6 @@ fn blocks_text(blocks: &[Block]) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-/// `(anchor text, shown text)` of every heading.
-pub(super) fn heading_texts(blocks: &[Block]) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    doc::visit(blocks, &mut |b| {
-        if let Block::Heading { inlines, .. } = b {
-            out.push((doc::anchor_text(inlines), doc::plain_text(inlines)));
-        }
-    });
-    out
 }
 
 #[cfg(test)]

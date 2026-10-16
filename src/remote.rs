@@ -341,27 +341,40 @@ mod tests {
         assert_eq!(abs.as_str(), "https://example.com/");
     }
 
-    /// Serve one HTTP response on a local port, returning its URL.
-    fn serve_once(status: &str, body: &'static str) -> String {
+    /// Serve one HTTP response on a local port: `headers` (each ending in
+    /// CRLF) and `body` after `status`. Returns the server's URL and a handle
+    /// yielding the request headers it read.
+    fn serve(
+        status: &str,
+        headers: &str,
+        body: &'static [u8],
+    ) -> (String, std::thread::JoinHandle<String>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
-        let status = status.to_string();
-        std::thread::spawn(move || {
+        let head = format!(
+            "HTTP/1.1 {status}\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut request = String::new();
             let mut line = String::new();
-            // Drain the request headers.
             while reader.read_line(&mut line).unwrap() > 2 {
+                request.push_str(&line);
                 line.clear();
             }
-            write!(
-                stream,
-                "HTTP/1.1 {status}\r\nContent-Type: text/markdown\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                body.len()
-            )
-            .unwrap();
+            stream.write_all(head.as_bytes()).unwrap();
+            stream.write_all(body).unwrap();
+            request
         });
-        format!("http://{addr}/docs/README.md")
+        (format!("http://{addr}"), server)
+    }
+
+    /// Serve one Markdown response, returning its URL.
+    fn serve_once(status: &str, body: &'static str) -> String {
+        let (base, _) = serve(status, "Content-Type: text/markdown\r\n", body.as_bytes());
+        format!("{base}/docs/README.md")
     }
 
     #[test]
@@ -385,28 +398,13 @@ mod tests {
 
     #[test]
     fn gzip_bodies_are_not_decoded_past_the_limit() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        let server = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut reader = BufReader::new(stream.try_clone().unwrap());
-            let mut request = String::new();
-            let mut line = String::new();
-            while reader.read_line(&mut line).unwrap() > 2 {
-                request.push_str(&line);
-                line.clear();
-            }
-            write!(
-                stream,
-                "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Encoding: gzip\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                GZIP_4K_ZEROS.len()
-            )
-            .unwrap();
-            stream.write_all(&GZIP_4K_ZEROS).unwrap();
-            request
-        });
+        let (base, server) = serve(
+            "200 OK",
+            "Content-Type: image/png\r\nContent-Encoding: gzip\r\n",
+            &GZIP_4K_ZEROS,
+        );
         // Decoded, the body would be 4 KiB, past the 1 KiB limit.
-        let body = fetch_bytes(&format!("http://{addr}/bomb.png"), 1024).unwrap();
+        let body = fetch_bytes(&format!("{base}/bomb.png"), 1024).unwrap();
         assert!(body == GZIP_4K_ZEROS, "got {} bytes", body.len());
         let request = server.join().unwrap().to_ascii_lowercase();
         assert!(

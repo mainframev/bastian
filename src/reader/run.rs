@@ -1,10 +1,11 @@
 use std::path::PathBuf;
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::crossterm::event::KeyEvent;
 
 use super::{Overlay, Reader};
 use crate::doc::{self, Block, CodeBlock};
 use crate::exec::{BlockRun, RunEvent, RunSpec, Status};
+use crate::nav;
 use crate::render;
 
 impl Reader {
@@ -21,24 +22,13 @@ impl Reader {
 
     pub(super) fn move_focus(&mut self, forward: bool) {
         let ranges = &self.rendered.code_blocks;
-        if ranges.is_empty() {
-            self.message = Some("no code blocks".into());
-            return;
-        }
         let current = self
             .focus
             .and_then(|id| ranges.iter().position(|c| c.id == id));
-        let next = match (current, forward) {
-            (Some(i), true) => (i + 1).min(ranges.len() - 1),
-            (Some(i), false) => i.saturating_sub(1),
-            (None, true) => ranges
-                .iter()
-                .position(|c| c.lines.start >= self.scroll)
-                .unwrap_or(ranges.len() - 1),
-            (None, false) => ranges
-                .iter()
-                .rposition(|c| c.lines.start < self.scroll + self.height)
-                .unwrap_or(0),
+        let start = |i: usize| (ranges[i].lines.start, ranges[i].lines.start);
+        let Some(next) = self.next_stop(ranges.len(), current, forward, start) else {
+            self.message = Some("no code blocks".into());
+            return;
         };
         let range = ranges[next].lines.clone();
         self.focus = Some(ranges[next].id);
@@ -184,14 +174,14 @@ impl Reader {
     }
 
     pub(super) fn on_confirm_key(&mut self, key: KeyEvent) {
-        match key.code {
-            KeyCode::Char('y' | 'Y') | KeyCode::Enter => {
+        match nav::yes_no(&key) {
+            Some(true) => {
                 if let Some(Overlay::RunConfirm(ids)) = self.overlay.take() {
                     self.start_queue(ids);
                 }
             }
-            KeyCode::Char('n' | 'N' | 'q') | KeyCode::Esc => self.overlay = None,
-            _ => {}
+            Some(false) => self.overlay = None,
+            None => {}
         }
     }
 

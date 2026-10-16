@@ -56,6 +56,14 @@ pub fn markers(width: u16) -> (u16, u16) {
     (width.saturating_sub(5), width.saturating_sub(3))
 }
 
+/// The marker a click at `col`, `row` of a pane `width` wide hits, from
+/// its left edge and header row: `Some(true)` for `>`, `Some(false)` for
+/// `<`.
+pub(crate) fn marker_hit(width: u16, col: u16, row: u16) -> Option<bool> {
+    let (narrower, wider) = markers(width);
+    (width > 0 && row == 0 && (col == narrower || col == wider)).then_some(col == wider)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -2,6 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 
 use crate::reader::Reader;
+use crate::render::LinkSpan;
 
 /// Pictures over the rows reserved for them. A picture partly scrolled
 /// off shows its visible rows: the slot-sized picture is cropped from the
@@ -38,6 +39,14 @@ pub(super) fn draw_images(frame: &mut Frame, r: &mut Reader, content: Rect, end:
             protocol,
         );
     }
+}
+
+/// The cells of `link` on screen, in `content` scrolled to `scroll`,
+/// cut off at its right edge.
+pub(super) fn link_rect(content: Rect, link: &LinkSpan, scroll: usize) -> Rect {
+    let x = content.x + link.col as u16;
+    let width = (link.width as u16).min(content.right().saturating_sub(x));
+    Rect::new(x, content.y + (link.line - scroll) as u16, width, 1)
 }
 
 /// Make visible links clickable: an OSC 8 hyperlink over each link's text.
@@ -79,10 +88,7 @@ pub(super) fn draw_hyperlinks(
             }
             col += w;
         }
-        let x = content.x + link.col as u16;
-        let width = (link.width as u16).min(content.right().saturating_sub(x));
-        let y = content.y + (link.line - r.scroll()) as u16;
-        let area = Rect::new(x, y, width, 1);
+        let area = link_rect(content, link, r.scroll());
         frame.render_widget(
             hyperrat::Link::new(label, target).style(style.unwrap_or_default()),
             area,
@@ -90,8 +96,8 @@ pub(super) fn draw_hyperlinks(
         // The first cell holds the whole escape sequence plus the label.
         // Tell the diff how many columns it really covers, or it measures the
         // escape sequence and skips the rest of the line.
-        if let Some(width) = std::num::NonZeroU16::new(width)
-            && let Some(cell) = frame.buffer_mut().cell_mut((x, y))
+        if let Some(width) = std::num::NonZeroU16::new(area.width)
+            && let Some(cell) = frame.buffer_mut().cell_mut((area.x, area.y))
         {
             cell.set_diff_option(ratatui::buffer::CellDiffOption::ForcedWidth(width));
         }

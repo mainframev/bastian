@@ -1,4 +1,4 @@
-use super::{Overlay, Reader};
+use super::Reader;
 use crate::pane;
 use crate::toc::{self, Entry};
 
@@ -67,7 +67,7 @@ impl Reader {
     /// Scroll entry `i`'s heading, at `line`, to the top, or as near as
     /// the end allows, and remember it as the heading jumped to.
     fn jump_to_heading(&mut self, i: usize, line: usize) {
-        self.jump_to(line);
+        self.scroll_to(line);
         self.toc_jump = Some((i, self.scroll));
     }
 
@@ -126,21 +126,14 @@ impl Reader {
     /// markers on the table of contents' header resize it. Returns whether
     /// it hit one.
     pub fn on_click(&mut self, column: u16, row: u16) -> bool {
-        // Popups may cover the header.
-        let popup = self
-            .overlay
-            .as_ref()
-            .is_some_and(|o| !matches!(o, Overlay::Prompt(_) | Overlay::GoTo(_)));
         let width = self.fit_toc(self.screen);
-        if popup || width == 0 || row != 0 {
+        // Popups may cover the header.
+        let hit = pane::marker_hit(width, column, row).filter(|_| !self.popup_open());
+        let Some(wider) = hit else {
             return false;
-        }
-        let (narrower, wider) = pane::markers(width);
-        if column == narrower || column == wider {
-            self.resize_toc(column == wider);
-            return true;
-        }
-        false
+        };
+        self.resize_toc(wider);
+        true
     }
 }
 

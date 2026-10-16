@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 use unicode_width::UnicodeWidthStr;
@@ -8,7 +8,7 @@ use unicode_width::UnicodeWidthStr;
 use super::pane::{self, Side};
 use super::status;
 use crate::picker::ThemePicker;
-use crate::render::theme::{Appearance, Theme};
+use crate::render::theme::Theme;
 use crate::text::take_width;
 
 /// The status bar's hint while the picker is open.
@@ -21,6 +21,32 @@ const KIND_W: usize = 5;
 /// The most and fewest colors in a swatch, a column each.
 const SWATCH_MAX: usize = 7;
 const SWATCH_MIN: usize = 3;
+
+/// Columns the open picker takes on a screen `width` columns wide, and
+/// how many of them the view beside it gives up: none on a screen too
+/// narrow for both, where the picker covers it.
+pub(crate) fn dock(picker: Option<&mut ThemePicker>, width: u16) -> (u16, u16) {
+    let side = picker.map_or(0, |p| p.fit(width));
+    (side, if side < width { side } else { 0 })
+}
+
+/// The open picker in the right `side` columns of `screen`.
+pub(crate) fn draw_docked(
+    frame: &mut Frame,
+    t: &Theme,
+    picker: Option<&ThemePicker>,
+    screen: Rect,
+    side: u16,
+) {
+    if let Some(p) = picker {
+        let area = Rect {
+            x: screen.right() - side,
+            width: side,
+            ..screen
+        };
+        draw(frame, t, p, area);
+    }
+}
 
 /// The theme list in `area`, a pane right of the screen it previews: a
 /// header with the position in the list and the `<` and `>` resize
@@ -86,11 +112,7 @@ pub fn draw(frame: &mut Frame, t: &Theme, p: &ThemePicker, area: Rect) {
             }
             match &e.theme {
                 Ok(theme) => {
-                    let label = match theme.appearance {
-                        Appearance::Dark => "dark",
-                        Appearance::Light => "light",
-                        Appearance::Any => "any",
-                    };
+                    let label = theme.appearance.label();
                     spans.push(Span::styled(
                         format!(" {label:<KIND_W$}"),
                         Style::default().fg(t.muted),
@@ -114,18 +136,11 @@ pub fn draw(frame: &mut Frame, t: &Theme, p: &ThemePicker, area: Rect) {
 fn colors(theme: &Theme, n: usize) -> Vec<Span<'static>> {
     let surface = Style::default().bg(theme.surface);
     let pad = || Span::styled(" ", surface);
-    let blocks = [
-        theme.accent,
-        theme.heading,
-        theme.link,
-        theme.code,
-        theme.ok,
-        theme.warn,
-        theme.err,
-    ]
-    .into_iter()
-    .take(n)
-    .map(|c: Color| Span::styled("█", surface.fg(c)));
+    let blocks = theme
+        .swatch()
+        .into_iter()
+        .take(n)
+        .map(|c| Span::styled("█", surface.fg(c)));
     std::iter::once(pad())
         .chain(blocks)
         .chain(std::iter::once(pad()))
@@ -145,10 +160,7 @@ mod tests {
     fn pane(p: &ThemePicker, w: u16, h: u16) -> Vec<String> {
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| draw(f, &Theme::dark(), p, f.area())).unwrap();
-        let buf = term.backend().buffer();
-        (0..h)
-            .map(|y| (0..w).map(|x| buf[(x, y)].symbol()).collect())
-            .collect()
+        crate::ui::rows(term.backend().buffer())
     }
 
     fn row<'a>(rows: &'a [String], name: &str) -> &'a str {
@@ -210,7 +222,7 @@ mod tests {
         let mut term = Terminal::new(TestBackend::new(DEFAULT_WIDTH, 30)).unwrap();
         term.draw(|f| draw(f, &t, &p, f.area())).unwrap();
         let buf = term.backend().buffer();
-        let row: String = (0..DEFAULT_WIDTH).map(|x| buf[(x, 0)].symbol()).collect();
+        let row = &crate::ui::rows(buf)[0];
         let title = row.find("Themes").unwrap() as u16;
         assert_eq!(buf[(title, 0)].fg, t.accent);
         let count = row.find(&format!("/{}", p.entries.len())).unwrap() as u16;
@@ -230,12 +242,10 @@ mod tests {
         term.draw(|f| draw(f, &Theme::dark(), &p, f.area()))
             .unwrap();
         let buf = term.backend().buffer();
-        let y = (0..40)
-            .find(|&y| {
-                let row: String = (0..42).map(|x| buf[(x, y)].symbol()).collect();
-                row.contains(" rose-pine-dawn ")
-            })
-            .unwrap();
+        let y = crate::ui::rows(buf)
+            .iter()
+            .position(|row| row.contains(" rose-pine-dawn "))
+            .unwrap() as u16;
         let x = (0..42).find(|&x| buf[(x, y)].symbol() == "█").unwrap();
         assert_eq!(buf[(x, y)].bg, light.surface);
         assert_eq!(buf[(x - 1, y)].bg, light.surface);

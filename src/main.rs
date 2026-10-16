@@ -52,8 +52,7 @@ fn main() -> Result<()> {
         Some((path, explicit)) => config::load_at(path, *explicit)?,
         None => config::Config::default(),
     };
-    let resolved = config::resolve(file, &config::env_vars(), cli.overrides())?;
-    let mut resolved = resolved;
+    let mut resolved = config::resolve(file, &config::env_vars(), cli.overrides())?;
     if cli.print_config {
         print!(
             "{}",
@@ -97,16 +96,9 @@ fn main() -> Result<()> {
         resolved.dark_theme.value = themes::DEFAULT_DARK.into();
         resolved.light_theme.value = themes::DEFAULT_LIGHT.into();
     }
-    let theme_files = app::ThemeFiles {
-        dir: themes_dir.clone(),
-        config: located.as_ref().map(|(p, _)| p.clone()),
-        current: String::new(),
-        overridden_by: match resolved.theme.source {
-            config::Source::Flag => Some("--theme".into()),
-            config::Source::Env => Some(config::env_var("theme")),
-            _ => None,
-        },
-    };
+    let theme_source = resolved.theme.source;
+    let overridden_by = matches!(theme_source, config::Source::Flag | config::Source::Env)
+        .then(|| config::theme_origin("theme", theme_source));
     let out = output::Output {
         width: output::print_width(
             &resolved.width,
@@ -126,8 +118,10 @@ fn main() -> Result<()> {
         stdout_tty,
     )?;
     let theme_files = app::ThemeFiles {
+        dir: themes_dir,
+        config: located.map(|(p, _)| p),
         current,
-        ..theme_files
+        overridden_by,
     };
 
     if pick_theme {
@@ -149,14 +143,11 @@ fn main() -> Result<()> {
     let remote = (!path.exists())
         .then(|| path.to_str().and_then(remote::classify))
         .flatten();
-    let app = if let Some(source) = remote {
+    let print = |d: &doc::Document| out.print(d, &settings.reader.theme, settings.reader.render);
+    let mut app = if let Some(source) = remote {
         let fetched = remote::fetch(&source)?;
         if !tui {
-            return out.print(
-                &fetched.parse(),
-                &settings.reader.theme,
-                settings.reader.render,
-            );
+            return print(&fetched.parse());
         }
         let reader = Reader::new(Source::remote(fetched), &settings.reader);
         app::App::read(reader, settings)
@@ -176,7 +167,7 @@ fn main() -> Result<()> {
         let src = text::decode(&bytes).context("reading stdin")?;
         let doc = doc::parse(&src);
         if !tui {
-            return out.print(&doc, &settings.reader.theme, settings.reader.render);
+            return print(&doc);
         }
         let source = Source {
             text: src,
@@ -187,13 +178,12 @@ fn main() -> Result<()> {
     } else {
         if !tui {
             let opened = open::open(&path)?;
-            return out.print(&opened.doc, &settings.reader.theme, settings.reader.render);
+            return print(&opened.doc);
         }
         let reader = settings.open(&path, path.display().to_string())?;
         app::App::read(reader, settings)
     };
 
-    let mut app = app;
     app.themes = theme_files;
     run_tui(app)
 }

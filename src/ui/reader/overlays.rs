@@ -21,7 +21,7 @@ pub(super) fn draw_links(frame: &mut Frame, over: Rect, r: &Reader, picker: &Lin
         .map(|&i| &picker.links[i])
         .enumerate()
         .map(|(row, link)| {
-            let selected = row == picker.selected;
+            let selected = row == picker.selected.get();
             let text_style = status::row_style(t, selected);
             let entry = format!("{}  {}", link.text, link.url);
             let shown = take_width(&entry, max_w.saturating_sub(2));
@@ -36,7 +36,7 @@ pub(super) fn draw_links(frame: &mut Frame, over: Rect, r: &Reader, picker: &Lin
     let at = if shown.is_empty() {
         0
     } else {
-        picker.selected + 1
+        picker.selected.get() + 1
     };
     let count = format!("{at}/{}", shown.len());
     // The title sits in the top border, between its corners.
@@ -49,7 +49,7 @@ pub(super) fn draw_links(frame: &mut Frame, over: Rect, r: &Reader, picker: &Lin
         None => filter_title(&picker.filter, None, &count, max_title),
     };
     picker.rows.set(rows);
-    status::list_popup(frame, t, over, &title, lines, picker.selected, rows);
+    status::list_popup(frame, t, over, &title, lines, picker.selected.get(), rows);
 }
 
 /// ` /filter · n/m · keys `, in at most `max` columns: the keys go
@@ -90,7 +90,7 @@ pub(super) fn draw_history(frame: &mut Frame, over: Rect, r: &Reader, picker: &H
         .iter()
         .enumerate()
         .map(|(i, path)| {
-            let selected = i == picker.selected;
+            let selected = i == picker.selected.get();
             let shown = shorten_left(&crate::paths::tilde(path), max_w);
             let mut spans = vec![Span::styled(shown, status::row_style(t, selected))];
             if picker.current == Some(i) {
@@ -101,10 +101,10 @@ pub(super) fn draw_history(frame: &mut Frame, over: Rect, r: &Reader, picker: &H
         .collect();
     let title = format!(
         " history {}/{} · enter open · esc close ",
-        picker.selected + 1,
+        picker.selected.get() + 1,
         picker.paths.len()
     );
-    status::list_popup(frame, t, over, &title, lines, picker.selected, rows);
+    status::list_popup(frame, t, over, &title, lines, picker.selected.get(), rows);
 }
 
 pub(super) fn draw_confirm(frame: &mut Frame, over: Rect, r: &Reader, ids: &[usize]) {

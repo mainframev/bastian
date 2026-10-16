@@ -9,7 +9,7 @@ use crate::nav;
 pub struct HistoryPicker {
     /// Most recent first.
     pub paths: Vec<PathBuf>,
-    pub selected: usize,
+    pub selected: nav::Selection,
     /// Where this document is in `paths`.
     pub current: Option<usize>,
 }
@@ -35,7 +35,7 @@ impl Reader {
         };
         self.overlay = Some(Overlay::History(HistoryPicker {
             paths,
-            selected,
+            selected: nav::Selection::at(selected),
             current,
         }));
     }
@@ -45,13 +45,13 @@ impl Reader {
             return Action::None;
         };
         if let Some(motion) = nav::list_motion(&key) {
-            picker.selected = nav::step(picker.selected, picker.paths.len(), motion);
+            picker.selected.apply(motion, picker.paths.len());
             return Action::None;
         }
         match key.code {
             KeyCode::Enter => {
-                let path = picker.paths[picker.selected].clone();
-                let here = picker.current == Some(picker.selected);
+                let path = picker.paths[picker.selected.get()].clone();
+                let here = picker.current == Some(picker.selected.get());
                 self.overlay = None;
                 if !here {
                     return Action::OpenDocument { path, anchor: None };

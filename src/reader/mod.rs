@@ -60,8 +60,8 @@ pub enum Action {
 /// The link list opened with `L`.
 pub struct LinkPicker {
     pub links: Vec<Link>,
-    /// Index into `shown()`.
-    pub selected: usize,
+    /// Row in `shown()`.
+    pub selected: nav::Selection,
     /// Only links whose text or URL contains this, ignoring case.
     pub filter: String,
     /// The filter being typed, after `/`.
@@ -75,7 +75,7 @@ impl LinkPicker {
     pub fn new(links: Vec<Link>) -> Self {
         Self {
             links,
-            selected: 0,
+            selected: nav::Selection::default(),
             filter: String::new(),
             prompt: None,
             rows: Cell::new(0),
@@ -96,12 +96,14 @@ impl LinkPicker {
 
     /// The selected link, if any matches the filter.
     pub fn current(&self) -> Option<&Link> {
-        self.shown().get(self.selected).map(|&i| &self.links[i])
+        self.shown()
+            .get(self.selected.get())
+            .map(|&i| &self.links[i])
     }
 
     fn set_filter(&mut self, filter: String) {
         self.filter = filter;
-        self.selected = 0;
+        self.selected = nav::Selection::default();
     }
 }
 

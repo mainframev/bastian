@@ -30,6 +30,40 @@ pub fn list_motion(key: &KeyEvent) -> Option<Motion> {
     })
 }
 
+/// The highlighted row of a list. It holds only the row: a list's length
+/// changes as it's filtered or fills in, so each move takes the length the
+/// list has now and keeps the row in range of it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Selection(usize);
+
+impl Selection {
+    pub fn at(row: usize) -> Self {
+        Self(row)
+    }
+
+    pub fn get(self) -> usize {
+        self.0
+    }
+
+    /// The selection after `motion` in a list of `len` rows.
+    #[must_use]
+    pub fn moved(self, motion: Motion, len: usize) -> Self {
+        Self(step(self.0, len, motion))
+    }
+
+    pub fn apply(&mut self, motion: Motion, len: usize) {
+        *self = self.moved(motion, len);
+    }
+
+    /// Move `delta` rows (a page, half a page), stopping at either end.
+    pub fn by(&mut self, delta: isize, len: usize) {
+        self.0 = self
+            .0
+            .saturating_add_signed(delta)
+            .min(len.saturating_sub(1));
+    }
+}
+
 /// `selected` after `motion` in a list of `len` rows, kept in range.
 pub fn step(selected: usize, len: usize, motion: Motion) -> usize {
     let last = len.saturating_sub(1);
@@ -70,6 +104,22 @@ impl Help {
 mod tests {
     use super::*;
     use ratatui::crossterm::event::KeyModifiers;
+
+    #[test]
+    fn selection_stays_in_range_of_the_current_length() {
+        let mut s = Selection::at(2);
+        s.apply(Motion::Down, 3);
+        assert_eq!(s.get(), 2);
+        s.by(-10, 3);
+        assert_eq!(s.get(), 0);
+        s.by(10, 3);
+        assert_eq!(s.get(), 2);
+        // The list shrank (a filter): the next move lands inside it.
+        s.apply(Motion::Up, 1);
+        assert_eq!(s.get(), 0);
+        s.by(5, 0);
+        assert_eq!(s.get(), 0);
+    }
 
     #[test]
     fn steps_stay_in_range() {

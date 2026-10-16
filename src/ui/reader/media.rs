@@ -20,9 +20,12 @@ pub(super) fn draw_images(frame: &mut Frame, r: &mut Reader, content: Rect, end:
         let Some(protocol) = r.images.protocol(&slot.url, slot.cols, slot.rows) else {
             continue;
         };
+        // A picture in a table cell can start past the right edge.
+        let Some(x) = column(content, slot.col) else {
+            continue;
+        };
         let top = slot.line.max(scroll);
         let bottom = (slot.line + usize::from(slot.rows)).min(end);
-        let x = content.x + slot.col as u16;
         let area = Rect::new(
             x,
             content.y + (top - scroll) as u16,
@@ -41,12 +44,29 @@ pub(super) fn draw_images(frame: &mut Frame, r: &mut Reader, content: Rect, end:
     }
 }
 
+/// The screen column of `col` in `content`, or `None` when it's at or past
+/// the right edge (a wide table's cells can be tens of thousands of
+/// columns out).
+pub(super) fn column(content: Rect, col: usize) -> Option<u16> {
+    u16::try_from(col)
+        .ok()
+        .and_then(|col| content.x.checked_add(col))
+        .filter(|&x| x < content.right())
+}
+
 /// The cells of `link` on screen, in `content` scrolled to `scroll`,
-/// cut off at its right edge.
-pub(super) fn link_rect(content: Rect, link: &LinkSpan, scroll: usize) -> Rect {
-    let x = content.x + link.col as u16;
-    let width = (link.width as u16).min(content.right().saturating_sub(x));
-    Rect::new(x, content.y + (link.line - scroll) as u16, width, 1)
+/// cut off at its right edge; `None` when it starts past that edge.
+pub(super) fn link_rect(content: Rect, link: &LinkSpan, scroll: usize) -> Option<Rect> {
+    let x = column(content, link.col)?;
+    let width = u16::try_from(link.width)
+        .unwrap_or(u16::MAX)
+        .min(content.right() - x);
+    Some(Rect::new(
+        x,
+        content.y + (link.line - scroll) as u16,
+        width,
+        1,
+    ))
 }
 
 /// Make visible links clickable: an OSC 8 hyperlink over each link's text.
@@ -88,7 +108,9 @@ pub(super) fn draw_hyperlinks(
             }
             col += w;
         }
-        let area = link_rect(content, link, r.scroll());
+        let Some(area) = link_rect(content, link, r.scroll()) else {
+            continue;
+        };
         frame.render_widget(
             hyperrat::Link::new(label, target).style(style.unwrap_or_default()),
             area,

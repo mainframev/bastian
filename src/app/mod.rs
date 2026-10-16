@@ -105,6 +105,9 @@ impl App {
     /// by: through a symlink, links and images resolve from the link's
     /// directory, not the target's.
     fn note_opened(&mut self) {
+        if !self.settings.history {
+            return;
+        }
         let Some(path) = self.reader.as_ref().and_then(Reader::file) else {
             return;
         };
@@ -329,7 +332,9 @@ impl App {
             reader::Action::PickTheme => self.open_picker(),
             reader::Action::ToggleImages => self.toggle_images(),
             reader::Action::ShowHistory => {
-                if let Some(r) = &mut self.reader {
+                if !self.settings.history {
+                    self.set_message("history is off (history = false)".into());
+                } else if let Some(r) = &mut self.reader {
                     r.show_history(self.opened.clone());
                 }
             }

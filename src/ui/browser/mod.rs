@@ -253,6 +253,7 @@ pub fn draw(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::rows;
     use std::time::Duration;
 
     /// Browse a tree with `top.md` (no title) and `docs/guide.md` (titled),
@@ -297,17 +298,6 @@ mod tests {
             .draw(|f| draw(f, &mut b, &t, look, picker))
             .unwrap();
         terminal.backend().buffer().clone()
-    }
-
-    fn rows(buf: &ratatui::buffer::Buffer) -> Vec<String> {
-        let area = buf.area;
-        (0..area.height)
-            .map(|y| {
-                (0..area.width)
-                    .map(|x| buf[(x, y)].symbol().to_string())
-                    .collect::<String>()
-            })
-            .collect()
     }
 
     /// Index of the first row containing `s`.

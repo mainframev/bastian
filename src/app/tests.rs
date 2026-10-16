@@ -372,7 +372,7 @@ fn history_off_keeps_no_list_but_back_still_works() {
         path: b,
         anchor: None,
     });
-    assert!(app.opened.is_empty());
+    assert!(app.opened.is_empty(), "{:?}", app.opened);
     press(&mut app, KeyCode::Char('H'));
     let r = app.reader.as_ref().unwrap();
     assert!(r.overlay.is_none());
@@ -541,7 +541,7 @@ fn a_render_that_panics_opens_no_synchronized_update() {
     // Dropping the terminal shows the cursor again, outside any update.
     drop(terminal);
     let written = out.chunks()[drawn..].concat();
-    assert!(!written.is_empty());
+    assert!(!written.is_empty(), "nothing written after the panic");
     assert!(!written.windows(BEGIN_SYNC.len()).any(|w| w == BEGIN_SYNC));
 }
 
@@ -642,7 +642,7 @@ fn waiting_scroll_keys_are_handled_together_in_order() {
             key(KeyCode::Char('k')),
         ],
     );
-    assert!(left.is_empty());
+    assert!(left.is_empty(), "{left:?}");
     assert!(handled.redraw && !handled.quit);
     // G first, then up twice: in any other order the view would end at G.
     assert_eq!(app.reader.as_ref().unwrap().scroll(), end - 2);

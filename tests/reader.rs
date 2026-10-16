@@ -739,7 +739,8 @@ fn hovered_link_is_shaded_until_the_pointer_leaves() {
         let l = &r.rendered().links[i];
         (x0 + l.col as u16, 1 + l.line as u16)
     };
-    assert!(shaded(&terminal).is_empty());
+    let cells = shaded(&terminal);
+    assert!(cells.is_empty(), "{cells:?}");
 
     let (x, y) = cell(&r, 0);
     assert!(r.on_hover(x + 1, y), "onto a link");
@@ -761,7 +762,8 @@ fn hovered_link_is_shaded_until_the_pointer_leaves() {
     assert!(r.on_hover(0, 0), "off the links");
     assert_eq!(r.hovered(), None);
     terminal.draw(|f| draw(f, &mut r)).unwrap();
-    assert!(shaded(&terminal).is_empty());
+    let cells = shaded(&terminal);
+    assert!(cells.is_empty(), "{cells:?}");
 
     // A popup over the document hides it.
     assert!(r.on_hover(x, y));

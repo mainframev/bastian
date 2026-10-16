@@ -79,6 +79,7 @@ pagers:
 ```sh {norun}
 bastian README.md                    # read a file in the TUI
 bastian -                            # read stdin
+cat notes.md | bastian               # piped input is read without -
 bastian https://example.com/doc.md   # a Markdown URL
 bastian github.com/owner/repo        # a repository's README (GitLab too)
 bastian -p README.md                 # print it instead

@@ -20,7 +20,8 @@ pub struct Cli {
 
     /// Markdown file to read, `-` for stdin, a directory to browse, an
     /// http(s) URL, or github.com/owner/repo or gitlab.com/group/project for
-    /// a repository's README. Defaults to browsing the current directory.
+    /// a repository's README. Defaults to reading piped input, else browsing
+    /// the current directory.
     pub path: Option<PathBuf>,
 
     /// Maximum width of the rendered document [default: 100].

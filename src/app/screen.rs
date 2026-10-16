@@ -1,5 +1,6 @@
 //! The backend the TUI draws through: crossterm's, with each frame sent in
-//! one write as one synchronized update.
+//! one write as one synchronized update, and the screen size kept rather
+//! than asked of the terminal on every frame.
 
 use std::cell::Cell;
 use std::io::{self, BufWriter, Write};
@@ -55,14 +56,19 @@ impl<W: Write> Write for FrameOut<W> {
     }
 }
 
-/// crossterm's backend writing through a `FrameOut`.
+/// crossterm's backend writing through a `FrameOut`, reporting the size it
+/// was last told. ratatui asks the backend for the size before every
+/// frame, and crossterm's answer opens `/dev/tty` each time; the size
+/// only changes with a resize event, which the run loop passes on.
 pub struct Screen<W: Write> {
     inner: CrosstermBackend<FrameOut<W>>,
     frame: Rc<Cell<FrameState>>,
+    size: Size,
 }
 
 impl<W: Write> Screen<W> {
-    pub(super) fn new(out: W) -> Self {
+    /// A backend writing to `out`, a terminal of `size`.
+    pub(super) fn new(out: W, size: Size) -> Self {
         let frame = Rc::new(Cell::new(FrameState::Idle));
         let out = FrameOut {
             out: BufWriter::with_capacity(FRAME_BUFFER, out),
@@ -71,7 +77,13 @@ impl<W: Write> Screen<W> {
         Self {
             inner: CrosstermBackend::new(out),
             frame,
+            size,
         }
+    }
+
+    /// The terminal is now `size`; the next frame is laid out for it.
+    pub(super) fn resize(&mut self, size: Size) {
+        self.size = size;
     }
 
     /// Close the frame's synchronized update, if one was opened, and send
@@ -152,7 +164,7 @@ impl<W: Write> Backend for Screen<W> {
     }
 
     fn size(&self) -> io::Result<Size> {
-        self.inner.size()
+        Ok(self.size)
     }
 
     fn window_size(&mut self) -> io::Result<WindowSize> {

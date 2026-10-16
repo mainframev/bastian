@@ -481,10 +481,8 @@ impl Writes {
 
 /// A terminal of `width` by `height` drawing into `out`.
 fn screen(out: &Writes, width: u16, height: u16) -> ratatui::Terminal<screen::Screen<Writes>> {
-    let options = ratatui::TerminalOptions {
-        viewport: ratatui::Viewport::Fixed(ratatui::layout::Rect::new(0, 0, width, height)),
-    };
-    ratatui::Terminal::with_options(screen::Screen::new(out.clone()), options).unwrap()
+    let size = ratatui::layout::Size::new(width, height);
+    ratatui::Terminal::new(screen::Screen::new(out.clone(), size)).unwrap()
 }
 
 const BEGIN_SYNC: &[u8] = b"\x1b[?2026h";
@@ -549,4 +547,34 @@ fn a_failed_draw_still_ends_the_synchronized_update() {
     let chunks = out.chunks();
     let last = chunks.last().expect("the rest of the frame went out");
     assert!(last.ends_with(END_SYNC), "{:?}", &last[last.len() - 16..]);
+}
+
+#[test]
+fn a_resize_lays_the_next_frame_out_at_the_new_size() {
+    let s = settings();
+    let words = "word ".repeat(200);
+    let reader = reader_in(&s, doc::parse(&words), PathBuf::from("."));
+    let mut app = App::read(reader, s);
+    let out = Writes::default();
+    let mut terminal = screen(&out, 80, 24);
+    run::draw(&mut terminal, &mut app).unwrap();
+    let wide = app.reader.as_ref().unwrap().rendered().lines.len();
+
+    // The size comes from the resize event, not from asking the terminal.
+    terminal
+        .backend_mut()
+        .resize(ratatui::layout::Size::new(30, 10));
+    run::draw(&mut terminal, &mut app).unwrap();
+    assert_eq!(
+        terminal.get_frame().area(),
+        ratatui::layout::Rect::new(0, 0, 30, 10)
+    );
+    let narrow = app.reader.as_ref().unwrap().rendered().lines.len();
+    assert!(
+        narrow > wide,
+        "rewrapped: {wide} lines at 80, {narrow} at 30"
+    );
+    // The old frame is cleared away before the new one is drawn.
+    let frame = out.chunks().pop().unwrap();
+    assert!(frame.windows(4).any(|w| w == b"\x1b[2J"), "{frame:?}");
 }

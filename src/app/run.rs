@@ -1,10 +1,13 @@
+use std::io::{self, Write};
 use std::time::Duration;
 
 use anyhow::Result;
+use ratatui::Terminal;
 use ratatui::crossterm::event::{self, Event, KeyEventKind, MouseButton, MouseEventKind};
+use ratatui::layout::Size;
 
 use super::App;
-use super::screen::draw_frame;
+use super::screen::{Screen, draw_frame};
 use super::terminal::{Tui, suspend};
 use crate::ui;
 
@@ -28,6 +31,26 @@ pub(super) fn is_ignored(event: &Event) -> bool {
 /// How often to wake up for process output while waiting for keys.
 pub(super) const TICK: Duration = Duration::from_millis(100);
 
+/// Draw the open reader, or the file browser when no reader is open.
+pub(super) fn draw<W: Write>(terminal: &mut Terminal<Screen<W>>, app: &mut App) -> io::Result<()> {
+    draw_frame(terminal, |f| {
+        let picker = app.picker.as_mut().map(|(p, _)| p);
+        if let Some(r) = &mut app.reader {
+            ui::reader::draw_with(f, r, picker);
+        } else if let Some(b) = &mut app.browser {
+            let s = &app.settings;
+            let look = ui::browser::Look {
+                logo: s.logo,
+                date_format: s.date_format.as_deref(),
+                scrollbar: s.reader.scrollbar,
+                selector: s.selector,
+                layout: s.list_layout,
+            };
+            ui::browser::draw(f, b, &s.reader.theme, look, picker);
+        }
+    })
+}
+
 /// Run the TUI until the user quits. Returns a note to print afterwards.
 pub fn run(terminal: &mut Tui, mut app: App) -> Result<Option<String>> {
     let mut redraw = true;
@@ -42,25 +65,13 @@ pub fn run(terminal: &mut Tui, mut app: App) -> Result<Option<String>> {
             redraw |= b.tick();
         }
         if std::mem::take(&mut redraw) {
-            draw_frame(terminal, |f| {
-                let picker = app.picker.as_mut().map(|(p, _)| p);
-                if let Some(r) = &mut app.reader {
-                    ui::reader::draw_with(f, r, picker);
-                } else if let Some(b) = &mut app.browser {
-                    let s = &app.settings;
-                    let look = ui::browser::Look {
-                        logo: s.logo,
-                        date_format: s.date_format.as_deref(),
-                        scrollbar: s.reader.scrollbar,
-                        selector: s.selector,
-                        layout: s.list_layout,
-                    };
-                    ui::browser::draw(f, b, &s.reader.theme, look, picker);
-                }
-            })?;
+            draw(terminal, &mut app)?;
         }
         if event::poll(TICK)? {
             let event = event::read()?;
+            if let Event::Resize(width, height) = event {
+                terminal.backend_mut().resize(Size::new(width, height));
+            }
             let ignored = is_ignored(&event);
             if !app.on_event(&event) {
                 if let Some(r) = &app.reader {

@@ -71,11 +71,14 @@ a single title leaves the numbers to its sections; a document where no level
 has two headings has no numbers. Deeper headings are indented under the
 numbered ones and numbered within their section, and any above them indent
 by their depth. `1` to `9` jump to the numbered headings 1–9 and `0` to the
-tenth. Another number right after goes into the section jumped to: `2` then
-`1` is the first heading under the second, then `1` again the first under
-that. When the section has no heading of that number, or once the view has
-moved, numbers count from the outermost level again. `J` and `K` step to the next or previous heading of any level,
-with the pane open or not, which reaches every heading in longer documents.
+tenth. The same number again walks the section it jumped to, heading by
+heading in document order: `1 1 1 1 1` goes A, A1, A1a, A2, A2a, and past the
+section's last heading back to A. Another number right after goes into the
+heading reached: `2` then `1` is the first heading under the second. When that
+heading has no heading of that number, or once the view has moved, numbers
+count from the outermost level again. `J` and `K` step to the next or previous
+heading of any level, with the pane open or not, which reaches every heading
+in longer documents.
 
 `<` and `>` narrow or widen the pane by four columns, from 16 columns up to
 half the screen; with `--mouse`, clicking the `<` or `>` in its header does

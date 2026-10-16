@@ -47,12 +47,21 @@ its note.
 | `h`                         | back to the previous document or the file list              |
 | `q`                         | quit                                                         |
 
-`--mouse` (or `mouse = true`) also scrolls with the mouse wheel, and a click
-on the `<` or `>` in the header of the table of contents or the theme picker
-resizes it. The link under the pointer is shaded, so it's clear what a
-click on it (which most terminals open with a modifier key) will follow. It
-captures the mouse, so selecting text in the terminal then needs a modifier key (often
-shift or option).
+## Mouse
+
+bastian captures the mouse, so the wheel and the trackpad scroll the
+document and move through the file list, and a click on the `<` or `>` in the header of
+the table of contents or the theme picker resizes it. The link under the
+pointer is shaded, so it's clear what a click on it (which most terminals
+open with a modifier key) will follow.
+
+While the mouse is captured, selecting text needs a modifier key in most
+terminals: hold shift while dragging (most Linux terminals, kitty, WezTerm,
+Alacritty), or option/alt (iTerm2, macOS Terminal).
+
+`--no-mouse` (or `mouse = false`, `BASTIAN_MOUSE=false`) leaves the mouse to
+the terminal: plain dragging selects text, and the terminal turns the wheel
+into arrow keys, which scroll a line at a time.
 
 ## Search
 
@@ -84,8 +93,8 @@ heading of any level, with the pane open or not, which reaches every heading
 in longer documents.
 
 `<` and `>` narrow or widen the pane by four columns, from 16 columns up to
-half the screen; with `--mouse`, clicking the `<` or `>` in its header does
-the same. The width lasts until bastian quits. Screens narrower than 40
+half the screen; clicking the `<` or `>` in its header does the same
+(unless the mouse is off). The width lasts until bastian quits. Screens narrower than 40
 columns leave the pane out.
 
 The theme picker (`T`) opens as a pane on the right, and the document

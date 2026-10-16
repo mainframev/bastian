@@ -96,7 +96,7 @@ pub fn resolve(file: Config, env: &EnvMap, cli: Config) -> Result<Resolved> {
         color: set!(color, ColorMode::Auto),
         pager: set!(pager, false),
         all: set!(all, false),
-        mouse: set!(mouse, false),
+        mouse: set!(mouse, true),
         front_matter: set!(front_matter, FrontMatter::default()),
         logo: set!(logo, true),
         images: set!(images, true),

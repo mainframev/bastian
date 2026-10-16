@@ -40,8 +40,8 @@ comments; `Esc`, `q` or `T` leave things as they were.
 
 Press `T` while reading or browsing for the same picker; the document or the
 file list narrows beside it. `<` and `>` narrow or widen the pane, from 16
-columns up to half the screen, and with `--mouse` so does clicking the `<` or
-`>` in its header; the width lasts until bastian quits. With the table of
+columns up to half the screen, and so does clicking the `<` or `>` in its
+header (unless the mouse is off); the width lasts until bastian quits. With the table of
 contents open, both stay while the document keeps 40 columns between them;
 otherwise the table of contents is hidden until the picker closes. On screens
 narrower than 40 columns the picker covers the screen.

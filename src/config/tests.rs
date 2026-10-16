@@ -31,6 +31,13 @@ fn precedence_is_default_file_env_flag() {
     assert_eq!(r.background.value, PageBackground::Theme);
     assert!(r.history.value);
     assert_eq!(r.front_matter.value, FrontMatter::Table);
+    assert_eq!(
+        r.mouse,
+        Setting {
+            value: true,
+            source: Source::Default
+        }
+    );
 
     let r = resolve(file(), &env(&[]), none.clone()).unwrap();
     assert_eq!(
@@ -223,6 +230,31 @@ fn env_values_are_parsed_and_validated() {
     assert!(
         err.contains("BASTIAN_WIDTH") && err.contains("wide"),
         "{err}"
+    );
+}
+
+#[test]
+fn mouse_can_be_turned_off_from_the_file_and_the_environment() {
+    let file = Config {
+        mouse: Some(false),
+        ..Config::default()
+    };
+    let r = resolve(file, &env(&[]), Config::default()).unwrap();
+    assert_eq!(
+        r.mouse,
+        Setting {
+            value: false,
+            source: Source::File
+        }
+    );
+    let e = env(&[("BASTIAN_MOUSE", "false")]);
+    let r = resolve(Config::default(), &e, Config::default()).unwrap();
+    assert_eq!(
+        r.mouse,
+        Setting {
+            value: false,
+            source: Source::Env
+        }
     );
 }
 

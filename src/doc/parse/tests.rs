@@ -410,6 +410,31 @@ fn stray_close_tags_and_other_html_are_left_alone() {
 }
 
 #[test]
+fn html_comments_are_not_shown() {
+    let doc = parse(concat!(
+        "Before <!-- inline --> after.\n\n",
+        "<!-- prettier-ignore -->\n| a |\n|---|\n| 1 |\n\n",
+        "<!--\nmulti\nline\n-->\n\n",
+        "- item <!-- x\n  y --> end\n\n",
+        "<!-- <details> --><div>kept</div>\n\n",
+        "<!-- left open\n",
+    ));
+    let mut text = Vec::new();
+    crate::doc::visit(&doc.blocks, &mut |b| {
+        if let Block::Paragraph(i) = b {
+            text.push(plain_text(i));
+        }
+    });
+    assert_eq!(text, ["Before  after.", "item  end", "<div>kept</div>"]);
+    assert!(
+        matches!(doc.blocks[1], Block::Table { .. }),
+        "{:?}",
+        doc.blocks
+    );
+    assert_eq!(details(&doc), []);
+}
+
+#[test]
 fn skipped_details_end_with_their_container() {
     // A quote holding more details than fit: the last gets no frame and
     // is left unclosed. Once the quote ends, its missing close tag must

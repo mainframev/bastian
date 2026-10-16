@@ -15,20 +15,11 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::text::Line;
 use ratatui::{Terminal, backend::TestBackend};
 
-fn key(r: &mut Reader, code: KeyCode) -> Action {
-    r.on_key(KeyEvent::new(code, KeyModifiers::NONE))
-}
+mod common;
+use common::{confirm, key};
 
 fn ctrl(r: &mut Reader, c: char) -> Action {
     r.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL))
-}
-
-/// The blocks a run confirmation is waiting on.
-fn confirm(r: &Reader) -> Option<&[usize]> {
-    match &r.overlay {
-        Some(Overlay::RunConfirm(ids)) => Some(ids),
-        _ => None,
-    }
 }
 
 /// The target an open-external confirmation is waiting on.

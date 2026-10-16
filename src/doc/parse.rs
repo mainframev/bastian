@@ -164,7 +164,15 @@ impl Builder {
             },
             // Comments are notes for whoever edits the file, not text.
             Event::InlineHtml(t) if t.starts_with("<!--") => {}
-            Event::InlineHtml(t) => self.push_text(&t),
+            // One run per tag, for `finish` to pair formatting tags.
+            Event::InlineHtml(t) => {
+                let mut style = self.style.clone();
+                style.raw_html = true;
+                self.inlines.push(Inline {
+                    text: t.into_string(),
+                    style,
+                });
+            }
             Event::SoftBreak => self.push_text(" "),
             Event::HardBreak => self.push_text("\n"),
             Event::Rule => {

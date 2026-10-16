@@ -273,6 +273,10 @@ pub struct InlineStyle {
     pub emphasis: bool,
     pub strike: bool,
     pub code: bool,
+    /// Underlined by an HTML `<u>` tag.
+    pub underline: bool,
+    /// Highlighted: `==text==` or an HTML `<mark>` tag.
+    pub mark: bool,
     pub link: Option<String>,
     /// Which link occurrence this text belongs to, numbered through the
     /// document: the parts of `[the **docs**](x)` share one, while
@@ -282,6 +286,10 @@ pub struct InlineStyle {
     pub muted: bool,
     /// A footnote reference, left out of heading anchors.
     pub footnote: bool,
+    /// One inline HTML tag as the Markdown front end read it, until
+    /// `finish` turns formatting tags into styles. Never set in a finished
+    /// document.
+    pub(crate) raw_html: bool,
 }
 
 /// Anchor (without `#`) that a footnote's references link to. Labels
@@ -383,6 +391,9 @@ impl Footnotes {
 fn finish(mut blocks: Vec<Block>, mut lines: Vec<usize>, footnotes: Footnotes) -> Document {
     footnotes.append_to(&mut blocks, &mut lines);
     renumber(&mut blocks, &mut Ids::default());
+    each_inlines(&mut blocks, &mut |inlines| {
+        *inlines = marks(inline_html(std::mem::take(inlines)));
+    });
     Document {
         blocks,
         lines,
@@ -437,6 +448,244 @@ fn renumber(blocks: &mut [Block], next: &mut Ids) {
             _ => {}
         }
     }
+}
+
+/// Call `f` on every run of inlines in `blocks`: headings, paragraphs,
+/// table cells and details summaries, descending into containers.
+fn each_inlines(blocks: &mut [Block], f: &mut impl FnMut(&mut Vec<Inline>)) {
+    for b in blocks {
+        match b {
+            Block::Heading { inlines, .. } | Block::Paragraph(inlines) => f(inlines),
+            Block::Table { header, rows, .. } => {
+                for cell in header.iter_mut().chain(rows.iter_mut().flatten()) {
+                    f(cell);
+                }
+            }
+            Block::Details {
+                summary, blocks, ..
+            } => {
+                f(summary);
+                each_inlines(blocks, f);
+            }
+            Block::Quote(inner)
+            | Block::Callout { blocks: inner, .. }
+            | Block::Footnote { blocks: inner, .. } => each_inlines(inner, f),
+            Block::List { items, .. } => {
+                for item in items {
+                    each_inlines(item, f);
+                }
+            }
+            Block::Code(_) | Block::Rule | Block::Label(_) | Block::Image { .. } => {}
+        }
+    }
+}
+
+/// The style an inline HTML formatting element gives its content. Both
+/// front ends map tags through it, so `.md` and `.mdx` agree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Format {
+    Strong,
+    Emphasis,
+    Underline,
+    Strike,
+    Code,
+    Mark,
+}
+
+impl Format {
+    const ALL: [Format; 6] = [
+        Format::Strong,
+        Format::Emphasis,
+        Format::Underline,
+        Format::Strike,
+        Format::Code,
+        Format::Mark,
+    ];
+
+    /// The format of the HTML element `name`, in any case.
+    pub(crate) fn of_tag(name: &str) -> Option<Self> {
+        Some(match name.to_ascii_lowercase().as_str() {
+            "b" | "strong" => Format::Strong,
+            "i" | "em" => Format::Emphasis,
+            "u" => Format::Underline,
+            "s" | "del" | "strike" => Format::Strike,
+            // A key is shown as a code chip, the terminal's nearest thing
+            // to the box a browser draws around it.
+            "code" | "kbd" => Format::Code,
+            "mark" => Format::Mark,
+            _ => return None,
+        })
+    }
+
+    pub(crate) fn apply(self, s: &mut InlineStyle) {
+        match self {
+            Format::Strong => s.strong = true,
+            Format::Emphasis => s.emphasis = true,
+            Format::Underline => s.underline = true,
+            Format::Strike => s.strike = true,
+            Format::Code => s.code = true,
+            Format::Mark => s.mark = true,
+        }
+    }
+}
+
+/// Whether the HTML element `name` is a line break, `<br>`.
+pub(crate) fn is_break_tag(name: &str) -> bool {
+    name.eq_ignore_ascii_case("br")
+}
+
+/// One HTML tag's source, read as `(name, closing, self_closing)`:
+/// `<b class="x">`, `</b>` and `<br/>`. `None` for anything else.
+fn html_tag(raw: &str) -> Option<(&str, bool, bool)> {
+    let body = raw.strip_prefix('<')?.strip_suffix('>')?;
+    let (body, closing) = match body.strip_prefix('/') {
+        Some(rest) => (rest, true),
+        None => (body, false),
+    };
+    let end = body
+        .find(|c: char| !c.is_ascii_alphanumeric())
+        .unwrap_or(body.len());
+    let name = &body[..end];
+    if !name.starts_with(|c: char| c.is_ascii_alphabetic()) {
+        return None;
+    }
+    let rest = &body[end..];
+    if !rest.is_empty() && !rest.starts_with(|c: char| c.is_whitespace() || c == '/') {
+        return None;
+    }
+    Some((name, closing, rest.trim_end().ends_with('/')))
+}
+
+/// `inlines` with the Markdown front end's inline HTML read: paired
+/// formatting tags (`<b>x</b>`) style the inlines between them and are
+/// dropped, and `<br>` is a line break. Tags pair by name, the nearest
+/// open one first; unpaired and unknown tags stay as their source text.
+fn inline_html(inlines: Vec<Inline>) -> Vec<Inline> {
+    if !inlines.iter().any(|i| i.style.raw_html) {
+        return inlines;
+    }
+    // Per inline: the format a paired tag there starts (`true`) or ends.
+    let mut role: Vec<Option<(Format, bool)>> = vec![None; inlines.len()];
+    let mut open: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut breaks = HashSet::new();
+    for (i, inl) in inlines.iter().enumerate() {
+        if !inl.style.raw_html {
+            continue;
+        }
+        let Some((name, closing, self_closing)) = html_tag(&inl.text) else {
+            continue;
+        };
+        if is_break_tag(name) && !closing {
+            breaks.insert(i);
+            continue;
+        }
+        let Some(format) = Format::of_tag(name) else {
+            continue;
+        };
+        let stack = open.entry(name.to_ascii_lowercase()).or_default();
+        match (closing, self_closing) {
+            (false, false) => stack.push(i),
+            (true, _) => {
+                if let Some(start) = stack.pop() {
+                    role[start] = Some((format, true));
+                    role[i] = Some((format, false));
+                }
+            }
+            // `<b/>` holds nothing; it stays as text.
+            (false, true) => {}
+        }
+    }
+    // Pairs open around each inline, by format.
+    let mut depth = [0u32; Format::ALL.len()];
+    let mut out = Vec::with_capacity(inlines.len());
+    for (i, inl) in inlines.into_iter().enumerate() {
+        if let Some((format, starts)) = role[i] {
+            let d = &mut depth[format as usize];
+            *d = if starts { *d + 1 } else { d.saturating_sub(1) };
+            continue;
+        }
+        let mut style = inl.style;
+        style.raw_html = false;
+        for format in Format::ALL {
+            if depth[format as usize] > 0 {
+                format.apply(&mut style);
+            }
+        }
+        let text = if breaks.contains(&i) { "\n" } else { &inl.text };
+        push_inline(&mut out, text, &style);
+    }
+    out
+}
+
+/// `inlines` with each `==text==` highlighted and its markers dropped. A
+/// marker is exactly two `=` outside code and muted syntax; it opens
+/// before a non-space and closes after one, so `a == b` stays text, as
+/// does a marker left unmatched.
+fn marks(inlines: Vec<Inline>) -> Vec<Inline> {
+    let plain = |i: &Inline| !i.style.code && !i.style.muted;
+    if !inlines.iter().any(|i| plain(i) && i.text.contains("==")) {
+        return inlines;
+    }
+    let flat: String = inlines.iter().map(|i| i.text.as_str()).collect();
+    let b = flat.as_bytes();
+    let mut pairs: Vec<(usize, usize)> = Vec::new();
+    let mut opener = None;
+    let mut start = 0;
+    for inl in &inlines {
+        let end = start + inl.text.len();
+        if plain(inl) {
+            for p in start..end.saturating_sub(1) {
+                let marker = b[p] == b'='
+                    && b[p + 1] == b'='
+                    && (p == 0 || b[p - 1] != b'=')
+                    && b.get(p + 2) != Some(&b'=');
+                if !marker {
+                    continue;
+                }
+                let before = flat[..p].chars().next_back();
+                let after = flat[p + 2..].chars().next();
+                let solid = |c: Option<char>| c.is_some_and(|c| !c.is_whitespace());
+                match opener {
+                    Some(o) if solid(before) => {
+                        pairs.push((o, p));
+                        opener = None;
+                    }
+                    _ if solid(after) => opener = Some(p),
+                    _ => {}
+                }
+            }
+        }
+        start = end;
+    }
+    if pairs.is_empty() {
+        return inlines;
+    }
+    let cuts: Vec<usize> = pairs
+        .iter()
+        .flat_map(|&(o, c)| [o, o + 2, c, c + 2])
+        .collect();
+    // Cuts before a segment, mod 4: 0 plain, 1 opening marker, 2 marked,
+    // 3 closing marker.
+    let mut out = Vec::with_capacity(inlines.len());
+    let (mut start, mut k) = (0, 0);
+    for inl in inlines {
+        let end = start + inl.text.len();
+        let mut s = start;
+        while s < end {
+            while cuts.get(k).is_some_and(|&c| c <= s) {
+                k += 1;
+            }
+            let e = cuts.get(k).map_or(end, |&c| c.min(end));
+            if k % 2 == 0 {
+                let mut style = inl.style.clone();
+                style.mark |= k % 4 == 2;
+                push_inline(&mut out, &inl.text[s - start..e - start], &style);
+            }
+            s = e;
+        }
+        start = end;
+    }
+    out
 }
 
 /// The relative link a wiki link's target stands for: `Page` is

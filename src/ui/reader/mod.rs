@@ -69,6 +69,7 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
         width: width(gutter),
         ..body
     };
+    r.set_content_area(content);
     let end = (r.scroll() + content.height as usize).min(r.rendered().lines.len());
     // A copy (cheap: colors and an `Arc`), so `r` can be borrowed mutably
     // for the images below.
@@ -117,6 +118,18 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
             frame
                 .buffer_mut()
                 .set_style(area, Style::default().fg(t.h1_fg).bg(t.current_bg));
+        }
+    }
+    // The link under the mouse pointer, shaded like the focused one but
+    // keeping its colour and its hyperlink.
+    if let Some(id) = r.hovered() {
+        for (i, link) in r.rendered().links.iter().enumerate() {
+            if link.id == id && !focused.contains(&i) && (r.scroll()..end).contains(&link.line) {
+                frame.buffer_mut().set_style(
+                    link_rect(content, link, r.scroll()),
+                    Style::default().bg(t.current_bg),
+                );
+            }
         }
     }
     // The focused details block's summary line.

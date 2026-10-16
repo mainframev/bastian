@@ -40,6 +40,9 @@ pub struct App {
     edit: Option<(PathBuf, Option<usize>)>,
     /// Set by ctrl-z; the run loop suspends bastian like a shell job.
     suspend: bool,
+    /// The mouse moved onto, off or between links: the run loop redraws,
+    /// though pointer motion is otherwise ignored.
+    hover_changed: bool,
     /// Where themes come from and where a picked one is saved.
     pub themes: ThemeFiles,
     /// The open theme picker, and the theme to restore if it's cancelled.
@@ -86,6 +89,7 @@ impl App {
             opened: Vec::new(),
             edit: None,
             suspend: false,
+            hover_changed: false,
             themes: ThemeFiles::default(),
             picker: None,
             picker_width: picker::DEFAULT_WIDTH,
@@ -219,6 +223,14 @@ impl App {
                     } else if let Some(r) = &mut self.reader {
                         r.on_click(m.column, m.row);
                         self.settings.reader.toc_width = r.toc_width();
+                    }
+                    return true;
+                }
+                MouseEventKind::Moved => {
+                    if self.picker.is_none()
+                        && let Some(r) = &mut self.reader
+                    {
+                        self.hover_changed |= r.on_hover(m.column, m.row);
                     }
                     return true;
                 }

@@ -283,6 +283,11 @@ pub struct Reader {
     /// Width of the screen at the last draw, which the table of contents
     /// is sized against.
     screen: u16,
+    /// Where the document's text was drawn last, for finding the link
+    /// under the mouse pointer.
+    content_area: ratatui::layout::Rect,
+    /// The mouse pointer's last cell, while mouse support is on.
+    pointer: Option<(u16, u16)>,
     /// Draw a gutter of rendered line numbers.
     pub line_numbers: bool,
     /// File the document came from, watched for changes.
@@ -385,6 +390,8 @@ impl Reader {
             goto_mark: None,
             toc_walk: None,
             screen: 0,
+            content_area: ratatui::layout::Rect::default(),
+            pointer: None,
             // Source files read from disk always show their line numbers.
             line_numbers: opts.line_numbers || (file.is_some() && code_file),
             modified: file.as_deref().and_then(reload::mtime),

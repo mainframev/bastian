@@ -379,3 +379,45 @@ fn history_reopens_a_symlink_by_its_own_path() {
     assert_eq!(r.file(), Some(link.as_path()));
     assert_eq!(r.base_dir(), docs.as_path());
 }
+
+#[test]
+fn pointer_motion_redraws_only_when_the_hovered_link_changes() {
+    let s = settings();
+    let reader = reader_in(
+        &s,
+        doc::parse("[docs](https://x.dev)\n"),
+        PathBuf::from("."),
+    );
+    let mut app = App::read(reader, s);
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(60, 8)).unwrap();
+    terminal
+        .draw(|f| crate::ui::reader::draw(f, app.reader.as_mut().unwrap()))
+        .unwrap();
+    let r = app.reader.as_ref().unwrap();
+    let link = &r.rendered().links[0];
+    let x = crate::ui::reader::MARGIN
+        + crate::ui::reader::gutter_width(r, r.rendered().lines.len())
+        + link.col as u16;
+    let y = 1 + link.line as u16;
+    let moved = |column, row| {
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Moved,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        })
+    };
+    // Motion alone never asks for a redraw; the hover change does.
+    assert!(run::is_ignored(&moved(x, y)));
+    assert!(app.on_event(&moved(x, y)));
+    assert!(std::mem::take(&mut app.hover_changed));
+    assert!(app.on_event(&moved(x + 1, y)));
+    assert!(!app.hover_changed, "still on the same link");
+    assert!(app.on_event(&moved(0, 0)));
+    assert!(std::mem::take(&mut app.hover_changed));
+
+    // The theme picker takes the mouse.
+    press(&mut app, KeyCode::Char('T'));
+    assert!(app.on_event(&moved(x, y)));
+    assert!(!app.hover_changed);
+}

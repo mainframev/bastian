@@ -108,9 +108,15 @@ impl Reader {
         }
         let mut run = BlockRun::started();
         let started = self.spec(id).and_then(|spec| {
-            self.runner
-                .start(id, &spec)
-                .map_err(|e| format!("{}: {e}", spec.program))
+            self.runner.start(id, &spec).map_err(|e| {
+                // A missing working directory fails the spawn with the
+                // same error as a missing program; name the one at fault.
+                if spec.cwd.is_dir() {
+                    format!("{}: {e}", spec.program)
+                } else {
+                    format!("working directory {}: {e}", spec.cwd.display())
+                }
+            })
         });
         if let Err(e) = started {
             run.status = Status::Error(e);

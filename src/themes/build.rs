@@ -38,22 +38,6 @@ pub(super) const OPTIONAL_UI_KEYS: &[(&str, &str)] = &[
     ("bullet_3", "accent"),
 ];
 
-pub(super) const SYNTAX_KEYS: &[&str] = &[
-    "comment",
-    "keyword",
-    "string",
-    "number",
-    "constant",
-    "function",
-    "type",
-    "operator",
-    "punctuation",
-    "tag",
-    "attribute",
-    "inserted",
-    "deleted",
-];
-
 /// `TextMate` scopes each `[syntax]` color applies to.
 pub(super) const SCOPES: &[(&str, &str)] = &[
     ("comment", "comment, punctuation.definition.comment"),
@@ -88,7 +72,8 @@ pub(super) const SCOPES: &[(&str, &str)] = &[
 pub(super) fn build(file: &ThemeFile, origin: &str) -> Result<Theme> {
     let optional: Vec<&str> = OPTIONAL_UI_KEYS.iter().map(|(k, _)| *k).collect();
     check_keys(&file.ui, "ui", UI_KEYS, &optional, origin)?;
-    check_keys(&file.syntax, "syntax", SYNTAX_KEYS, &[], origin)?;
+    let syntax: Vec<&str> = SCOPES.iter().map(|(k, _)| *k).collect();
+    check_keys(&file.syntax, "syntax", &syntax, &[], origin)?;
     let appearance = file
         .appearance
         .ok_or_else(|| anyhow!("theme {origin} is missing `appearance`"))?;

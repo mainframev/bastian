@@ -75,6 +75,16 @@ pub fn step(selected: usize, len: usize, motion: Motion) -> usize {
     }
 }
 
+/// The answer a key gives a yes/no question: y or Enter is yes; n, q or
+/// Esc is no; anything else leaves it open.
+pub(crate) fn yes_no(key: &KeyEvent) -> Option<bool> {
+    match key.code {
+        KeyCode::Char('y' | 'Y') | KeyCode::Enter => Some(true),
+        KeyCode::Char('n' | 'N' | 'q') | KeyCode::Esc => Some(false),
+        _ => None,
+    }
+}
+
 /// The key help overlay: whether it's open and how far it's scrolled.
 #[derive(Debug, Default)]
 pub struct Help {

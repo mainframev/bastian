@@ -78,16 +78,22 @@ pub fn check_themes(r: &Resolved, exists: impl Fn(&str) -> bool) -> Result<()> {
         if (key == "theme" && THEME_MODES.contains(&s.value.as_str())) || exists(&s.value) {
             continue;
         }
-        let from = match s.source {
-            Source::Flag => "--theme".to_string(),
-            Source::Env => env_var(key),
-            Source::File => format!("`{key}` in the config file"),
-            Source::Default => "the default".to_string(),
-        };
         return Err(anyhow!(
-            "unknown theme {:?} (from {from}); run `bastian themes` to list them",
-            s.value
+            "unknown theme {:?} (from {}); run `bastian themes` to list them",
+            s.value,
+            theme_origin(key, s.source)
         ));
     }
     Ok(())
+}
+
+/// Where the theme setting `key` came from, e.g. `--theme` or
+/// `BASTIAN_DARK_THEME`.
+pub fn theme_origin(key: &str, source: Source) -> String {
+    match source {
+        Source::Flag => "--theme".to_string(),
+        Source::Env => env_var(key),
+        Source::File => format!("`{key}` in the config file"),
+        Source::Default => "the default".to_string(),
+    }
 }

@@ -487,6 +487,14 @@ impl Reader {
         }
     }
 
+    /// Whether a popup is drawn over the document. The search and line
+    /// prompts sit above the document, not over it.
+    pub(crate) fn popup_open(&self) -> bool {
+        self.overlay
+            .as_ref()
+            .is_some_and(|o| !matches!(o, Overlay::Prompt(_) | Overlay::GoTo(_)))
+    }
+
     /// The document as laid out by the last `layout`.
     pub fn rendered(&self) -> &Rendered {
         &self.rendered
@@ -495,12 +503,6 @@ impl Reader {
     /// The rendered line at the top of the view.
     pub fn scroll(&self) -> usize {
         self.scroll
-    }
-
-    /// Put rendered line `line` at the top of the view, as far as the
-    /// document allows. Counts as the user moving: it ends a restore.
-    pub fn scroll_to(&mut self, line: usize) {
-        self.jump_to(line);
     }
 
     /// The one-shot status bar message, if any.
@@ -601,10 +603,7 @@ impl Reader {
             }
         }
         if let Some(anchor) = self.pending_anchor.take() {
-            match self.heading_line(&anchor) {
-                Some(line) => self.jump_to(line),
-                None => self.message = Some(format!("no heading #{anchor}")),
-            }
+            self.go_to_heading(&anchor);
         }
         self.follow_output();
         self.scroll = self.scroll.min(self.max_scroll());

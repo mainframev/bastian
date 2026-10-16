@@ -9,7 +9,7 @@ pub use date::{check_date_format, format_time};
 pub use describe::describe;
 pub use file::{TEMPLATE, load_at, load_from, locate, path};
 pub use resolve::{EnvMap, Resolved, Setting, Source, env_var, env_vars, resolve};
-pub use theme::{check_themes, save_theme, theme_name};
+pub use theme::{check_themes, save_theme, theme_name, theme_origin};
 
 use std::collections::HashMap;
 

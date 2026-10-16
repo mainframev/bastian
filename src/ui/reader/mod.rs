@@ -13,7 +13,7 @@ use super::status;
 use super::text::highlight;
 use crate::picker::ThemePicker;
 use crate::reader::{Overlay, Reader};
-use media::{draw_hyperlinks, draw_images};
+use media::{draw_hyperlinks, draw_images, link_rect};
 use overlays::{draw_confirm, draw_history, draw_links, draw_location, draw_open_confirm};
 use toc::draw_toc;
 
@@ -29,8 +29,7 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
     // screen too narrow for the document beside it, the picker covers it.
     let [top, status] =
         Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
-    let side = picker.as_deref_mut().map_or(0, |p| p.fit(top.width));
-    let docked = if side < top.width { side } else { 0 };
+    let (side, docked) = super::picker::dock(picker.as_deref_mut(), top.width);
     let pane = r.fit_toc_beside(top.width, docked);
     let [toc, main, _] = Layout::horizontal([
         Constraint::Length(pane),
@@ -107,16 +106,13 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
         .unwrap_or_default();
     // A hyperlink's first cell holds its whole label, which the terminal
     // prints over whatever a popup put in the cells after it.
-    if r.hyperlinks && !popup_open(r) {
+    if r.hyperlinks && !r.popup_open() {
         draw_hyperlinks(frame, r, content, end, &focused);
     }
     for link in focused.iter().map(|&i| &r.rendered().links[i]) {
         if (r.scroll()..end).contains(&link.line) {
-            let x = content.x + link.col as u16;
-            let width = (link.width as u16).min(content.right().saturating_sub(x));
-            let y = content.y + (link.line - r.scroll()) as u16;
             frame.buffer_mut().set_style(
-                Rect::new(x, y, width, 1),
+                link_rect(content, link, r.scroll()),
                 Style::default().fg(t.h1_fg).bg(t.current_bg),
             );
         }
@@ -209,14 +205,7 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
     if pane > 0 {
         draw_toc(frame, r, toc);
     }
-    if let Some(p) = &picker {
-        let area = Rect {
-            x: top.right() - side,
-            width: side,
-            ..top
-        };
-        super::picker::draw(frame, r.theme(), p, area);
-    }
+    super::picker::draw_docked(frame, r.theme(), picker.as_deref(), top, side);
 
     let pct = if r.max_scroll() == 0 {
         100
@@ -269,14 +258,6 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
     if let Some(Overlay::Help(help)) = &mut r.overlay {
         status::help(frame, &t, main, HELP, &mut help.scroll);
     }
-}
-
-/// Whether a popup is drawn over the document.
-/// The search and line prompts sit above the document, not over it.
-fn popup_open(r: &Reader) -> bool {
-    r.overlay
-        .as_ref()
-        .is_some_and(|o| !matches!(o, Overlay::Prompt(_) | Overlay::GoTo(_)))
 }
 
 /// Blank columns between the line numbers and the text.
@@ -384,9 +365,9 @@ mod tests {
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| status::help(f, &Theme::dark(), f.area(), HELP, scroll))
             .unwrap();
-        let buf = term.backend().buffer();
-        (0..h)
-            .map(|y| (0..w).map(|x| buf[(x, y)].symbol()).collect::<String>() + "\n")
+        crate::ui::rows(term.backend().buffer())
+            .into_iter()
+            .map(|row| row + "\n")
             .collect()
     }
 
@@ -422,7 +403,7 @@ mod tests {
         let mut term = Terminal::new(TestBackend::new(100, 20)).unwrap();
         term.draw(|f| draw_with(f, &mut r, Some(&mut p))).unwrap();
         let buf = term.backend().buffer();
-        let status: String = (0..100).map(|x| buf[(x, 19)].symbol()).collect();
+        let status = &crate::ui::rows(buf)[19];
         assert!(status.contains(super::super::picker::HINT), "{status}");
         assert!(!status.contains("reloaded"), "{status}");
     }

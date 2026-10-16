@@ -127,15 +127,11 @@ impl App {
             s.images = Some(crate::images::Support::detect());
         }
         s.reader.images = s.image_support();
+        let state = if s.show_images { "on" } else { "off" };
         let support = s.reader.images.clone();
         for r in self.reader.iter_mut().chain(self.history.iter_mut()) {
             r.set_images(support.clone());
         }
-        let state = if self.settings.show_images {
-            "on"
-        } else {
-            "off"
-        };
         self.set_message(format!("images {state}"));
     }
 
@@ -266,13 +262,8 @@ impl App {
                 let name = b
                     .selected_entry()
                     .map_or_else(|| path.display().to_string(), |e| e.rel.clone());
-                match self.settings.open(&path, name) {
-                    Ok(r) => {
-                        self.reader = Some(r);
-                        self.note_opened();
-                    }
-                    Err(err) => self.set_message(format!("{err:#}")),
-                }
+                // No reader is open here, so nothing goes to history.
+                self.push_reader(self.settings.open(&path, name));
                 true
             }
             browser::Action::Edit(path) => {

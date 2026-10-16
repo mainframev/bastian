@@ -176,10 +176,6 @@ impl Renderer<'_> {
         let range = self.add_run_panel(c, &mut lines, width);
         src_line.resize(lines.len(), None);
         Rendered {
-            images: Vec::new(),
-            block_starts: Vec::new(),
-            links: Vec::new(),
-            details: Vec::new(),
             code_blocks: vec![range],
             anchors: src_line
                 .iter()
@@ -188,6 +184,7 @@ impl Renderer<'_> {
                 .collect(),
             lines,
             src_line,
+            ..Rendered::default()
         }
     }
 }

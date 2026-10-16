@@ -5,7 +5,7 @@ use anyhow::Result;
 use super::Theme;
 use super::build::ansi_index;
 use super::file::user_file;
-use super::{Appearance, builtin_names, canonical, load};
+use super::{builtin_names, canonical, load};
 use crate::paths;
 
 /// One row of `bastian themes`.
@@ -33,31 +33,26 @@ pub fn list(dir: Option<&Path>) -> Vec<Listing> {
         })
         .collect();
     user.sort();
+    // User files load from `dir`, built-ins from nowhere else.
+    let listing = |name: String, path: Option<PathBuf>, overrides| Listing {
+        theme: load(&name, path.as_ref().and(dir)),
+        name,
+        path,
+        overrides,
+    };
     let mut rows: Vec<Listing> = builtin_names()
         .map(|name| match user.iter().position(|(n, _)| n == name) {
             Some(i) => {
                 let (name, path) = user.remove(i);
-                Listing {
-                    theme: load(&name, dir),
-                    name,
-                    path: Some(path),
-                    overrides: true,
-                }
+                listing(name, Some(path), true)
             }
-            None => Listing {
-                name: name.to_string(),
-                path: None,
-                overrides: false,
-                theme: load(name, None),
-            },
+            None => listing(name.to_string(), None, false),
         })
         .collect();
-    rows.extend(user.into_iter().map(|(name, path)| Listing {
-        theme: load(&name, dir),
-        name,
-        path: Some(path),
-        overrides: false,
-    }));
+    rows.extend(
+        user.into_iter()
+            .map(|(name, path)| listing(name, Some(path), false)),
+    );
     rows
 }
 
@@ -91,17 +86,9 @@ pub fn format_list(roles: &[(&str, &str)], dir: Option<&Path>, color: bool) -> S
         };
         let (appearance, colors) = match &l.theme {
             Ok(t) => {
-                let appearance = match t.appearance {
-                    Appearance::Dark => "dark",
-                    Appearance::Light => "light",
-                    Appearance::Any => "any",
-                };
-                let colors: String = [t.accent, t.heading, t.link, t.code, t.ok, t.warn, t.err]
-                    .into_iter()
-                    .map(swatch)
-                    .collect();
+                let colors: String = t.swatch().into_iter().map(swatch).collect();
                 (
-                    appearance,
+                    t.appearance.label(),
                     if color {
                         format!("{colors}  ")
                     } else {

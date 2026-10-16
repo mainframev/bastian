@@ -9,6 +9,7 @@ use ratatui::layout::Size;
 use super::App;
 use super::screen::{Screen, draw_frame};
 use super::terminal::{Tui, suspend};
+use crate::reader::Reader;
 use crate::ui;
 
 /// Events that change nothing on screen: pointer motion (unless it moves
@@ -68,7 +69,8 @@ impl Input for Crossterm {
 pub(super) struct Handled {
     /// An event asked to quit; the events after it weren't read.
     pub quit: bool,
-    /// Something on screen changed.
+    /// Something on screen changed. A scroll that left the view as it was
+    /// changes nothing.
     pub redraw: bool,
     /// The terminal's new size.
     pub resize: Option<Size>,
@@ -94,6 +96,8 @@ pub(super) fn handle_batch(
     for n in 1.. {
         let ignored = is_ignored(&event);
         let moves = app.only_moves(&event);
+        let view = |app: &App| app.reader.as_ref().map(Reader::scroll_view);
+        let before = moves.then(|| view(app));
         if !app.on_event(&event) {
             handled.quit = true;
             break;
@@ -101,7 +105,12 @@ pub(super) fn handle_batch(
         if let Event::Resize(width, height) = event {
             handled.resize = Some(Size::new(width, height));
         }
-        handled.redraw |= !ignored || std::mem::take(&mut app.hover_changed);
+        // A scroll that moved nothing (at the end, say) needs no frame.
+        let changed = match before {
+            Some(before) => before != view(app),
+            None => !ignored,
+        };
+        handled.redraw |= changed || std::mem::take(&mut app.hover_changed);
         if !(ignored || moves) || n >= BATCH || !input.ready()? {
             break;
         }

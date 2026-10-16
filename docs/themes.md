@@ -64,6 +64,20 @@ light_theme = "rose-pine-dawn"
 
 `bastian themes` marks which theme each of these settings points at.
 
+## Background
+
+The reader and the file browser sit on the theme's own background, so its
+colors look the same in every terminal. `terminal` keeps the terminal's
+background. To keep the terminal's with every theme (for a transparent or
+blurred window, say), set:
+
+```toml
+background = "terminal"  # or "theme", the default (--background)
+```
+
+Printed and piped output never paints the background. The terminal's padding
+around the grid keeps its own color.
+
 ## Your own themes
 
 Put `<name>.toml` in `~/.config/bastian/themes/` (the `themes` directory next
@@ -95,6 +109,9 @@ for one that suits both) and every color:
   - `heading_underline` colors the rule under level-2 headings (`muted`).
   - `bullet_1`, `bullet_2`, `bullet_3` color list bullets (`•`, `◦`, `▸`)
     by nesting depth, cycling for deeper lists (`accent`).
+  - `background` colors the page behind the reader and the browser
+    (`default`, the terminal's own). It must differ from `surface`, which
+    code, the status bar and popups sit on.
 - `[syntax]` colors code blocks: `comment`, `keyword`, `string`, `number`,
   `constant`, `function`, `type`, `operator`, `punctuation`, `tag`,
   `attribute`, `inserted`, `deleted`.

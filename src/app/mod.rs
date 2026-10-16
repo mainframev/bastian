@@ -137,6 +137,7 @@ impl App {
 
     /// Use `theme` everywhere: the browser, the open reader and history.
     fn apply_theme(&mut self, theme: Theme) {
+        let theme = self.settings.on_page(theme);
         for r in self.reader.iter_mut().chain(self.history.iter_mut()) {
             r.set_theme(theme.clone());
         }

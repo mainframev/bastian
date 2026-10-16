@@ -250,6 +250,39 @@ mod tests {
     }
 
     #[test]
+    fn themes_paint_their_page_but_terminal_keeps_its_own() {
+        for name in builtin_names() {
+            let t = load(name, None).unwrap();
+            if name == "terminal" {
+                assert_eq!(t.background, Color::Reset);
+            } else {
+                assert!(matches!(t.background, Color::Rgb(..)), "{name}");
+                assert_ne!(t.background, t.surface, "{name}");
+            }
+        }
+        let dir = theme_dir(&[
+            (
+                "mine",
+                "extends = \"nord\"\n[ui]\nbackground = \"#000000\"\n",
+            ),
+            (
+                "none",
+                "extends = \"nord\"\n[ui]\nbackground = \"default\"\n",
+            ),
+            (
+                "flat",
+                "extends = \"nord\"\n[ui]\nbackground = \"#3b4252\"\n",
+            ),
+        ]);
+        let d = Some(dir.path());
+        assert_eq!(load("mine", d).unwrap().background, Color::Rgb(0, 0, 0));
+        assert_eq!(load("none", d).unwrap().background, Color::Reset);
+        // Code and the status bar sit on `surface`, so it can't be the page.
+        let err = format!("{:#}", load("flat", d).unwrap_err());
+        assert!(err.contains("`ui.background` must differ"), "{err}");
+    }
+
+    #[test]
     fn optional_colors_fall_back() {
         let src = "appearance = \"dark\"\n[ui]\n".to_string()
             + &build::UI_KEYS

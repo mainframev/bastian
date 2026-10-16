@@ -30,6 +30,8 @@ pub struct Config {
     pub dark_theme: Option<String>,
     /// Theme used by `auto` on light backgrounds, and by `light`.
     pub light_theme: Option<String>,
+    /// Paint the theme's page background, or keep the terminal's.
+    pub background: Option<PageBackground>,
     pub width: Option<u16>,
     pub confirm: Option<Confirm>,
     /// Show rendered line numbers in the reader.
@@ -75,6 +77,17 @@ pub struct Config {
     /// Language → command line; the block source is appended as the last
     /// argument. An empty list stops that language from running.
     pub interpreters: HashMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum PageBackground {
+    // The theme's own background behind the reader and the browser (the
+    // default), or the terminal's, which keeps its transparency. A plain
+    // comment: a doc comment would switch `--help` to clap's long layout.
+    #[default]
+    Theme,
+    Terminal,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, clap::ValueEnum)]

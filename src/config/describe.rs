@@ -26,6 +26,7 @@ pub fn describe(r: &Resolved, file: Option<&Path>) -> String {
         row("theme", &r.theme),
         row("dark_theme", &r.dark_theme),
         row("light_theme", &r.light_theme),
+        row("background", &r.background),
         row("width", &r.width),
         row("confirm", &r.confirm),
         row("line_numbers", &r.line_numbers),

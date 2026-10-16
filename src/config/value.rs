@@ -1,6 +1,6 @@
 use clap::ValueEnum;
 
-use super::{ColorMode, Confirm, ListLayout, Selector, SortBy};
+use super::{ColorMode, Confirm, ListLayout, PageBackground, Selector, SortBy};
 
 /// A setting's value type: how it reads from the environment and prints
 /// in `--print-config`.
@@ -97,4 +97,11 @@ macro_rules! enum_value {
         }
     )*};
 }
-enum_value!(Confirm, ColorMode, Selector, ListLayout, SortBy);
+enum_value!(
+    PageBackground,
+    Confirm,
+    ColorMode,
+    Selector,
+    ListLayout,
+    SortBy
+);

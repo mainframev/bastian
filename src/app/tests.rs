@@ -25,6 +25,7 @@ fn settings() -> Settings {
         show_images: false,
         selector: crate::config::Selector::Bar,
         list_layout: crate::config::ListLayout::Cards,
+        background: crate::config::PageBackground::Theme,
     }
 }
 
@@ -54,6 +55,33 @@ fn reading(dir: &Path, current: &str) -> App {
         overridden_by: None,
     };
     app
+}
+
+#[test]
+fn keeping_the_terminal_background_holds_through_theme_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = reading(dir.path(), "nord");
+    app.settings.background = crate::config::PageBackground::Terminal;
+    app.apply_theme(crate::themes::load("nord", None).unwrap());
+    let page = |app: &App| app.reader.as_ref().unwrap().theme().background;
+    assert_eq!(page(&app), ratatui::style::Color::Reset);
+    // Previewing another theme in the picker keeps it too.
+    press(&mut app, KeyCode::Char('T'));
+    press(&mut app, KeyCode::Char('j'));
+    assert_ne!(
+        app.settings.reader.theme.accent,
+        crate::themes::load("nord", None).unwrap().accent
+    );
+    assert_eq!(page(&app), ratatui::style::Color::Reset);
+    assert_eq!(
+        app.settings.reader.theme.background,
+        ratatui::style::Color::Reset
+    );
+
+    // By default the theme's own is painted.
+    let mut app = reading(dir.path(), "nord");
+    app.apply_theme(crate::themes::load("nord", None).unwrap());
+    assert_eq!(page(&app), ratatui::style::Color::Rgb(0x2e, 0x34, 0x40));
 }
 
 #[test]

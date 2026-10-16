@@ -77,6 +77,10 @@ pub struct Cli {
     #[arg(long, value_enum, value_name = "WHEN", overrides_with = "images")]
     pub images: Option<Switch>,
 
+    /// Paint the theme's background, or keep the terminal's [default: theme].
+    #[arg(long, value_enum, value_name = "WHICH")]
+    pub background: Option<config::PageBackground>,
+
     /// How the file browser marks the selected file [default: bar].
     #[arg(long, value_enum, value_name = "STYLE")]
     pub selector: Option<config::Selector>,
@@ -160,6 +164,7 @@ impl Cli {
     pub fn overrides(&self) -> Config {
         Config {
             theme: self.theme.clone(),
+            background: self.background,
             width: self.width,
             confirm: self.yes.then_some(Confirm::Never),
             line_numbers: self.line_numbers.then_some(true),

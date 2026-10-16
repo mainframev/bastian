@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 use unicode_width::UnicodeWidthStr;
@@ -8,7 +8,7 @@ use unicode_width::UnicodeWidthStr;
 use super::pane::{self, Side};
 use super::status;
 use crate::picker::ThemePicker;
-use crate::render::theme::{Appearance, Theme};
+use crate::render::theme::Theme;
 use crate::text::take_width;
 
 /// The status bar's hint while the picker is open.
@@ -112,11 +112,7 @@ pub fn draw(frame: &mut Frame, t: &Theme, p: &ThemePicker, area: Rect) {
             }
             match &e.theme {
                 Ok(theme) => {
-                    let label = match theme.appearance {
-                        Appearance::Dark => "dark",
-                        Appearance::Light => "light",
-                        Appearance::Any => "any",
-                    };
+                    let label = theme.appearance.label();
                     spans.push(Span::styled(
                         format!(" {label:<KIND_W$}"),
                         Style::default().fg(t.muted),
@@ -140,18 +136,11 @@ pub fn draw(frame: &mut Frame, t: &Theme, p: &ThemePicker, area: Rect) {
 fn colors(theme: &Theme, n: usize) -> Vec<Span<'static>> {
     let surface = Style::default().bg(theme.surface);
     let pad = || Span::styled(" ", surface);
-    let blocks = [
-        theme.accent,
-        theme.heading,
-        theme.link,
-        theme.code,
-        theme.ok,
-        theme.warn,
-        theme.err,
-    ]
-    .into_iter()
-    .take(n)
-    .map(|c: Color| Span::styled("█", surface.fg(c)));
+    let blocks = theme
+        .swatch()
+        .into_iter()
+        .take(n)
+        .map(|c| Span::styled("█", surface.fg(c)));
     std::iter::once(pad())
         .chain(blocks)
         .chain(std::iter::once(pad()))

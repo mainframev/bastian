@@ -36,6 +36,17 @@ pub enum Appearance {
     Any,
 }
 
+impl Appearance {
+    /// How lists of themes name it.
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Appearance::Dark => "dark",
+            Appearance::Light => "light",
+            Appearance::Any => "any",
+        }
+    }
+}
+
 /// Whether `name` is a theme bastian can load: a file in `dir` (the user's
 /// themes directory) or a built-in.
 pub fn exists(name: &str, dir: Option<&Path>) -> bool {

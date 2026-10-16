@@ -8,8 +8,15 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Lint, test, commit messages and size budget; nothing is built or
+  # published unless they pass.
+  checks:
+    name: Checks
+    uses: ./.github/workflows/ci.yml
+
   build:
     name: Build (${{ matrix.target }})
+    needs: checks
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

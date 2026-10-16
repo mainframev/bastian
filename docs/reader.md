@@ -146,8 +146,24 @@ rendered when it's separated from the tags by blank lines, as on GitHub.
 Search only finds text in open blocks. Printed output shows every block
 open.
 
+## Inline HTML and highlights
+
+Paired inline formatting tags style their text, as a browser would: `<b>`
+and `<strong>` bold, `<i>` and `<em>` italic, `<u>` underlined, `<s>`,
+`<del>` and `<strike>` struck through, `<code>` and `<kbd>` as inline code,
+and `<mark>` highlighted. `<br>` (or `<br/>`) breaks the line. Tag names
+match in any case and attributes are ignored. `==text==` is highlighted
+too, except inside code; a lone `==`, or one with a space on its inner side
+(`a == b`), stays as text. Highlights take the theme's warning colour,
+since backgrounds already mark search matches and code.
+
 HTML comments (`<!-- prettier-ignore -->` and the like) aren't shown. Other
-HTML shows as its source text.
+HTML, and a tag without its partner, shows as its source text.
+
+In `.mdx` files the same lowercase elements are styled the same way;
+capitalized ones are components and keep their muted tag labels. JSX needs
+`<br />` there: a bare `<br>` is invalid MDX, so the file is read as plain
+Markdown.
 
 ## Diagrams
 

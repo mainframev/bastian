@@ -503,3 +503,163 @@ fn wiki_link_syntax_in_code_stays_text() {
     };
     assert!(inlines.iter().all(|i| i.style.link.is_none()));
 }
+
+/// The first paragraph's runs as `(text, style)`.
+fn runs(src: &str) -> Vec<(String, InlineStyle)> {
+    let doc = parse(src);
+    let Some(Block::Paragraph(inlines)) = doc.blocks.first() else {
+        panic!("{:?}", doc.blocks);
+    };
+    inlines
+        .iter()
+        .map(|i| (i.text.clone(), i.style.clone()))
+        .collect()
+}
+
+/// The style of the run whose text is `text`.
+fn style_of(src: &str, text: &str) -> InlineStyle {
+    runs(src)
+        .into_iter()
+        .find(|(t, _)| t == text)
+        .unwrap_or_else(|| panic!("no run {text:?} in {:?}", runs(src)))
+        .1
+}
+
+/// Whether a style has the one property a test looks for.
+type Has = fn(&InlineStyle) -> bool;
+
+#[test]
+fn inline_html_formatting_tags_become_styles() {
+    let cases: [(&str, Has); 11] = [
+        ("<b>x</b>", |s| s.strong),
+        ("<strong>x</strong>", |s| s.strong),
+        ("<i>x</i>", |s| s.emphasis),
+        ("<em>x</em>", |s| s.emphasis),
+        ("<u>x</u>", |s| s.underline),
+        ("<s>x</s>", |s| s.strike),
+        ("<del>x</del>", |s| s.strike),
+        ("<strike>x</strike>", |s| s.strike),
+        ("<code>x</code>", |s| s.code),
+        ("<kbd>x</kbd>", |s| s.code),
+        ("<mark>x</mark>", |s| s.mark),
+    ];
+    for (tag, has) in cases {
+        let src = format!("a {tag} b\n");
+        let runs = runs(&src);
+        let text: String = runs.iter().map(|(t, _)| t.as_str()).collect();
+        assert_eq!(text, "a x b", "{tag}");
+        let x = style_of(&src, "x");
+        assert!(has(&x), "{tag}: {x:?}");
+        assert!(!x.raw_html);
+        assert!(runs.iter().all(|(t, s)| t == "x" || !has(s)), "{tag}");
+    }
+}
+
+#[test]
+fn inline_html_tags_nest_ignore_case_and_attributes() {
+    let x = style_of("<b><i>x</i></b>\n", "x");
+    assert!(x.strong && x.emphasis);
+    let x = style_of("<B>x</b> and <Mark class=\"hi\">y</MARK>\n", "x");
+    assert!(x.strong);
+    assert!(style_of("<B>x</b> and <Mark class=\"hi\">y</MARK>\n", "y").mark);
+    // Markdown inside tags keeps its own style too.
+    let x = style_of("<u>a *x* b</u>\n", "x");
+    assert!(x.underline && x.emphasis);
+    // Tags that cross still each pair by name.
+    let x = style_of("<b><i>x</b></i>\n", "x");
+    assert!(x.strong && x.emphasis);
+    // Inline code keeps tags inside it as text.
+    let r = runs("`<b>x</b>`\n");
+    assert_eq!(r.len(), 1);
+    assert_eq!(r[0].0, "<b>x</b>");
+}
+
+#[test]
+fn unpaired_and_unknown_inline_tags_stay_as_text() {
+    for src in [
+        "a <b>open\n",
+        "close</i> b\n",
+        "<span>x</span>\n",
+        "<b>x</strong>\n",
+        "<b/> x\n",
+    ] {
+        let doc = parse(src);
+        let Block::Paragraph(inl) = &doc.blocks[0] else {
+            panic!("{:?}", doc.blocks);
+        };
+        assert_eq!(plain_text(inl), src.trim_end(), "{src}");
+        assert!(
+            inl.iter().all(|i| i.style == InlineStyle::default()),
+            "{src}: {inl:?}"
+        );
+    }
+    // An unpaired tag inside a paired one is shown, and styled.
+    let r = runs("<b>a <span>x</b>\n");
+    assert_eq!(r.len(), 1);
+    assert_eq!(r[0].0, "a <span>x");
+    assert!(r[0].1.strong);
+}
+
+#[test]
+fn br_tags_are_line_breaks() {
+    for src in ["a<br>b\n", "a<br/>b\n", "a<BR />b\n"] {
+        let doc = parse(src);
+        let Block::Paragraph(inl) = &doc.blocks[0] else {
+            panic!("{:?}", doc.blocks);
+        };
+        assert_eq!(plain_text(inl), "a\nb", "{src}");
+    }
+}
+
+#[test]
+fn inline_html_in_headings_and_cells() {
+    let doc = parse("# <b>Title</b>\n\n| <i>h</i> |\n|---|\n| <mark>c</mark> |\n");
+    assert_eq!(doc.title().as_deref(), Some("Title"));
+    let Block::Table { header, rows, .. } = &doc.blocks[1] else {
+        panic!("{:?}", doc.blocks);
+    };
+    assert!(header[0].iter().any(|i| i.text == "h" && i.style.emphasis));
+    assert!(rows[0][0].iter().any(|i| i.text == "c" && i.style.mark));
+}
+
+#[test]
+fn double_equals_mark_text() {
+    let r = runs("a ==hi there== b\n");
+    let text: String = r.iter().map(|(t, _)| t.as_str()).collect();
+    assert_eq!(text, "a hi there b");
+    assert!(style_of("a ==hi there== b\n", "hi there").mark);
+    assert!(!style_of("a ==hi there== b\n", "a ").mark);
+    // Across other styles.
+    let src = "==a **b** c==\n";
+    assert!(style_of(src, "b").mark && style_of(src, "b").strong);
+    assert!(style_of(src, "a ").mark);
+    // Several on one line.
+    let src = "==x== and ==y==\n";
+    assert!(style_of(src, "x").mark && style_of(src, "y").mark);
+    assert!(!style_of(src, " and ").mark);
+}
+
+#[test]
+fn double_equals_outside_marks_stay_text() {
+    for src in [
+        "a == b\n",
+        "unmatched ==here\n",
+        "a ==b\n",
+        "x === y === z\n",
+        "`==code==`\n",
+        "== spaced ==\n",
+    ] {
+        let doc = parse(src);
+        let Block::Paragraph(inl) = &doc.blocks[0] else {
+            panic!("{:?}", doc.blocks);
+        };
+        assert_eq!(plain_text(inl), src.trim_end().trim_matches('`'), "{src}");
+        assert!(inl.iter().all(|i| !i.style.mark), "{src}: {inl:?}");
+    }
+    // A code span inside a mark keeps its markers' text out of play.
+    let src = "==a `==` b==\n";
+    let r = runs(src);
+    let text: String = r.iter().map(|(t, _)| t.as_str()).collect();
+    assert_eq!(text, "a == b");
+    assert!(r.iter().all(|(_, s)| s.mark));
+}

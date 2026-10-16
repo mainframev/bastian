@@ -217,3 +217,20 @@ fn themed_ansi() {
         );
     }
 }
+
+#[test]
+fn inline_html_and_marks_are_styled_not_shown() {
+    use ratatui::style::Modifier;
+    let t = Theme::dark();
+    let doc = parse("<b>b</b> <u>u</u> ==m== <kbd>k</kbd><br>next <span>x</span>\n");
+    let r = render(&doc, 40, &t);
+    let plain = to_plain(&r.lines);
+    // `k` is a code chip, padded by a space each side.
+    assert_eq!(plain, "b u m  k\nnext <span>x</span>");
+    let spans: Vec<_> = r.lines.iter().flat_map(|l| l.spans.iter()).collect();
+    let span = |text: &str| spans.iter().find(|s| s.content == text).unwrap().style;
+    assert!(span("b").add_modifier.contains(Modifier::BOLD));
+    assert!(span("u").add_modifier.contains(Modifier::UNDERLINED));
+    assert_eq!(span("m").fg, Some(t.warn));
+    assert_eq!(span("k").bg, Some(t.surface));
+}

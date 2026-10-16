@@ -3,8 +3,8 @@ use pulldown_cmark::{
 };
 
 use super::{
-    Align, Attrs, Block, CalloutKind, CodeBlock, Document, Footnotes, Ids, Inline, InlineStyle,
-    MAX_DEPTH, push_inline,
+    Align, Block, CalloutKind, Document, Footnotes, Ids, Inline, InlineStyle, MAX_DEPTH,
+    push_inline,
 };
 
 pub fn parse(src: &str) -> Document {
@@ -60,7 +60,6 @@ enum Frame {
     },
     /// An HTML `<details>` element, open until its `</details>`.
     Details {
-        id: usize,
         open: bool,
         summary: Option<Vec<Inline>>,
         blocks: Vec<Block>,
@@ -330,13 +329,7 @@ impl Builder {
             }
             TagEnd::CodeBlock => {
                 if let Some((info, src)) = self.code.take() {
-                    let id = self.ids.code();
-                    self.push_block(Block::Code(CodeBlock {
-                        id,
-                        lang: lang_of(&info),
-                        attrs: Attrs::parse(&info),
-                        src,
-                    }));
+                    self.push_block(super::code_block(&info, src));
                 }
             }
             TagEnd::TableCell => {
@@ -445,8 +438,9 @@ impl Builder {
 
     /// A footnote reference: `[n]`, linking to the footnote's anchor.
     fn footnote_ref(&mut self, label: &str) {
-        let mut r = self.footnotes.reference(label, &self.style);
-        r.style.link_id = Some(self.ids.link());
+        let r = self
+            .footnotes
+            .reference(label, &self.style, self.ids.link());
         push_inline(&mut self.inlines, &r.text, &r.style);
     }
 
@@ -497,9 +491,7 @@ impl Builder {
                         self.skipped_details.push(self.depth());
                         continue;
                     }
-                    let id = self.ids.details();
                     self.stack.push(Frame::Details {
-                        id,
                         open,
                         summary: None,
                         blocks: Vec::new(),
@@ -537,7 +529,6 @@ impl Builder {
     /// Close the `<details>` frame on top of the stack.
     fn close_details(&mut self) {
         let Some(Frame::Details {
-            id,
             open,
             summary,
             blocks,
@@ -546,20 +537,9 @@ impl Builder {
         else {
             return;
         };
-        let summary = summary.unwrap_or_else(|| {
-            vec![Inline {
-                text: "Details".into(),
-                style: InlineStyle::default(),
-            }]
-        });
         // At the root, the block belongs to the line of its opening tag.
         let start = std::mem::replace(&mut self.block_start, line);
-        self.push_block(Block::Details {
-            id,
-            open,
-            summary,
-            blocks,
-        });
+        self.push_block(super::details(open, summary, blocks));
         self.block_start = start;
     }
 
@@ -573,12 +553,7 @@ impl Builder {
     fn finish(mut self) -> Document {
         self.flush();
         self.close_open_details();
-        std::mem::take(&mut self.footnotes).append_to(&mut self.root, &mut self.lines);
-        Document {
-            blocks: self.root,
-            lines: self.lines,
-            code_file: false,
-        }
+        super::finish(self.root, self.lines, self.footnotes)
     }
 }
 
@@ -688,15 +663,6 @@ fn image_block(inlines: &[Inline], url: &str) -> Option<Block> {
         alt: alt.to_string(),
         url: url.to_string(),
     })
-}
-
-/// Language token of a fence info string: `sh {name=x}` and `sh{name=x}` give `sh`.
-pub(super) fn lang_of(info: &str) -> Option<String> {
-    let lang = info
-        .split(|c: char| c.is_whitespace() || c == '{' || c == ',')
-        .next()
-        .unwrap_or("");
-    (!lang.is_empty()).then(|| lang.to_string())
 }
 
 #[cfg(test)]

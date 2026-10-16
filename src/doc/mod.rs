@@ -225,6 +225,42 @@ pub struct CodeBlock {
     pub src: String,
 }
 
+/// A code block from its fence's `info` string, e.g. `sh {name=x}`.
+fn code_block(info: &str, src: String) -> Block {
+    Block::Code(CodeBlock {
+        id: 0,
+        lang: lang_of(info),
+        attrs: Attrs::parse(info),
+        src,
+    })
+}
+
+/// A details block with its `blocks`, summed up as "Details" when it has
+/// no `<summary>`.
+fn details(open: bool, summary: Option<Vec<Inline>>, blocks: Vec<Block>) -> Block {
+    let summary = summary.unwrap_or_else(|| {
+        vec![Inline {
+            text: "Details".into(),
+            style: InlineStyle::default(),
+        }]
+    });
+    Block::Details {
+        id: 0,
+        open,
+        summary,
+        blocks,
+    }
+}
+
+/// Language token of a fence info string: `sh {name=x}` and `sh{name=x}` give `sh`.
+fn lang_of(info: &str) -> Option<String> {
+    let lang = info
+        .split(|c: char| c.is_whitespace() || c == '{' || c == ',')
+        .next()
+        .unwrap_or("");
+    (!lang.is_empty()).then(|| lang.to_string())
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Inline {
     pub text: String,
@@ -279,12 +315,14 @@ struct Footnotes {
 }
 
 impl Footnotes {
-    /// The `[n]` text for a reference to `label`, linking to its note.
-    fn reference(&mut self, label: &str, style: &InlineStyle) -> Inline {
+    /// The `[n]` text for a reference to `label`, linking to its note as
+    /// link occurrence `link_id`.
+    fn reference(&mut self, label: &str, style: &InlineStyle, link_id: usize) -> Inline {
         let next = self.refs.len() + 1;
         let n = *self.refs.entry(label.to_lowercase()).or_insert(next);
         let mut style = style.clone();
         style.link = Some(format!("#{}", footnote_anchor(label)));
+        style.link_id = Some(link_id);
         style.footnote = true;
         Inline {
             text: format!("[{n}]"),
@@ -336,14 +374,24 @@ impl Footnotes {
             });
             lines.push(line);
         }
-        // Code and details in notes were numbered where they were defined;
-        // ids follow the order blocks are shown in.
-        renumber(blocks, &mut Ids::default());
     }
 }
 
-/// The next id of each numbered thing, handed out in document order. Both
-/// front ends number with it, as does renumbering after footnotes move.
+/// The document a front end built: its top-level `blocks` with their
+/// source `lines`, then the `footnotes`. Front ends leave code and details
+/// ids at 0; they are numbered here, in the order blocks are shown in.
+fn finish(mut blocks: Vec<Block>, mut lines: Vec<usize>, footnotes: Footnotes) -> Document {
+    footnotes.append_to(&mut blocks, &mut lines);
+    renumber(&mut blocks, &mut Ids::default());
+    Document {
+        blocks,
+        lines,
+        code_file: false,
+    }
+}
+
+/// The next id of each numbered thing, handed out in document order: link
+/// ids by the front ends as they read, code and details ids by `renumber`.
 #[derive(Default)]
 pub(super) struct Ids {
     code: usize,
@@ -352,7 +400,7 @@ pub(super) struct Ids {
 }
 
 impl Ids {
-    pub(super) fn code(&mut self) -> usize {
+    fn code(&mut self) -> usize {
         self.code += 1;
         self.code - 1
     }
@@ -363,7 +411,7 @@ impl Ids {
         self.link - 1
     }
 
-    pub(super) fn details(&mut self) -> usize {
+    fn details(&mut self) -> usize {
         self.details += 1;
         self.details - 1
     }

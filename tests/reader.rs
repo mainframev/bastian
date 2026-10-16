@@ -843,7 +843,11 @@ fn blocks_remember_their_source_lines() {
         Some(std::path::Path::new("a.mdx")),
     );
     assert_eq!(mdx.lines.len(), mdx.blocks.len());
-    assert_eq!(mdx.lines[0], 4, "heading after front matter");
+    assert_eq!(
+        mdx.lines[..2],
+        [0, 4],
+        "front matter, then the heading after it"
+    );
 }
 
 #[test]

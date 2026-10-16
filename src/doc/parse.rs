@@ -1,7 +1,9 @@
 use pulldown_cmark::{
-    Alignment, BlockQuoteKind, CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd,
+    Alignment, BlockQuoteKind, CodeBlockKind, Event, LinkType, MetadataBlockKind, Options, Parser,
+    Tag, TagEnd,
 };
 
+use super::front_matter::Kind;
 use super::{
     Align, Block, CalloutKind, Document, Footnotes, Ids, Inline, InlineStyle, MAX_DEPTH,
     push_inline,
@@ -116,8 +118,10 @@ struct Builder {
     block_start: usize,
     /// Source line of each root block, parallel to `root`.
     lines: Vec<usize>,
-    /// Inside YAML/TOML front matter, which isn't shown.
-    metadata: bool,
+    /// The YAML/TOML front matter: its kind and the text read so far.
+    metadata: Option<(Kind, String)>,
+    /// Inside the front matter.
+    in_metadata: bool,
     table: Option<TableState>,
     ids: Ids,
     footnotes: Footnotes,
@@ -145,7 +149,11 @@ impl Builder {
         match event {
             Event::Start(tag) => self.start(tag),
             Event::End(tag) => self.end(tag),
-            Event::Text(_) if self.metadata => {}
+            Event::Text(t) if self.in_metadata => {
+                if let Some((_, buf)) = &mut self.metadata {
+                    buf.push_str(&t);
+                }
+            }
             Event::Text(t) => match &mut self.code {
                 Some((_, buf)) => buf.push_str(&t),
                 None => self.push_text(&t),
@@ -257,7 +265,14 @@ impl Builder {
                 self.images.push(dest_url.into_string());
                 self.push_text(super::IMAGE_PREFIX);
             }
-            Tag::MetadataBlock(_) => self.metadata = true,
+            Tag::MetadataBlock(kind) => {
+                let kind = match kind {
+                    MetadataBlockKind::YamlStyle => Kind::Yaml,
+                    MetadataBlockKind::PlusesStyle => Kind::Toml,
+                };
+                self.metadata = Some((kind, String::new()));
+                self.in_metadata = true;
+            }
             Tag::HtmlBlock => {
                 self.flush();
                 self.html = Some(String::new());
@@ -377,7 +392,7 @@ impl Builder {
                 self.style.link_id = None;
             }
             TagEnd::Image => self.push_text("]"),
-            TagEnd::MetadataBlock(_) => self.metadata = false,
+            TagEnd::MetadataBlock(_) => self.in_metadata = false,
             TagEnd::HtmlBlock => {
                 if let Some(html) = self.html.take() {
                     self.html_block(&html);
@@ -563,7 +578,8 @@ impl Builder {
     fn finish(mut self) -> Document {
         self.flush();
         self.close_open_details();
-        super::finish(self.root, self.lines, self.footnotes)
+        let front = self.metadata.as_ref().map(|(k, src)| (*k, src.as_str()));
+        super::finish(front, self.root, self.lines, self.footnotes)
     }
 }
 

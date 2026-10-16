@@ -449,3 +449,104 @@ fn pointer_motion_redraws_only_when_the_hovered_link_changes() {
     assert!(app.on_event(&moved(x, y)));
     assert!(!app.hover_changed);
 }
+
+/// A writer that keeps each write it's given, for checking what reaches
+/// the terminal and in how many pieces. With `fail_first`, the first write
+/// fails, as a closed terminal would.
+#[derive(Clone, Default)]
+struct Writes {
+    chunks: std::rc::Rc<std::cell::RefCell<Vec<Vec<u8>>>>,
+    fail_first: std::rc::Rc<std::cell::Cell<bool>>,
+}
+
+impl std::io::Write for Writes {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self.fail_first.replace(false) {
+            return Err(std::io::Error::other("terminal gone"));
+        }
+        self.chunks.borrow_mut().push(buf.to_vec());
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Writes {
+    fn chunks(&self) -> Vec<Vec<u8>> {
+        self.chunks.borrow().clone()
+    }
+}
+
+/// A terminal of `width` by `height` drawing into `out`.
+fn screen(out: &Writes, width: u16, height: u16) -> ratatui::Terminal<screen::Screen<Writes>> {
+    let options = ratatui::TerminalOptions {
+        viewport: ratatui::Viewport::Fixed(ratatui::layout::Rect::new(0, 0, width, height)),
+    };
+    ratatui::Terminal::with_options(screen::Screen::new(out.clone()), options).unwrap()
+}
+
+const BEGIN_SYNC: &[u8] = b"\x1b[?2026h";
+const END_SYNC: &[u8] = b"\x1b[?2026l";
+
+#[test]
+fn a_frame_goes_out_in_one_write_as_one_synchronized_update() {
+    let out = Writes::default();
+    let mut terminal = screen(&out, 20, 3);
+    let hello = |f: &mut ratatui::Frame| {
+        f.render_widget(ratatui::widgets::Paragraph::new("hello"), f.area());
+    };
+    screen::draw_frame(&mut terminal, hello).unwrap();
+    let chunks = out.chunks();
+    assert_eq!(chunks.len(), 1, "{chunks:?}");
+    let frame = &chunks[0];
+    assert!(frame.starts_with(BEGIN_SYNC), "{frame:?}");
+    assert!(frame.ends_with(END_SYNC), "{frame:?}");
+    assert!(frame.windows(5).any(|w| w == b"hello"));
+
+    // Nothing changed: the next frame is still one bracketed write.
+    screen::draw_frame(&mut terminal, hello).unwrap();
+    let chunks = out.chunks();
+    assert_eq!(chunks.len(), 2);
+    assert!(chunks[1].starts_with(BEGIN_SYNC) && chunks[1].ends_with(END_SYNC));
+}
+
+#[test]
+fn a_render_that_panics_opens_no_synchronized_update() {
+    let out = Writes::default();
+    let mut terminal = screen(&out, 20, 3);
+    screen::draw_frame(&mut terminal, |_| {}).unwrap();
+    let drawn = out.chunks().len();
+    let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = screen::draw_frame(&mut terminal, |_| panic!("render failed"));
+    }));
+    assert!(panicked.is_err());
+    // Dropping the terminal shows the cursor again, outside any update.
+    drop(terminal);
+    let written = out.chunks()[drawn..].concat();
+    assert!(!written.is_empty());
+    assert!(!written.windows(BEGIN_SYNC.len()).any(|w| w == BEGIN_SYNC));
+}
+
+#[test]
+fn a_failed_draw_still_ends_the_synchronized_update() {
+    let out = Writes::default();
+    out.fail_first.set(true);
+    let mut terminal = screen(&out, 300, 300);
+    // Every cell a different colour: far more than the frame buffer holds,
+    // so the failing write comes part way through the frame.
+    let result = screen::draw_frame(&mut terminal, |f| {
+        let area = f.area();
+        for (i, pos) in area.positions().enumerate() {
+            let [r, g, b, _] = (i as u32).to_le_bytes();
+            f.buffer_mut()[pos]
+                .set_char('x')
+                .set_fg(ratatui::style::Color::Rgb(r, g, b));
+        }
+    });
+    assert!(result.is_err());
+    let chunks = out.chunks();
+    let last = chunks.last().expect("the rest of the frame went out");
+    assert!(last.ends_with(END_SYNC), "{:?}", &last[last.len() - 16..]);
+}

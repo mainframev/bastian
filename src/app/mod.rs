@@ -1,4 +1,5 @@
 mod run;
+mod screen;
 mod settings;
 mod terminal;
 

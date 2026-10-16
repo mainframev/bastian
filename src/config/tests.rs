@@ -28,6 +28,7 @@ fn precedence_is_default_file_env_flag() {
         }
     );
     assert_eq!(r.width.value, 100);
+    assert_eq!(r.background.value, PageBackground::Theme);
 
     let r = resolve(file(), &env(&[]), none.clone()).unwrap();
     assert_eq!(
@@ -152,6 +153,7 @@ fn env_values_are_parsed_and_validated() {
         ("BASTIAN_LIST_LAYOUT", "compact"),
         ("BASTIAN_EXTENSIONS", "md, txt,,"),
         ("BASTIAN_SORT", "name"),
+        ("BASTIAN_BACKGROUND", "Terminal"),
     ]);
     let r = resolve(Config::default(), &e, Config::default()).unwrap();
     assert_eq!(
@@ -172,6 +174,7 @@ fn env_values_are_parsed_and_validated() {
     assert_eq!(r.list_layout.value, ListLayout::Compact);
     assert_eq!(r.extensions.value, ["md", "txt"]);
     assert_eq!(r.sort.value, SortBy::Name);
+    assert_eq!(r.background.value, PageBackground::Terminal);
     // Empty means unset.
     assert_eq!(r.theme.source, Source::Default);
 

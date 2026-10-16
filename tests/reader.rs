@@ -801,6 +801,7 @@ fn settings(assume_yes: bool, positions: Option<std::path::PathBuf>) -> Settings
         show_images: false,
         selector: bastian::config::Selector::Bar,
         list_layout: bastian::config::ListLayout::Cards,
+        background: bastian::config::PageBackground::Theme,
     }
 }
 

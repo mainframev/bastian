@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use anyhow::{Result, anyhow};
 
 use super::value::Value;
-use super::{ColorMode, Config, Confirm, DATE_FORMAT, EXTENSIONS, ListLayout, Selector, SortBy};
+use super::{
+    ColorMode, Config, Confirm, DATE_FORMAT, EXTENSIONS, ListLayout, PageBackground, Selector,
+    SortBy,
+};
 use crate::themes;
 
 /// Where a resolved setting's value came from, lowest precedence first.
@@ -43,6 +46,7 @@ pub struct Resolved {
     pub theme: Setting<String>,
     pub dark_theme: Setting<String>,
     pub light_theme: Setting<String>,
+    pub background: Setting<PageBackground>,
     pub width: Setting<u16>,
     pub confirm: Setting<Confirm>,
     pub line_numbers: Setting<bool>,
@@ -83,6 +87,7 @@ pub fn resolve(file: Config, env: &EnvMap, cli: Config) -> Result<Resolved> {
         theme: set!(theme, "auto".into()),
         dark_theme: set!(dark_theme, themes::DEFAULT_DARK.into()),
         light_theme: set!(light_theme, themes::DEFAULT_LIGHT.into()),
+        background: set!(background, PageBackground::default()),
         width: set!(width, 100),
         confirm: set!(confirm, Confirm::Always),
         line_numbers: set!(line_numbers, false),

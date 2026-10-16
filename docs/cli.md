@@ -44,6 +44,7 @@ instead of opening the TUI.
 | -------------------------- | -------------------------------------------------------------------- |
 | `-w`, `--width <N>`        | maximum document width (default 100)                                 |
 | `-t`, `--theme <NAME>`     | `auto`, `dark`, `light` or a theme name ([themes](themes.md))        |
+| `--background <WHICH>`     | `theme` or `terminal` background ([themes](themes.md#background))    |
 | `-p`, `--print`            | print the rendered document                                          |
 | `--pager`                  | show it in `$PAGER`                                                  |
 | `--color <WHEN>`           | `auto`, `always` or `never`, for printed output                      |

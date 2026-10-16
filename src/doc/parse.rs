@@ -60,7 +60,6 @@ enum Frame {
     },
     /// An HTML `<details>` element, open until its `</details>`.
     Details {
-        id: usize,
         open: bool,
         summary: Option<Vec<Inline>>,
         blocks: Vec<Block>,
@@ -330,9 +329,8 @@ impl Builder {
             }
             TagEnd::CodeBlock => {
                 if let Some((info, src)) = self.code.take() {
-                    let id = self.ids.code();
                     self.push_block(Block::Code(CodeBlock {
-                        id,
+                        id: 0,
                         lang: lang_of(&info),
                         attrs: Attrs::parse(&info),
                         src,
@@ -497,9 +495,7 @@ impl Builder {
                         self.skipped_details.push(self.depth());
                         continue;
                     }
-                    let id = self.ids.details();
                     self.stack.push(Frame::Details {
-                        id,
                         open,
                         summary: None,
                         blocks: Vec::new(),
@@ -537,7 +533,6 @@ impl Builder {
     /// Close the `<details>` frame on top of the stack.
     fn close_details(&mut self) {
         let Some(Frame::Details {
-            id,
             open,
             summary,
             blocks,
@@ -555,7 +550,7 @@ impl Builder {
         // At the root, the block belongs to the line of its opening tag.
         let start = std::mem::replace(&mut self.block_start, line);
         self.push_block(Block::Details {
-            id,
+            id: 0,
             open,
             summary,
             blocks,
@@ -573,12 +568,7 @@ impl Builder {
     fn finish(mut self) -> Document {
         self.flush();
         self.close_open_details();
-        std::mem::take(&mut self.footnotes).append_to(&mut self.root, &mut self.lines);
-        Document {
-            blocks: self.root,
-            lines: self.lines,
-            code_file: false,
-        }
+        super::finish(self.root, self.lines, self.footnotes)
     }
 }
 

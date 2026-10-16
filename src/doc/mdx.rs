@@ -98,12 +98,7 @@ pub fn parse(src: &str) -> Option<Document> {
             .map_or(0, |p| p.start.line.saturating_sub(1));
         lines.extend(std::iter::repeat_n(line, blocks.len() - before));
     }
-    m.footnotes.append_to(&mut blocks, &mut lines);
-    Some(Document {
-        blocks,
-        lines,
-        code_file: false,
-    })
+    Some(super::finish(blocks, lines, m.footnotes))
 }
 
 struct Mapper<'a> {
@@ -203,16 +198,15 @@ impl Mapper<'_> {
                     (Some(lang), None) => lang.clone(),
                     (None, _) => String::new(),
                 };
-                let id = self.ids.code();
                 out.push(Block::Code(CodeBlock {
-                    id,
+                    id: 0,
                     lang: super::parse::lang_of(&info),
                     attrs: Attrs::parse(&info),
                     src: format!("{}\n", c.value),
                 }));
             }
             Node::Math(m) => out.push(Block::Code(CodeBlock {
-                id: self.ids.code(),
+                id: 0,
                 lang: Some("math".into()),
                 attrs: Attrs::default(),
                 src: format!("{}\n", m.value),
@@ -281,7 +275,6 @@ impl Mapper<'_> {
     /// A `<details>` element: its `<summary>` (the first paragraph's, when
     /// it opens with one) and the blocks after it.
     fn details(&mut self, el: &MdxJsxFlowElement, depth: usize) -> Block {
-        let id = self.ids.details();
         let open = el.attributes.iter().any(
             |a| matches!(a, AttributeContent::Property(p) if p.name.eq_ignore_ascii_case("open")),
         );
@@ -316,7 +309,7 @@ impl Mapper<'_> {
             }]
         });
         Block::Details {
-            id,
+            id: 0,
             open,
             summary,
             blocks: rest,

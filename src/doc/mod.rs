@@ -336,14 +336,24 @@ impl Footnotes {
             });
             lines.push(line);
         }
-        // Code and details in notes were numbered where they were defined;
-        // ids follow the order blocks are shown in.
-        renumber(blocks, &mut Ids::default());
     }
 }
 
-/// The next id of each numbered thing, handed out in document order. Both
-/// front ends number with it, as does renumbering after footnotes move.
+/// The document a front end built: its top-level `blocks` with their
+/// source `lines`, then the `footnotes`. Front ends leave code and details
+/// ids at 0; they are numbered here, in the order blocks are shown in.
+fn finish(mut blocks: Vec<Block>, mut lines: Vec<usize>, footnotes: Footnotes) -> Document {
+    footnotes.append_to(&mut blocks, &mut lines);
+    renumber(&mut blocks, &mut Ids::default());
+    Document {
+        blocks,
+        lines,
+        code_file: false,
+    }
+}
+
+/// The next id of each numbered thing, handed out in document order: link
+/// ids by the front ends as they read, code and details ids by `renumber`.
 #[derive(Default)]
 pub(super) struct Ids {
     code: usize,
@@ -352,7 +362,7 @@ pub(super) struct Ids {
 }
 
 impl Ids {
-    pub(super) fn code(&mut self) -> usize {
+    fn code(&mut self) -> usize {
         self.code += 1;
         self.code - 1
     }
@@ -363,7 +373,7 @@ impl Ids {
         self.link - 1
     }
 
-    pub(super) fn details(&mut self) -> usize {
+    fn details(&mut self) -> usize {
         self.details += 1;
         self.details - 1
     }

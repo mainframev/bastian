@@ -1,4 +1,4 @@
-use super::{Overlay, Reader};
+use super::Reader;
 use crate::pane;
 use crate::toc::{self, Entry};
 
@@ -127,10 +127,7 @@ impl Reader {
     /// it hit one.
     pub fn on_click(&mut self, column: u16, row: u16) -> bool {
         // Popups may cover the header.
-        let popup = self
-            .overlay
-            .as_ref()
-            .is_some_and(|o| !matches!(o, Overlay::Prompt(_) | Overlay::GoTo(_)));
+        let popup = self.popup_open();
         let width = self.fit_toc(self.screen);
         if popup || width == 0 || row != 0 {
             return false;

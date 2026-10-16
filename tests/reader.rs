@@ -374,12 +374,28 @@ fn reloads_when_file_changes() {
         file: Some(path.clone()),
         ..Source::in_memory("t.md", parse("# One\n"))
     };
-    let mut r = Reader::new(source, &Options::default());
+    thread_local!(static NOW: std::cell::Cell<Option<std::time::Instant>> = const { std::cell::Cell::new(None) });
+    fn now() -> std::time::Instant {
+        NOW.with(|n| *n.get().get_or_insert_with(std::time::Instant::now))
+    }
+    let opts = Options {
+        now,
+        ..Options::default()
+    };
+    let mut r = Reader::new(source, &opts);
     r.layout(80, 10);
-    // Make sure the new mtime differs even on coarse-grained filesystems.
-    thread::sleep(Duration::from_millis(1100));
     std::fs::write(&path, "# Two\n\n```sh\necho x\n```\n").unwrap();
-    thread::sleep(Duration::from_millis(600));
+    // A later mtime than the first write's, on any filesystem's granularity.
+    let later = std::time::SystemTime::now() + Duration::from_secs(10);
+    std::fs::File::options()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_modified(later)
+        .unwrap();
+    // Inside the throttle nothing is checked; past it, the change shows.
+    assert!(!r.tick());
+    NOW.with(|n| n.set(Some(now() + Duration::from_secs(1))));
     assert!(r.tick());
     r.layout(80, 10);
     assert_eq!(r.doc().title().as_deref(), Some("Two"));

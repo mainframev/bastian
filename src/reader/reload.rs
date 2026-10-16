@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 
 use super::{Overlay, Reader, collect_code};
 use crate::doc::{CodeBlock, Document};
@@ -7,10 +7,11 @@ use crate::doc::{CodeBlock, Document};
 impl Reader {
     /// Re-read the source file if its modification time moved.
     pub(super) fn check_reload(&mut self) -> bool {
-        if self.last_check.elapsed() < RELOAD_CHECK {
+        let now = (self.now)();
+        if now.duration_since(self.last_check) < RELOAD_CHECK {
             return false;
         }
-        self.last_check = Instant::now();
+        self.last_check = now;
         let Some(path) = &self.source else {
             return false;
         };

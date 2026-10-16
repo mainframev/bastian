@@ -71,19 +71,35 @@ impl Reader {
         self.toc_jump = Some((i, self.scroll));
     }
 
-    /// Scroll to the heading numbered `n` in the table of contents: right
-    /// after a jump by number (`by_number`), the `n`th in that heading's
-    /// section, so `2` then `1` goes to the first heading under the
-    /// second; else, or when the section has no `n`th, the `n`th of the
-    /// numbered level.
-    pub(super) fn jump_to_entry(&mut self, n: usize, by_number: bool) {
+    /// Scroll to the heading numbered `n` in the table of contents. Right
+    /// after a jump by number (`walk`: the number pressed and the entry
+    /// whose section it walks), the same `n` steps to the next heading of
+    /// that section in document order, so `1 1 1` goes A, A1, A1a, and
+    /// past its last heading back to the section's own; another `n` goes
+    /// to the `n`th heading under the one just reached, so `2` then `1` is
+    /// the first under the second. Else, or when that heading has no
+    /// `n`th, the `n`th of the numbered level.
+    pub(super) fn jump_to_entry(&mut self, n: usize, walk: Option<(usize, usize)>) {
         let entries = self.toc_entries();
         let Some(top) = toc::numbered_depth(&entries) else {
             self.message = Some("no numbered headings".into());
             return;
         };
-        let parent = self.toc_mark().filter(|_| by_number);
-        let inside = parent.and_then(|p| {
+        let walk = walk.filter(|&(_, root)| root < entries.len());
+        let mark = self.toc_mark().filter(|_| walk.is_some());
+        let again = walk.filter(|&(digit, _)| digit == n).zip(mark);
+        if let Some(((_, root), at)) = again {
+            // A section's headings follow it until one as shallow as it.
+            let next = at + 1;
+            let inside = entries
+                .get(next)
+                .is_some_and(|e| e.depth > entries[root].depth);
+            let i = if inside { next } else { root };
+            self.jump_to_heading(i, entries[i].line);
+            self.toc_walk = Some((n, root));
+            return;
+        }
+        let inside = mark.and_then(|p| {
             entries
                 .iter()
                 .position(|e| e.parent == Some(p) && e.number == Some(n))
@@ -96,7 +112,7 @@ impl Reader {
         match i {
             Some(i) => {
                 self.jump_to_heading(i, entries[i].line);
-                self.toc_by_number = true;
+                self.toc_walk = Some((n, i));
             }
             None => self.message = Some(format!("no heading {n:02}")),
         }
@@ -342,8 +358,12 @@ mod tests {
         };
         key(&mut r, '2');
         assert_eq!(current(&r).as_deref(), Some("B"));
+        // The same number again walks B's section.
+        key(&mut r, '2');
+        assert_eq!(current(&r).as_deref(), Some("B1"));
         key(&mut r, '2');
         assert_eq!(current(&r).as_deref(), Some("B2"));
+        // Another number goes into the heading reached.
         key(&mut r, '1');
         assert_eq!(current(&r).as_deref(), Some("B2a"));
         // No headings under B2a: back to the numbered level.
@@ -415,5 +435,41 @@ mod tests {
         r.scroll_by(-1);
         key(&mut r, '2');
         assert_eq!(current(&r).as_deref(), Some("B"), "after the wheel");
+    }
+
+    #[test]
+    fn the_same_number_again_walks_its_section() {
+        let current = |r: &Reader| {
+            let e = r.toc_entries();
+            toc::current(&e, r.toc_line()).map(|i| e[i].text.clone())
+        };
+        let walk = |src: &str, keys: &str| {
+            // Fits on screen, so every jump is told apart by its mark.
+            let mut r = reader(src);
+            r.layout(80, 60);
+            key(&mut r, 't');
+            keys.chars()
+                .map(|c| {
+                    key(&mut r, c);
+                    current(&r).unwrap_or_default()
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let flat = "# A\n\n## A1\n\n## A2\n\n## A3\n\n## A4\n\n# B\n";
+        assert_eq!(walk(flat, "11111"), ["A", "A1", "A2", "A3", "A4"]);
+        // Past the section's last heading, back to its own.
+        assert_eq!(walk(flat, "111111"), ["A", "A1", "A2", "A3", "A4", "A"]);
+
+        let nested = "# A\n\n## A1\n\n### A1a\n\n## A2\n\n### A2a\n\n# B\n\n## B1\n";
+        assert_eq!(walk(nested, "11111"), ["A", "A1", "A1a", "A2", "A2a"]);
+        assert_eq!(walk(nested, "111111"), ["A", "A1", "A1a", "A2", "A2a", "A"]);
+
+        // Another number still goes into the heading reached: A1 has no
+        // second, so the numbered level's.
+        assert_eq!(walk(nested, "112"), ["A", "A1", "B"]);
+        assert_eq!(walk(nested, "12"), ["A", "A2"]);
+        // A section with nothing under it stays put.
+        assert_eq!(walk(flat, "22"), ["B", "B"]);
     }
 }

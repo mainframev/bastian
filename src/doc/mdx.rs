@@ -9,7 +9,7 @@ use markdown::mdast::{AlignKind, AttributeContent, AttributeValue, MdxJsxFlowEle
 use markdown::{Constructs, MdxSignal, ParseOptions};
 
 use super::{
-    Align, Block, CalloutKind, Document, Footnotes, Ids, Inline, InlineStyle, MAX_DEPTH,
+    Align, Block, CalloutKind, Document, Footnotes, Format, Ids, Inline, InlineStyle, MAX_DEPTH,
     push_inline,
 };
 
@@ -402,6 +402,22 @@ impl Mapper<'_> {
             Node::ImageReference(i) => push_inline(out, &super::image_placeholder(&i.alt), style),
             Node::Html(h) => push_inline(out, &h.value, &with(&|s| s.muted = true)),
             Node::MdxJsxTextElement(el) => {
+                // Lowercase names are HTML elements in JSX; capitalized
+                // ones are components, which stay labelled.
+                let html = el
+                    .name
+                    .as_deref()
+                    .filter(|n| n.starts_with(|c: char| c.is_ascii_lowercase()));
+                if html.is_some_and(super::is_break_tag) {
+                    push_inline(out, "\n", style);
+                    return;
+                }
+                if let Some(format) = html.and_then(Format::of_tag) {
+                    let mut s = style.clone();
+                    format.apply(&mut s);
+                    children(self, &el.children, &s, out);
+                    return;
+                }
                 let muted = with(&|s| s.muted = true);
                 let self_closing = el.children.is_empty();
                 let open = open_tag(el.name.as_deref(), &el.attributes, self_closing);

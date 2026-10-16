@@ -8,7 +8,7 @@ use crate::render::theme::Theme;
 pub const HEIGHT: u16 = 3;
 
 /// "bastian" in sextant block glyphs.
-const ROWS: [&str; 3] = [
+const ROWS: [&str; HEIGHT as usize] = [
     "🬨▌  🬞🬭🬏 🬞🬭🬭 🬞🬻🬭 🬞🬰  🬞🬭🬏 🬭🬭🬏",
     "▐🬕🬨🬓🬵🬋█ 🬊🬋🬱  █🬞  █  🬵🬋█ █ █",
     "🬂🬁🬂 🬁🬂🬁🬀🬂🬂🬀  🬁🬀 🬁🬂🬀 🬁🬂🬁🬀🬂 🬂",

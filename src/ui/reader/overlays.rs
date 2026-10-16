@@ -126,14 +126,19 @@ pub(super) fn draw_confirm(frame: &mut Frame, over: Rect, r: &Reader, ids: &[usi
         ]),
         Line::styled(format!("in {cwd}"), Style::default().fg(t.muted)),
         Line::default(),
-        Line::from(vec![
-            Span::styled("y", Style::default().fg(t.ok).bold()),
-            Span::styled(" run   ", Style::default().fg(t.subtle)),
-            Span::styled("n", Style::default().fg(t.err).bold()),
-            Span::styled(" cancel", Style::default().fg(t.subtle)),
-        ]),
+        yes_no_row(t, "run"),
     ];
     status::modal(frame, t, over, " run ", lines);
+}
+
+/// The `y verb   n cancel` row of a yes/no popup.
+fn yes_no_row(t: &Theme, verb: &str) -> Line<'static> {
+    Line::from(vec![
+        Span::styled("y", Style::default().fg(t.ok).bold()),
+        Span::styled(format!(" {verb}   "), Style::default().fg(t.subtle)),
+        Span::styled("n", Style::default().fg(t.err).bold()),
+        Span::styled(" cancel", Style::default().fg(t.subtle)),
+    ])
 }
 
 /// Ask before handing a non-web link to the system opener. The target is
@@ -147,12 +152,7 @@ pub(super) fn draw_open_confirm(frame: &mut Frame, over: Rect, r: &Reader, targe
     // Inside the border; the box can't grow past the screen.
     let avail = area.height.saturating_sub(2) as usize;
     let target_style = Style::default().fg(t.accent).bold();
-    let keys = Line::from(vec![
-        Span::styled("y", Style::default().fg(t.ok).bold()),
-        Span::styled(" open   ", Style::default().fg(t.subtle)),
-        Span::styled("n", Style::default().fg(t.err).bold()),
-        Span::styled(" cancel", Style::default().fg(t.subtle)),
-    ]);
+    let keys = yes_no_row(t, "open");
     // Rows left for the target beside the question, a blank and the keys.
     let Some(budget) = avail.checked_sub(3).filter(|&b| b > 0) else {
         // Too short for the full prompt: the target on one row, if there's

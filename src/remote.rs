@@ -17,7 +17,7 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 
 /// A command-line or link target that names something remote.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Source {
+pub enum Remote {
     Url(Url),
     GitHub { owner: String, repo: String },
     GitLab { project: String },
@@ -43,7 +43,7 @@ impl RemoteDoc {
 /// Recognize `http(s)://…`, `github.com/owner/repo` and
 /// `gitlab.com/group/project` (with or without a scheme). Anything else is
 /// not remote.
-pub fn classify(input: &str) -> Option<Source> {
+pub fn classify(input: &str) -> Option<Remote> {
     let with_scheme = if input.starts_with("http://") || input.starts_with("https://") {
         input.to_string()
     } else if input.starts_with("github.com/") || input.starts_with("gitlab.com/") {
@@ -57,23 +57,23 @@ pub fn classify(input: &str) -> Option<Source> {
         .map(|s| s.filter(|p| !p.is_empty()).collect())
         .unwrap_or_default();
     match (url.host_str(), segments.as_slice()) {
-        (Some("github.com"), [owner, repo]) => Some(Source::GitHub {
+        (Some("github.com"), [owner, repo]) => Some(Remote::GitHub {
             owner: owner.to_string(),
             repo: repo.trim_end_matches(".git").to_string(),
         }),
         (Some("gitlab.com"), project) if project.len() >= 2 && !project.contains(&"-") => {
-            Some(Source::GitLab {
+            Some(Remote::GitLab {
                 project: project.join("/").trim_end_matches(".git").to_string(),
             })
         }
-        _ => Some(Source::Url(url)),
+        _ => Some(Remote::Url(url)),
     }
 }
 
 /// Fetch a remote document.
-pub fn fetch(source: &Source) -> Result<RemoteDoc> {
+pub fn fetch(source: &Remote) -> Result<RemoteDoc> {
     match source {
-        Source::Url(url) => {
+        Remote::Url(url) => {
             // A file page on GitHub/GitLab is HTML; read the raw file behind
             // it. Links still resolve against the page, so they open as pages
             // in a browser and Markdown ones come back here as raw files.
@@ -85,7 +85,7 @@ pub fn fetch(source: &Source) -> Result<RemoteDoc> {
                 text,
             })
         }
-        Source::GitHub { owner, repo } => {
+        Remote::GitHub { owner, repo } => {
             let api = format!("https://api.github.com/repos/{owner}/{repo}/readme");
             let meta: Value = serde_json::from_str(&get(&api, "application/vnd.github+json")?)
                 .context("reading GitHub's README metadata")?;
@@ -100,7 +100,7 @@ pub fn fetch(source: &Source) -> Result<RemoteDoc> {
                 base,
             })
         }
-        Source::GitLab { project } => {
+        Remote::GitLab { project } => {
             let api = format!(
                 "https://gitlab.com/api/v4/projects/{}",
                 url::form_urlencoded::byte_serialize(project.as_bytes()).collect::<String>()
@@ -251,36 +251,36 @@ mod tests {
     fn classifies_inputs() {
         assert_eq!(
             classify("github.com/charmbracelet/vhs"),
-            Some(Source::GitHub {
+            Some(Remote::GitHub {
                 owner: "charmbracelet".into(),
                 repo: "vhs".into()
             })
         );
         assert_eq!(
             classify("https://github.com/o/r.git/"),
-            Some(Source::GitHub {
+            Some(Remote::GitHub {
                 owner: "o".into(),
                 repo: "r".into()
             })
         );
         assert_eq!(
             classify("gitlab.com/group/sub/project"),
-            Some(Source::GitLab {
+            Some(Remote::GitLab {
                 project: "group/sub/project".into()
             })
         );
         // Deeper GitHub/GitLab paths are plain URLs.
         assert!(matches!(
             classify("https://github.com/o/r/blob/main/docs/a.md"),
-            Some(Source::Url(_))
+            Some(Remote::Url(_))
         ));
         assert!(matches!(
             classify("https://gitlab.com/g/p/-/raw/main/README.md"),
-            Some(Source::Url(_))
+            Some(Remote::Url(_))
         ));
         assert!(matches!(
             classify("https://example.com/a.md"),
-            Some(Source::Url(_))
+            Some(Remote::Url(_))
         ));
         assert_eq!(classify("README.md"), None);
         assert_eq!(classify("docs/github.com/x"), None);
@@ -367,7 +367,7 @@ mod tests {
     #[test]
     fn fetches_a_url() {
         let url = serve_once("200 OK", "# Remote\n\nSee [guide](guide.md).\n");
-        let Some(source @ Source::Url(_)) = classify(&url) else {
+        let Some(source @ Remote::Url(_)) = classify(&url) else {
             panic!("expected a URL source");
         };
         let doc = fetch(&source).unwrap();

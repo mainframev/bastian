@@ -126,18 +126,14 @@ impl Reader {
     /// markers on the table of contents' header resize it. Returns whether
     /// it hit one.
     pub fn on_click(&mut self, column: u16, row: u16) -> bool {
-        // Popups may cover the header.
-        let popup = self.popup_open();
         let width = self.fit_toc(self.screen);
-        if popup || width == 0 || row != 0 {
+        // Popups may cover the header.
+        let hit = pane::marker_hit(width, column, row).filter(|_| !self.popup_open());
+        let Some(wider) = hit else {
             return false;
-        }
-        let (narrower, wider) = pane::markers(width);
-        if column == narrower || column == wider {
-            self.resize_toc(column == wider);
-            return true;
-        }
-        false
+        };
+        self.resize_toc(wider);
+        true
     }
 }
 

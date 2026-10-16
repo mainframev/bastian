@@ -117,11 +117,10 @@ impl ThemePicker {
         let Some(col) = column.checked_sub(self.screen - width) else {
             return false;
         };
-        let (narrower, wider) = pane::markers(width);
-        if width == 0 || row != 0 || (col != narrower && col != wider) {
+        let Some(wider) = pane::marker_hit(width, col, row) else {
             return false;
-        }
-        self.width = pane::resize(self.width, self.screen, col == wider);
+        };
+        self.width = pane::resize(self.width, self.screen, wider);
         true
     }
 

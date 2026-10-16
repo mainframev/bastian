@@ -103,6 +103,26 @@ mod tests {
     }
 
     #[test]
+    fn g_and_shift_g_go_to_the_ends_and_ctrl_g_asks_for_a_line() {
+        let src: String = (0..50).map(|i| format!("para {i}\n\n")).collect();
+        let mut r = Reader::new(Source::in_memory("t", parse(&src)), &Options::default());
+        r.layout(80, 10);
+        press(&mut r, KeyCode::Char('G'));
+        assert_eq!(r.scroll, r.max_scroll());
+        assert!(r.goto().is_none());
+        press(&mut r, KeyCode::Char('g'));
+        assert_eq!(r.scroll, 0);
+        assert!(r.goto().is_none());
+        r.on_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::CONTROL));
+        assert!(r.goto().is_some());
+        for c in "21".chars() {
+            press(&mut r, KeyCode::Char(c));
+        }
+        press(&mut r, KeyCode::Enter);
+        assert_eq!(r.scroll, 20);
+    }
+
+    #[test]
     fn code_files_go_to_the_source_line() {
         // Long lines wrap, so source and rendered lines differ.
         let long = "x".repeat(200);

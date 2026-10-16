@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-10-16
+
+### Features
+
+- *(reader)* Drill into a ToC section with its number keys  by @mainframev in [#52](https://github.com/mainframev/bastian/pull/52) ([22e66b5](https://github.com/mainframev/bastian/commit/22e66b520772e750aeafb7459bf71cbd7fa4fc73))
+- *(doc)* Bring MDX documents to par with Markdown  by @mainframev in [#61](https://github.com/mainframev/bastian/pull/61) ([e70b442](https://github.com/mainframev/bastian/commit/e70b44282f639fd53d57b99738b8f0349700b8aa))
+- *(themes)* Paint the theme's page background  by @mainframev in [#66](https://github.com/mainframev/bastian/pull/66) ([5bb6454](https://github.com/mainframev/bastian/commit/5bb6454e1ac2eb0fb72c14430fdd3ea198dea009))
+- *(reader)* Shade the link under the mouse pointer  by @mainframev in [#73](https://github.com/mainframev/bastian/pull/73) ([61de7c1](https://github.com/mainframev/bastian/commit/61de7c138541fcf56fa95f263cfab7107d9812cf))
+- *(cli)* Read piped input when no path is given  by @mainframev in [#75](https://github.com/mainframev/bastian/pull/75) ([2d26f09](https://github.com/mainframev/bastian/commit/2d26f09b86d9100ca585edcab4913da49cb4afff))
+- *(config)* Turn the H history list off with history = false  by @mainframev in [#76](https://github.com/mainframev/bastian/pull/76) ([77ce055](https://github.com/mainframev/bastian/commit/77ce055f74fdf9fe2ee63434fa530a5aafad45ca))
+- *(doc)* Style inline HTML formatting tags and ==mark==  by @mainframev in [#78](https://github.com/mainframev/bastian/pull/78) ([6b16d43](https://github.com/mainframev/bastian/commit/6b16d43ea08e474f8ae44305be8680cad2c76ea8))
+- *(doc)* Show front matter as a key/value table  by @mainframev in [#79](https://github.com/mainframev/bastian/pull/79) ([5d81b49](https://github.com/mainframev/bastian/commit/5d81b4901587c781f11fbf72a6b394a1dac66269))
+- *(doc)* Render tex math as unicode text  by @mainframev in [#80](https://github.com/mainframev/bastian/pull/80) ([c44243b](https://github.com/mainframev/bastian/commit/c44243b93a3bd88ad3677757d79d8bb51285f040))
+
+### Fixes
+
+- *(doc)* Join MDX soft breaks and resolve reference links  by @mainframev in [#58](https://github.com/mainframev/bastian/pull/58) ([23a7262](https://github.com/mainframev/bastian/commit/23a7262882ba6367dbf3abc2eb73e5e34b4e3ed2))
+- *(reader)* Step through headings with j/k while the ToC is open  by @mainframev in [#67](https://github.com/mainframev/bastian/pull/67) ([a80bf9c](https://github.com/mainframev/bastian/commit/a80bf9cc677232976cf3bca9bdcd21b075219403))
+- *(reader)* Walk a ToC section when its number is pressed again  by @mainframev in [#69](https://github.com/mainframev/bastian/pull/69) ([589abb7](https://github.com/mainframev/bastian/commit/589abb79b0758d035741107e1c3ffd60ee791ca8))
+- Tighter line-number gutter and hidden HTML comments  by @mainframev in [#71](https://github.com/mainframev/bastian/pull/71) ([cf088e3](https://github.com/mainframev/bastian/commit/cf088e322c06b232228dcb5c9eb7d1d986a16c9b))
+- Stop panics and silent failures found by a robustness audit  by @mainframev in [#72](https://github.com/mainframev/bastian/pull/72) ([19f1306](https://github.com/mainframev/bastian/commit/19f13068408a94a55ae08950ba17a2521c7de807))
+- *(ui)* Build the link hover against link_rect returning an Option  by @mainframev in [#74](https://github.com/mainframev/bastian/pull/74) ([aa75e64](https://github.com/mainframev/bastian/commit/aa75e64360ca71e801f00b1686f7aca5e293034a))
+- *(browser)* Open the selected file with one Enter from the filter  by @mainframev in [#77](https://github.com/mainframev/bastian/pull/77) ([d9a78d7](https://github.com/mainframev/bastian/commit/d9a78d7926c6a5a94c64d1d0ee6844f08c248564))
 ## [0.3.0] - 2026-10-15
 
 ### Features
@@ -20,6 +43,7 @@ All notable changes to this project will be documented in this file.
 - *(reader)* Go to a line with :  by @mainframev in [#45](https://github.com/mainframev/bastian/pull/45) ([91b9257](https://github.com/mainframev/bastian/commit/91b92579f7b1d20a0cd648ddb4a936a9feae021f))
 - *(reader)* List this session's files with H  by @mainframev in [#46](https://github.com/mainframev/bastian/pull/46) ([556c148](https://github.com/mainframev/bastian/commit/556c1484832123d16d49b1904b4f2f4e44aa9e1b))
 - *(render)* Style headings, bullets, inline code and quotes by element  by @mainframev in [#49](https://github.com/mainframev/bastian/pull/49) ([2b2fbc1](https://github.com/mainframev/bastian/commit/2b2fbc1e3bbec33298e24c14fd3f152659059ed9))
+- *(reader)* Highlight the line : goes to  by @mainframev in [#51](https://github.com/mainframev/bastian/pull/51) ([32ec56a](https://github.com/mainframev/bastian/commit/32ec56a7ccc88c78821912017700597ab6cf177c))
 
 ### Fixes
 

@@ -38,6 +38,9 @@ pub(super) const OPTIONAL_UI_KEYS: &[(&str, &str)] = &[
     ("bullet_3", "accent"),
 ];
 
+/// `[ui]` key for the page background. Left out, the terminal's own shows.
+pub(super) const BACKGROUND_KEY: &str = "background";
+
 /// `TextMate` scopes each `[syntax]` color applies to.
 pub(super) const SCOPES: &[(&str, &str)] = &[
     ("comment", "comment, punctuation.definition.comment"),
@@ -70,7 +73,11 @@ pub(super) const SCOPES: &[(&str, &str)] = &[
 
 /// Check a parsed file is complete and turn it into a `Theme`.
 pub(super) fn build(file: &ThemeFile, origin: &str) -> Result<Theme> {
-    let optional: Vec<&str> = OPTIONAL_UI_KEYS.iter().map(|(k, _)| *k).collect();
+    let optional: Vec<&str> = OPTIONAL_UI_KEYS
+        .iter()
+        .map(|(k, _)| *k)
+        .chain([BACKGROUND_KEY])
+        .collect();
     check_keys(&file.ui, "ui", UI_KEYS, &optional, origin)?;
     let syntax: Vec<&str> = SCOPES.iter().map(|(k, _)| *k).collect();
     check_keys(&file.syntax, "syntax", &syntax, &[], origin)?;
@@ -86,11 +93,21 @@ pub(super) fn build(file: &ThemeFile, origin: &str) -> Result<Theme> {
             .map_or(key, |(_, fallback)| *fallback);
         color(&file.ui[set], "ui", key, origin)
     };
+    let background = file
+        .ui
+        .get(BACKGROUND_KEY)
+        .map_or(Ok(Color::Reset), |c| color(c, "ui", BACKGROUND_KEY, origin))?;
+    let surface = ui("surface")?;
+    if background != Color::Reset && background == surface {
+        // Code, the status bar and popups sit on `surface`.
+        bail!("theme {origin}: `ui.background` must differ from `ui.surface`");
+    }
     Ok(Theme {
+        background,
         text: ui("text")?,
         muted: ui("muted")?,
         subtle: ui("subtle")?,
-        surface: ui("surface")?,
+        surface,
         accent: ui("accent")?,
         h1_fg: ui("h1_fg")?,
         h1_bg: ui("h1_bg")?,

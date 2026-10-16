@@ -4,10 +4,12 @@ use ratatui::style::Color;
 
 use super::Appearance;
 
-/// Colors for rendered Markdown. The page background is left to the terminal.
-/// Built from a theme file by `load`.
+/// Colors for rendered Markdown. Built from a theme file by `load`.
 #[derive(Debug, Clone)]
 pub struct Theme {
+    /// The page behind the interactive UI; `Reset` leaves the terminal's
+    /// own. Printed output never paints it.
+    pub background: Color,
     pub text: Color,
     pub muted: Color,
     pub subtle: Color,

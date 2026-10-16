@@ -225,6 +225,25 @@ pub struct CodeBlock {
     pub src: String,
 }
 
+/// A code block from its fence's `info` string, e.g. `sh {name=x}`.
+fn code_block(info: &str, src: String) -> Block {
+    Block::Code(CodeBlock {
+        id: 0,
+        lang: lang_of(info),
+        attrs: Attrs::parse(info),
+        src,
+    })
+}
+
+/// Language token of a fence info string: `sh {name=x}` and `sh{name=x}` give `sh`.
+fn lang_of(info: &str) -> Option<String> {
+    let lang = info
+        .split(|c: char| c.is_whitespace() || c == '{' || c == ',')
+        .next()
+        .unwrap_or("");
+    (!lang.is_empty()).then(|| lang.to_string())
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Inline {
     pub text: String,

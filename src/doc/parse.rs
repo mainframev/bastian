@@ -3,8 +3,8 @@ use pulldown_cmark::{
 };
 
 use super::{
-    Align, Attrs, Block, CalloutKind, CodeBlock, Document, Footnotes, Ids, Inline, InlineStyle,
-    MAX_DEPTH, push_inline,
+    Align, Block, CalloutKind, Document, Footnotes, Ids, Inline, InlineStyle, MAX_DEPTH,
+    push_inline,
 };
 
 pub fn parse(src: &str) -> Document {
@@ -329,12 +329,7 @@ impl Builder {
             }
             TagEnd::CodeBlock => {
                 if let Some((info, src)) = self.code.take() {
-                    self.push_block(Block::Code(CodeBlock {
-                        id: 0,
-                        lang: lang_of(&info),
-                        attrs: Attrs::parse(&info),
-                        src,
-                    }));
+                    self.push_block(super::code_block(&info, src));
                 }
             }
             TagEnd::TableCell => {
@@ -678,15 +673,6 @@ fn image_block(inlines: &[Inline], url: &str) -> Option<Block> {
         alt: alt.to_string(),
         url: url.to_string(),
     })
-}
-
-/// Language token of a fence info string: `sh {name=x}` and `sh{name=x}` give `sh`.
-pub(super) fn lang_of(info: &str) -> Option<String> {
-    let lang = info
-        .split(|c: char| c.is_whitespace() || c == '{' || c == ',')
-        .next()
-        .unwrap_or("");
-    (!lang.is_empty()).then(|| lang.to_string())
 }
 
 #[cfg(test)]

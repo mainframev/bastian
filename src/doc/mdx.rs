@@ -9,8 +9,8 @@ use markdown::mdast::{AlignKind, AttributeContent, AttributeValue, MdxJsxFlowEle
 use markdown::{Constructs, MdxSignal, ParseOptions};
 
 use super::{
-    Align, Attrs, Block, CalloutKind, CodeBlock, Document, Footnotes, Ids, Inline, InlineStyle,
-    MAX_DEPTH, push_inline,
+    Align, Block, CalloutKind, Document, Footnotes, Ids, Inline, InlineStyle, MAX_DEPTH,
+    push_inline,
 };
 
 /// The GitHub alert a quote is, when its first line is just a marker like
@@ -198,19 +198,9 @@ impl Mapper<'_> {
                     (Some(lang), None) => lang.clone(),
                     (None, _) => String::new(),
                 };
-                out.push(Block::Code(CodeBlock {
-                    id: 0,
-                    lang: super::parse::lang_of(&info),
-                    attrs: Attrs::parse(&info),
-                    src: format!("{}\n", c.value),
-                }));
+                out.push(super::code_block(&info, format!("{}\n", c.value)));
             }
-            Node::Math(m) => out.push(Block::Code(CodeBlock {
-                id: 0,
-                lang: Some("math".into()),
-                attrs: Attrs::default(),
-                src: format!("{}\n", m.value),
-            })),
+            Node::Math(m) => out.push(super::code_block("math", format!("{}\n", m.value))),
             Node::Table(t) => {
                 let mut rows = t.children.iter().filter_map(|r| match r {
                     Node::TableRow(row) => Some(

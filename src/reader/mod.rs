@@ -275,6 +275,9 @@ pub struct Reader {
     /// Rendered rows of the line `:` went to, highlighted until the next
     /// key, a move of the view or a new layout.
     goto_mark: Option<std::ops::Range<usize>>,
+    /// Whether the last key was a jump by number, so a number next goes
+    /// into its section. Any other key or a turn of the wheel clears it.
+    toc_by_number: bool,
     /// Width of the screen at the last draw, which the table of contents
     /// is sized against.
     screen: u16,
@@ -378,6 +381,7 @@ impl Reader {
             toc_width: opts.toc_width,
             toc_jump: None,
             goto_mark: None,
+            toc_by_number: false,
             screen: 0,
             // Source files read from disk always show their line numbers.
             line_numbers: opts.line_numbers || (file.is_some() && code_file),

@@ -124,11 +124,14 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
     // keeping its colour and its hyperlink.
     if let Some(id) = r.hovered() {
         for (i, link) in r.rendered().links.iter().enumerate() {
-            if link.id == id && !focused.contains(&i) && (r.scroll()..end).contains(&link.line) {
-                frame.buffer_mut().set_style(
-                    link_rect(content, link, r.scroll()),
-                    Style::default().bg(t.current_bg),
-                );
+            if link.id == id
+                && !focused.contains(&i)
+                && (r.scroll()..end).contains(&link.line)
+                && let Some(area) = link_rect(content, link, r.scroll())
+            {
+                frame
+                    .buffer_mut()
+                    .set_style(area, Style::default().bg(t.current_bg));
             }
         }
     }

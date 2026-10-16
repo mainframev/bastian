@@ -44,6 +44,8 @@ pub struct Config {
     pub all: Option<bool>,
     /// Scroll with the mouse wheel.
     pub mouse: Option<bool>,
+    /// Lines the document scrolls per mouse-wheel step, at least 1.
+    pub wheel_lines: Option<u16>,
     /// Show a document's front matter as a table, or hide it.
     pub front_matter: Option<FrontMatter>,
     /// Show the logo at the top of the file browser.

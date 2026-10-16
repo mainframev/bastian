@@ -50,7 +50,8 @@ its note.
 ## Mouse
 
 bastian captures the mouse, so the wheel and the trackpad scroll the
-document and move through the file list, and a click on the `<` or `>` in the header of
+document, `wheel_lines` lines per step (3 by default), and move through the
+file list a file per step. A click on the `<` or `>` in the header of
 the table of contents or the theme picker resizes it. The link under the
 pointer is shaded, so it's clear what a click on it (which most terminals
 open with a modifier key) will follow.

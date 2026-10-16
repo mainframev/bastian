@@ -25,6 +25,8 @@ pub struct Settings {
     /// Scroll with the mouse wheel (captures the mouse, so terminal text
     /// selection needs a modifier key).
     pub mouse: bool,
+    /// Lines the reader scrolls per mouse-wheel step, at least 1.
+    pub wheel_lines: u16,
     /// Show the logo at the top of the file browser.
     pub logo: bool,
     /// How the terminal draws pictures, once asked; `None` until then.
@@ -102,6 +104,7 @@ impl Settings {
             date_format,
             editor: Some(r.editor.value).filter(|e| !e.trim().is_empty()),
             mouse: r.mouse.value,
+            wheel_lines: r.wheel_lines.value,
             logo: r.logo.value,
             images,
             show_images: r.images.value,

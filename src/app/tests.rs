@@ -20,6 +20,7 @@ fn settings() -> Settings {
         date_format: Some(crate::config::DATE_FORMAT.into()),
         editor: None,
         mouse: true,
+        wheel_lines: 3,
         logo: true,
         images: None,
         show_images: false,
@@ -186,6 +187,23 @@ fn mouse_wheel_scrolls_the_reader() {
     assert_eq!(app.reader.as_ref().unwrap().scroll(), 6);
     app.on_event(&wheel(MouseEventKind::ScrollUp));
     assert_eq!(app.reader.as_ref().unwrap().scroll(), 3);
+}
+
+#[test]
+fn mouse_wheel_scrolls_by_wheel_lines() {
+    let settings = Settings {
+        wheel_lines: 5,
+        ..settings()
+    };
+    let src: String = (0..50).map(|i| format!("line {i}\n\n")).collect();
+    let mut reader = reader_in(&settings, doc::parse(&src), PathBuf::from("."));
+    reader.layout(80, 10);
+    let mut app = App::read(reader, settings);
+    app.on_event(&wheel(MouseEventKind::ScrollDown));
+    app.on_event(&wheel(MouseEventKind::ScrollDown));
+    assert_eq!(app.reader.as_ref().unwrap().scroll(), 10);
+    app.on_event(&wheel(MouseEventKind::ScrollUp));
+    assert_eq!(app.reader.as_ref().unwrap().scroll(), 5);
 }
 
 #[test]

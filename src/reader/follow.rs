@@ -6,7 +6,7 @@ use super::{Action, Overlay, Reader};
 use crate::doc::{self, Block};
 use crate::links::{self, Target};
 use crate::nav::{self, Motion};
-use crate::prompt::{Prompt, PromptEvent};
+use crate::prompt::{self, Edited, Prompt};
 use crate::render;
 
 impl Reader {
@@ -96,17 +96,13 @@ impl Reader {
                 self.overlay = None;
                 return self.follow_link(&url);
             }
-            KeyCode::Esc if typing => {
-                picker.prompt = None;
-                picker.set_filter(String::new());
-            }
-            _ if typing => {
-                let prompt = picker.prompt.as_mut().expect("typing");
-                if prompt.on_key(key) == PromptEvent::Changed {
-                    let text = prompt.text().to_string();
-                    picker.set_filter(text);
-                }
-            }
+            // Enter never gets here, so the prompt only closes on Esc,
+            // which drops the filter too.
+            _ if typing => match prompt::drive(&mut picker.prompt, key) {
+                Some(Edited::Text(text)) => picker.set_filter(text),
+                Some(Edited::Cancelled) => picker.set_filter(String::new()),
+                None => {}
+            },
             KeyCode::Char('/') => picker.prompt = Some(Prompt::new(&picker.filter)),
             KeyCode::Esc if !picker.filter.is_empty() => picker.set_filter(String::new()),
             KeyCode::Esc | KeyCode::Char('q' | 'L') => self.overlay = None,

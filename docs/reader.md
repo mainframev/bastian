@@ -49,8 +49,9 @@ its note.
 
 `--mouse` (or `mouse = true`) also scrolls with the mouse wheel, and a click
 on the `<` or `>` in the header of the table of contents or the theme picker
-resizes it. It captures
-the mouse, so selecting text in the terminal then needs a modifier key (often
+resizes it. The link under the pointer is shaded, so it's clear what a
+click on it (which most terminals open with a modifier key) will follow. It
+captures the mouse, so selecting text in the terminal then needs a modifier key (often
 shift or option).
 
 ## Search

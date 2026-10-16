@@ -38,6 +38,9 @@ at a time; opening one replaces another, draft and all.
 document still scrolls: a code block, a link, or a details block. Leaving
 focus (and an active search) returns to plain reading in one step.
 
+**Hover**: the link under the mouse pointer, shaded while mouse support is
+on. Unlike Focus it takes no keys and follows only the pointer.
+
 **Table of contents** (ToC): a pane listing the document's headings; picking
 one jumps to it. It sits beside the document and is not an Overlay. The word
 "outline" is retired.

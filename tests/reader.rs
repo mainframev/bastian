@@ -1296,7 +1296,7 @@ fn code_files_always_show_line_numbers() {
 
 #[test]
 fn image_sources_resolve_like_links() {
-    use bastian::images::Source as ImageSource;
+    use bastian::images::ImageOrigin;
     let source = Source {
         base_dir: std::path::PathBuf::from("/docs"),
         ..Source::in_memory("t.md", parse("x\n"))
@@ -1304,11 +1304,11 @@ fn image_sources_resolve_like_links() {
     let r = Reader::new(source, &Options::default());
     assert_eq!(
         r.image_source("img/a.png?raw=1"),
-        Some(ImageSource::File("/docs/img/a.png".into()))
+        Some(ImageOrigin::File("/docs/img/a.png".into()))
     );
     assert_eq!(
         r.image_source("https://github.com/o/r/blob/main/shot.png"),
-        Some(ImageSource::Url(
+        Some(ImageOrigin::Url(
             "https://raw.githubusercontent.com/o/r/main/shot.png".into()
         ))
     );
@@ -1320,7 +1320,7 @@ fn image_sources_resolve_like_links() {
     let r = Reader::new(source, &Options::default());
     assert_eq!(
         r.image_source("docs/b.png"),
-        Some(ImageSource::Url(
+        Some(ImageOrigin::Url(
             "https://raw.githubusercontent.com/o/r/main/docs/b.png".into()
         ))
     );

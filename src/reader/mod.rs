@@ -21,7 +21,7 @@ use std::time::{Instant, SystemTime};
 
 use crate::doc::{CodeBlock, Document};
 use crate::exec::{BlockRun, Interpreters, Runner};
-use crate::images::{Images, Source as ImageSource};
+use crate::images::{ImageOrigin, Images};
 use crate::links::Link;
 use crate::nav;
 use crate::prompt::Prompt;
@@ -427,10 +427,10 @@ impl Reader {
     /// Where the picture for an image written as `url` comes from: a web
     /// URL (GitHub file pages as raw files), relative to a remote document,
     /// or a file next to this one.
-    pub fn image_source(&self, url: &str) -> Option<ImageSource> {
+    pub fn image_source(&self, url: &str) -> Option<ImageOrigin> {
         let web = |u: url::Url| {
             let raw = crate::remote::raw_url(&u).unwrap_or(u);
-            matches!(raw.scheme(), "http" | "https").then(|| ImageSource::Url(raw.to_string()))
+            matches!(raw.scheme(), "http" | "https").then(|| ImageOrigin::Url(raw.to_string()))
         };
         if let Ok(abs) = url::Url::parse(url) {
             return web(abs);
@@ -439,7 +439,7 @@ impl Reader {
             return web(crate::remote::resolve_link(base, url)?);
         }
         let path = url.split(['?', '#']).next().unwrap_or(url);
-        Some(ImageSource::File(self.base_dir.join(path)))
+        Some(ImageOrigin::File(self.base_dir.join(path)))
     }
 
     /// Draw pictures with `support`, or leave images as their alt text

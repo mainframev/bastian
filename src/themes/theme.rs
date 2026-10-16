@@ -55,9 +55,4 @@ impl Theme {
     pub fn dark() -> Self {
         super::load(super::DEFAULT_DARK, None).expect("built-in theme")
     }
-
-    /// The default light theme, Rosé Pine Dawn.
-    pub fn light() -> Self {
-        super::load(super::DEFAULT_LIGHT, None).expect("built-in theme")
-    }
 }

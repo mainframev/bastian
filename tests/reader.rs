@@ -1408,7 +1408,7 @@ fn toc_pane_sits_beside_the_document_and_follows_the_scroll() {
     assert_eq!(pane[0], " Table of Contents       < > │");
     assert!(pane[1].contains("────"), "{pane:#?}");
     // The lone title isn't numbered; its sections are, and deeper
-    // headings indent under them.
+    // headings indent under them, numbered within their section.
     let entries: Vec<&str> = pane[2..9]
         .iter()
         .map(|r| r.trim_end_matches([' ', '│']))
@@ -1418,10 +1418,10 @@ fn toc_pane_sits_beside_the_document_and_follows_the_scroll() {
         [
             " Guide",
             " 01 Install",
-            "      From source",
-            "      With a package manager",
+            "    1 From source",
+            "    2 With a package manager",
             " 02 Usage",
-            "      Skipped a level",
+            "    1 Skipped a level",
             " 03 Usage",
         ]
     );

@@ -262,13 +262,8 @@ impl App {
                 let name = b
                     .selected_entry()
                     .map_or_else(|| path.display().to_string(), |e| e.rel.clone());
-                match self.settings.open(&path, name) {
-                    Ok(r) => {
-                        self.reader = Some(r);
-                        self.note_opened();
-                    }
-                    Err(err) => self.set_message(format!("{err:#}")),
-                }
+                // No reader is open here, so nothing goes to history.
+                self.push_reader(self.settings.open(&path, name));
                 true
             }
             browser::Action::Edit(path) => {

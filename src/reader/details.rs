@@ -10,24 +10,13 @@ impl Reader {
     /// view when none is focused.
     pub(super) fn move_details_focus(&mut self, forward: bool) {
         let spans = &self.rendered.details;
-        if spans.is_empty() {
-            self.message = Some("no details blocks".into());
-            return;
-        }
         let current = self
             .details_focus
             .and_then(|id| spans.iter().position(|d| d.id == id));
-        let next = match (current, forward) {
-            (Some(i), true) => (i + 1).min(spans.len() - 1),
-            (Some(i), false) => i.saturating_sub(1),
-            (None, true) => spans
-                .iter()
-                .position(|d| d.line >= self.scroll)
-                .unwrap_or(spans.len() - 1),
-            (None, false) => spans
-                .iter()
-                .rposition(|d| d.line < self.scroll + self.height)
-                .unwrap_or(0),
+        let line = |i: usize| (spans[i].line, spans[i].line);
+        let Some(next) = self.next_stop(spans.len(), current, forward, line) else {
+            self.message = Some("no details blocks".into());
+            return;
         };
         let line = spans[next].line;
         self.details_focus = Some(spans[next].id);

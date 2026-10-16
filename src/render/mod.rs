@@ -245,6 +245,13 @@ impl Out {
         self.lines.push(Line::default());
     }
 
+    /// `inner` with its first line prefixed by `first` and the rest by `rest`.
+    fn prefixed(inner: Out, first: &[Span<'static>], rest: &[Span<'static>]) -> Out {
+        let mut out = Out::default();
+        out.append(inner, first, rest);
+        out
+    }
+
     /// Append `other`, prefixing its first line with `first` and the rest with `rest`.
     fn append(&mut self, other: Out, first: &[Span<'static>], rest: &[Span<'static>]) {
         let offset = self.lines.len();
@@ -325,13 +332,11 @@ impl Renderer<'_> {
                 tasks,
             } => self.list(*start, items, tasks, width),
             Block::Quote(inner) => {
-                let mut out = Out::default();
                 let bar = [Span::styled(QUOTE_BAR, Style::default().fg(t.muted))];
                 let outer = self.in_quote.replace(true);
                 let inner = self.blocks(inner, width.saturating_sub(2), true);
                 self.in_quote.set(outer);
-                out.append(inner, &bar, &bar);
-                out
+                Out::prefixed(inner, &bar, &bar)
             }
             Block::Callout { kind, blocks } => {
                 let color = match kind {
@@ -349,21 +354,17 @@ impl Renderer<'_> {
                 self.in_quote.set(outer);
                 inner.append(body, &[], &[]);
                 let bar = [Span::styled("▌ ", style)];
-                let mut out = Out::default();
-                out.append(inner, &bar, &bar);
-                out
+                Out::prefixed(inner, &bar, &bar)
             }
             Block::Footnote { number, blocks, .. } => {
                 let marker = format!("[{number}] ");
                 let pad = [Span::raw(" ".repeat(marker.width()))];
                 let first = [Span::styled(marker, Style::default().fg(t.muted))];
-                let mut out = Out::default();
-                out.append(
+                Out::prefixed(
                     non_empty(self.blocks(blocks, width.saturating_sub(pad[0].width()), true)),
                     &first,
                     &pad,
-                );
-                out
+                )
             }
             Block::Code(c) => self.code(c, width),
             Block::Label(text) => {
@@ -556,11 +557,7 @@ impl Renderer<'_> {
         }
         (i.text.clone(), s)
     }
-}
 
-/// `out`, or a blank line when it has none, so a marker put in front of an
-/// empty list item or footnote still shows.
-impl Renderer<'_> {
     /// A details block: `▶ summary` when closed, `▼ summary` with its
     /// blocks indented underneath when open.
     fn details(
@@ -588,8 +585,7 @@ impl Renderer<'_> {
             ),
             width.saturating_sub(2).max(1),
         );
-        let mut out = Out::default();
-        out.append(Out::from(summary), &[marker], &pad);
+        let mut out = Out::prefixed(Out::from(summary), &[marker], &pad);
         out.details.push(DetailsSpan { id, line: 0 });
         if shown {
             out.append(
@@ -602,6 +598,8 @@ impl Renderer<'_> {
     }
 }
 
+/// `out`, or a blank line when it has none, so a marker put in front of an
+/// empty list item or footnote still shows.
 fn non_empty(out: Out) -> Out {
     if out.lines.is_empty() {
         Out::from(vec![Line::default()])

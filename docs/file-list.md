@@ -38,8 +38,8 @@ for new or deleted files.
 ## Filtering
 
 `/` opens the filter; typing matches against each file's path and title,
-fuzzily, best matches first. `Enter` keeps the filter and returns to the list,
-`Esc` clears it.
+fuzzily, best matches first. `Enter` opens the selected match and keeps the
+filter for when you come back; `Esc` clears it.
 
 The filter input edits like a shell prompt: `←/→`, `Home/End` (or
 `ctrl-a/e`), `alt-b/f` by word, `ctrl-w` and `ctrl-u` to delete. While typing,

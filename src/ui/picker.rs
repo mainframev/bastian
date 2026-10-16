@@ -22,6 +22,32 @@ const KIND_W: usize = 5;
 const SWATCH_MAX: usize = 7;
 const SWATCH_MIN: usize = 3;
 
+/// Columns the open picker takes on a screen `width` columns wide, and
+/// how many of them the view beside it gives up: none on a screen too
+/// narrow for both, where the picker covers it.
+pub(crate) fn dock(picker: Option<&mut ThemePicker>, width: u16) -> (u16, u16) {
+    let side = picker.map_or(0, |p| p.fit(width));
+    (side, if side < width { side } else { 0 })
+}
+
+/// The open picker in the right `side` columns of `screen`.
+pub(crate) fn draw_docked(
+    frame: &mut Frame,
+    t: &Theme,
+    picker: Option<&ThemePicker>,
+    screen: Rect,
+    side: u16,
+) {
+    if let Some(p) = picker {
+        let area = Rect {
+            x: screen.right() - side,
+            width: side,
+            ..screen
+        };
+        draw(frame, t, p, area);
+    }
+}
+
 /// The theme list in `area`, a pane right of the screen it previews: a
 /// header with the position in the list and the `<` and `>` resize
 /// markers, a rule, then the themes with the selected one highlighted and

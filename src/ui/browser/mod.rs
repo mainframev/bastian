@@ -73,8 +73,7 @@ pub fn draw(
     // status bar, as in the reader, and the list narrows beside it.
     let [screen, status] =
         Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
-    let side = picker.as_deref_mut().map_or(0, |p| p.fit(screen.width));
-    let docked = if side < screen.width { side } else { 0 };
+    let (side, docked) = super::picker::dock(picker.as_deref_mut(), screen.width);
     let [main, _] =
         Layout::horizontal([Constraint::Min(1), Constraint::Length(docked)]).areas(screen);
     // Layout: the logo (or the `Find:` line while filtering; just that
@@ -241,14 +240,7 @@ pub fn draw(
     };
     status::draw(frame, status, t, left, &right);
 
-    if let Some(p) = &picker {
-        let area = Rect {
-            x: screen.right() - side,
-            width: side,
-            ..screen
-        };
-        super::picker::draw(frame, t, p, area);
-    }
+    super::picker::draw_docked(frame, t, picker.as_deref(), screen, side);
     if b.help.open {
         let over = Rect {
             height: status.y - frame.area().y,

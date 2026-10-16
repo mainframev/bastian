@@ -29,6 +29,7 @@ tab_width = 4         # columns per tab in code
 hyperlinks = true     # clickable links (OSC 8)
 scrollbar = true      # show scrollbars
 mouse = true          # wheel and trackpad scroll; false leaves the mouse to the terminal (--no-mouse)
+wheel_lines = 3       # lines the document scrolls per wheel or trackpad step, at least 1
 front_matter = "table"  # front matter as a key/value table, or "hide" it (--front-matter)
 remember_position = true  # reopen files where you left off
 
@@ -71,7 +72,8 @@ Each setting can also be set as `BASTIAN_<KEY>`, for example
 ## Mouse
 
 `mouse = true` (the default) captures the mouse, so the wheel and the
-trackpad scroll. Selecting text then needs a modifier key in most terminals:
+trackpad scroll, `wheel_lines` lines per step (3 by default; at least 1, so
+0 is an error). Selecting text then needs a modifier key in most terminals:
 shift while dragging (most Linux terminals, kitty, WezTerm, Alacritty), or
 option/alt (iTerm2, macOS Terminal). `mouse = false` (or `--no-mouse`)
 leaves the mouse to the terminal, which then scrolls with arrow keys, a line

@@ -165,6 +165,16 @@ fn bad_settings_say_where_they_came_from() {
         "{}",
         stderr(&out)
     );
+
+    std::fs::create_dir_all(dir.path().join("bastian")).unwrap();
+    std::fs::write(dir.path().join("bastian/config.toml"), "wheel_lines = 0\n").unwrap();
+    let out = bastian(dir.path(), &["-p", doc], &[]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("wheel_lines = 0 in the config file is not valid"),
+        "{}",
+        stderr(&out)
+    );
 }
 
 #[test]

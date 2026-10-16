@@ -65,6 +65,7 @@ pub const TEMPLATE: &str = r#"# bastian configuration. Every key is optional; co
 # mouse = true          # scroll with the mouse wheel or trackpad; false
 #                       # leaves the mouse to the terminal (plain text
 #                       # selection, the wheel scrolls a line at a time)
+# wheel_lines = 3       # lines the document scrolls per wheel step
 # front_matter = "table"  # "table" shows front matter as a key/value table
 #                       # at the top of a document, "hide" leaves it out
 # logo = true           # show the logo at the top of the file browser

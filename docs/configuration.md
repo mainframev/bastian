@@ -28,7 +28,7 @@ image_height = 24     # rows a picture takes up at most
 tab_width = 4         # columns per tab in code
 hyperlinks = true     # clickable links (OSC 8)
 scrollbar = true      # show scrollbars
-mouse = false         # scroll with the mouse wheel (--mouse)
+mouse = true          # wheel and trackpad scroll; false leaves the mouse to the terminal (--no-mouse)
 front_matter = "table"  # front matter as a key/value table, or "hide" it (--front-matter)
 remember_position = true  # reopen files where you left off
 
@@ -67,6 +67,15 @@ Each setting can also be set as `BASTIAN_<KEY>`, for example
 `yes`/`no` and `on`/`off`; lists are comma-separated
 (`BASTIAN_EXTENSIONS=md,txt`). An empty variable counts as unset.
 `[interpreters]` is only read from the file.
+
+## Mouse
+
+`mouse = true` (the default) captures the mouse, so the wheel and the
+trackpad scroll. Selecting text then needs a modifier key in most terminals:
+shift while dragging (most Linux terminals, kitty, WezTerm, Alacritty), or
+option/alt (iTerm2, macOS Terminal). `mouse = false` (or `--no-mouse`)
+leaves the mouse to the terminal, which then scrolls with arrow keys, a line
+at a time. See [the reader](reader.md#mouse).
 
 ## Precedence
 

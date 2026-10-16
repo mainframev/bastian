@@ -98,6 +98,33 @@ impl Reader {
         }
     }
 
+    /// Index of the focus stop after (or before) `current` among `len`
+    /// stops, whose first and last rendered lines `lines` gives; from
+    /// none, the first with any part in view or below it (or the last
+    /// starting above the view's end, going back). `None` when there are
+    /// no stops.
+    pub(super) fn next_stop(
+        &self,
+        len: usize,
+        current: Option<usize>,
+        forward: bool,
+        lines: impl Fn(usize) -> (usize, usize),
+    ) -> Option<usize> {
+        if len == 0 {
+            return None;
+        }
+        Some(match (current, forward) {
+            (Some(i), true) => (i + 1).min(len - 1),
+            (Some(i), false) => i.saturating_sub(1),
+            (None, true) => (0..len)
+                .position(|i| lines(i).1 >= self.scroll)
+                .unwrap_or(len - 1),
+            (None, false) => (0..len)
+                .rposition(|i| lines(i).0 < self.scroll + self.height)
+                .unwrap_or(0),
+        })
+    }
+
     /// Scroll so `line` is at the top, as far as the document allows.
     pub(super) fn jump_to(&mut self, line: usize) {
         self.follow = None;

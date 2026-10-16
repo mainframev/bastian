@@ -237,28 +237,16 @@ impl Reader {
     /// view (or the last, going back).
     pub(super) fn move_link_focus(&mut self, forward: bool) {
         let stops = self.link_stops();
-        if stops.is_empty() {
+        let links = &self.rendered.links;
+        let ends = |i: usize| {
+            let s: &[usize] = &stops[i];
+            (links[s[0]].line, links[s[s.len() - 1]].line)
+        };
+        let Some(next) = self.next_stop(stops.len(), self.link_focus, forward, ends) else {
             self.message = Some("no links in this document".into());
             return;
-        }
-        let links = &self.rendered.links;
-        let first_line = |s: &[usize]| links[s[0]].line;
-        let last_line = |s: &[usize]| links[s[s.len() - 1]].line;
-        let next = match (self.link_focus, forward) {
-            (Some(i), true) => (i + 1).min(stops.len() - 1),
-            (Some(i), false) => i.saturating_sub(1),
-            // The first link with any part in view (or below it).
-            (None, true) => stops
-                .iter()
-                .position(|s| last_line(s) >= self.scroll)
-                .unwrap_or(stops.len() - 1),
-            (None, false) => stops
-                .iter()
-                .rposition(|s| first_line(s) < self.scroll + self.height)
-                .unwrap_or(0),
         };
-        let first = first_line(&stops[next]);
-        let last = last_line(&stops[next]);
+        let (first, last) = ends(next);
         let url = links[stops[next][0]].url.clone();
         self.focus = None;
         self.link_focus = Some(next);

@@ -111,11 +111,12 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
         draw_hyperlinks(frame, r, content, end, &focused);
     }
     for link in focused.iter().map(|&i| &r.rendered().links[i]) {
-        if (r.scroll()..end).contains(&link.line) {
-            frame.buffer_mut().set_style(
-                link_rect(content, link, r.scroll()),
-                Style::default().fg(t.h1_fg).bg(t.current_bg),
-            );
+        if (r.scroll()..end).contains(&link.line)
+            && let Some(area) = link_rect(content, link, r.scroll())
+        {
+            frame
+                .buffer_mut()
+                .set_style(area, Style::default().fg(t.h1_fg).bg(t.current_bg));
         }
     }
     // The focused details block's summary line.
@@ -187,17 +188,21 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
                 frame.render_widget(Span::styled("▌", accent), Rect::new(body.x, y, 1, 1));
                 continue;
             };
-            let x = |col: usize| content.x + col as u16;
             let cells = if line == range.start || line + 1 == range.end {
                 vec![(cols.start, cols.len())]
             } else {
                 vec![(cols.start, 1), (cols.end - 1, 1)]
             };
             for (col, width) in cells {
-                let width = (width as u16).min(content.right().saturating_sub(x(col)));
+                let Some(x) = media::column(content, col) else {
+                    continue;
+                };
+                let width = u16::try_from(width)
+                    .unwrap_or(u16::MAX)
+                    .min(content.right() - x);
                 frame
                     .buffer_mut()
-                    .set_style(Rect::new(x(col), y, width, 1), accent);
+                    .set_style(Rect::new(x, y, width, 1), accent);
             }
         }
     }
@@ -407,5 +412,43 @@ mod tests {
         let status = &crate::ui::rows(buf)[19];
         assert!(status.contains(super::super::picker::HINT), "{status}");
         assert!(!status.contains("reloaded"), "{status}");
+    }
+
+    /// A table wide enough to push a link to the edge of u16 still draws,
+    /// and the link, off screen past the right edge, draws nothing.
+    #[test]
+    fn links_far_past_the_right_edge_are_skipped() {
+        use crate::reader::{Options, Source};
+
+        // Each `a` column takes 6 cells; the last, right-aligned column is
+        // as wide as its header, which puts the link where adding the left
+        // margin to its column overflowed u16.
+        let cells = 10_922;
+        let row = |cell: &str| format!("|{} {cell} |\n", " a |".repeat(cells));
+        let src = format!(
+            "{}|{}---:|\n{}",
+            row("hhhhhh"),
+            "---|".repeat(cells),
+            row("[link](https://x.dev)")
+        );
+        let doc = crate::doc::parse(&src);
+        let mut r = Reader::new(Source::in_memory("t", doc), &Options::default());
+        let mut term = Terminal::new(TestBackend::new(80, 20)).unwrap();
+        term.draw(|f| draw(f, &mut r)).unwrap();
+        let col = r.rendered().links.first().map(|l| l.col);
+        assert!(col.is_some_and(|c| c > 65_500), "{col:?}");
+        // The document's rows, without the status bar.
+        let page = |term: &Terminal<TestBackend>| {
+            let buf = term.backend().buffer();
+            let area = Rect::new(0, 0, buf.area.width, buf.area.height - 1);
+            area.positions().map(|p| buf[p].clone()).collect::<Vec<_>>()
+        };
+        let rows = crate::ui::rows(term.backend().buffer());
+        assert!(!rows.concat().contains("link"), "{rows:#?}");
+        let plain = page(&term);
+        // Focused, it would be highlighted: still nothing on screen.
+        r.link_focus = Some(0);
+        term.draw(|f| draw(f, &mut r)).unwrap();
+        assert_eq!(page(&term), plain);
     }
 }

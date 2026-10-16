@@ -71,12 +71,57 @@ fn code_inside_list_item() {
 }
 
 #[test]
-fn front_matter_is_hidden() {
-    let doc = parse("---\ntitle: x\ntags: [a]\n---\n\n# Real\n");
-    assert_eq!(doc.blocks.len(), 1);
+fn front_matter_becomes_a_key_value_table() {
+    let doc = parse("---\ntitle: x\ntags: [a, b]\n---\n\n# Real\n");
+    assert!(doc.front_matter);
+    let Block::Table { header, rows, .. } = &doc.blocks[0] else {
+        panic!("expected the front matter table: {:?}", doc.blocks);
+    };
+    assert_eq!(plain_text(&header[1]), "Value");
+    let cells: Vec<Vec<String>> = rows
+        .iter()
+        .map(|r| r.iter().map(|c| plain_text(c)).collect())
+        .collect();
+    assert_eq!(cells, [["title", "x"], ["tags", "a, b"]]);
+    assert_eq!(doc.lines, [0, 5]);
     assert_eq!(doc.title().as_deref(), Some("Real"));
+
     let toml = parse("+++\ntitle = 'x'\n+++\n\ntext\n");
-    assert!(matches!(&toml.blocks[..], [Block::Paragraph(_)]));
+    assert!(matches!(
+        &toml.blocks[..],
+        [Block::Table { .. }, Block::Paragraph(_)]
+    ));
+    assert!(!parse("# No front matter\n").front_matter);
+}
+
+#[test]
+fn unreadable_front_matter_shows_as_its_source() {
+    let doc = parse("---\nauthors:\n  - name: Ann\n---\n\n```sh\nls\n```\n");
+    let [Block::Code(raw), Block::Code(sh)] = &doc.blocks[..] else {
+        panic!("expected two code blocks: {:?}", doc.blocks);
+    };
+    assert_eq!(raw.lang.as_deref(), Some("yaml"));
+    assert_eq!(raw.src, "authors:\n  - name: Ann\n");
+    assert_eq!((raw.id, sh.id), (0, 1));
+}
+
+#[test]
+fn hidden_front_matter_leaves_the_rest_as_it_was() {
+    let body = "# Real\n\n```sh\nls\n```\n";
+    for front in ["---\ntitle: x\n---\n", "---\n- not: [a map\n---\n"] {
+        let mut doc = parse(&format!("{front}{body}"));
+        doc.hide_front_matter();
+        assert!(!doc.front_matter);
+        let plain = parse(body);
+        assert_eq!(doc.blocks, plain.blocks, "{front:?}");
+        assert_eq!(
+            doc.lines,
+            plain.lines.iter().map(|l| l + 3).collect::<Vec<_>>()
+        );
+    }
+    let mut none = parse(body);
+    none.hide_front_matter();
+    assert_eq!(none, parse(body));
 }
 
 #[test]

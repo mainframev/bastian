@@ -22,6 +22,11 @@ document; going Back returns to the previous Reader.
 **Block**: one unit of a Document: heading, paragraph, list, quote, callout,
 code block, footnote, table, rule, image, label, details.
 
+**Front matter**: the YAML (`---`) or TOML (`+++`) block a Document's source
+may open with. It is shown as the Document's first Block, a key/value table
+(or its source as a code block when it can't be read as one), unless the
+`front_matter` setting hides it.
+
 **Run**: one execution of a code block's program, with its output and status.
 A code block has at most one Run at a time.
 

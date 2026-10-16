@@ -1,4 +1,5 @@
 mod attrs;
+mod front_matter;
 mod mdx;
 mod parse;
 
@@ -61,6 +62,7 @@ fn code_file(src: &str, lang: &str) -> Document {
         })],
         lines: vec![0],
         code_file: true,
+        front_matter: false,
     }
 }
 
@@ -74,6 +76,8 @@ pub struct Document {
     /// A source file rather than Markdown: rendered bare, with source
     /// line numbers.
     pub code_file: bool,
+    /// The first block shows the document's front matter.
+    pub front_matter: bool,
 }
 
 impl Document {
@@ -83,6 +87,19 @@ impl Document {
             Block::Heading { level: 1, inlines } => Some(plain_text(inlines)),
             _ => None,
         })
+    }
+
+    /// Leave out the front matter block, if there is one.
+    pub fn hide_front_matter(&mut self) {
+        if !std::mem::take(&mut self.front_matter) {
+            return;
+        }
+        self.blocks.remove(0);
+        if !self.lines.is_empty() {
+            self.lines.remove(0);
+        }
+        // Its fallback code block took the first code id.
+        renumber(&mut self.blocks, &mut Ids::default());
     }
 }
 
@@ -385,10 +402,23 @@ impl Footnotes {
     }
 }
 
-/// The document a front end built: its top-level `blocks` with their
-/// source `lines`, then the `footnotes`. Front ends leave code and details
-/// ids at 0; they are numbered here, in the order blocks are shown in.
-fn finish(mut blocks: Vec<Block>, mut lines: Vec<usize>, footnotes: Footnotes) -> Document {
+/// The document a front end built: the text of its `front` matter, if it
+/// has any, shown first, then its top-level `blocks` with their source
+/// `lines`, then the `footnotes`. Front ends leave code and details ids at
+/// 0; they are numbered here, in the order blocks are shown in.
+fn finish(
+    front: Option<(front_matter::Kind, &str)>,
+    mut blocks: Vec<Block>,
+    mut lines: Vec<usize>,
+    footnotes: Footnotes,
+) -> Document {
+    let front = front.and_then(|(kind, src)| front_matter::block(kind, src));
+    let has_front = front.is_some();
+    if let Some(block) = front {
+        // Front matter can only open a document.
+        blocks.insert(0, block);
+        lines.insert(0, 0);
+    }
     footnotes.append_to(&mut blocks, &mut lines);
     renumber(&mut blocks, &mut Ids::default());
     each_inlines(&mut blocks, &mut |inlines| {
@@ -398,6 +428,7 @@ fn finish(mut blocks: Vec<Block>, mut lines: Vec<usize>, footnotes: Footnotes) -
         blocks,
         lines,
         code_file: false,
+        front_matter: has_front,
     }
 }
 

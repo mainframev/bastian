@@ -40,14 +40,34 @@ fn labels(doc: &Document) -> Vec<String> {
 }
 
 #[test]
-fn hides_frontmatter_esm_and_comments() {
-    let doc = parse(SAMPLE).unwrap();
+fn hides_esm_and_comments() {
+    let mut doc = parse(SAMPLE).unwrap();
     assert_eq!(doc.title().as_deref(), Some("MenuItemSwitch migration"));
+    assert!(doc.front_matter);
+    assert!(matches!(&doc.blocks[0], Block::Table { .. }));
+    doc.hide_front_matter();
     assert!(matches!(&doc.blocks[0], Block::Heading { level: 1, .. }));
     let all = format!("{doc:?}");
     assert!(!all.contains("import"), "{all}");
     assert!(!all.contains("internal note"), "{all}");
     assert!(!all.contains("sidebar"), "{all}");
+}
+
+#[test]
+fn front_matter_matches_the_markdown_front_end() {
+    for front in [
+        "---\ntitle: \"T\"\ntags: [a, b]\n---\n",
+        "---\nauthors:\n  - Ann\n  - Bob\nseo:\n  og:\n    image: a.png\n---\n",
+        "+++\ntitle = \"T\"\n[extra]\nmath = true\n+++\n",
+        "---\nauthors:\n  - name: Ann\n---\n",
+    ] {
+        let src = format!("{front}\n# Heading\n");
+        let mdx = parse(&src).unwrap();
+        let md = crate::doc::parse(&src);
+        assert_eq!(mdx.blocks, md.blocks, "{front:?}");
+        assert_eq!(mdx.lines, md.lines, "{front:?}");
+        assert!(mdx.front_matter && md.front_matter, "{front:?}");
+    }
 }
 
 #[test]

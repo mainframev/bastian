@@ -1,13 +1,14 @@
 //! MDX front end: parse with markdown-rs and map its mdast into bastian's
-//! document model. Front matter, `import`/`export` and `{/* comments */}`
-//! are dropped; JSX components become muted label lines around their
-//! rendered Markdown children.
+//! document model. Front matter becomes the shared key/value table;
+//! `import`/`export` and `{/* comments */}` are dropped; JSX components
+//! become muted label lines around their rendered Markdown children.
 
 use std::collections::HashMap;
 
 use markdown::mdast::{AlignKind, AttributeContent, AttributeValue, MdxJsxFlowElement, Node};
 use markdown::{Constructs, MdxSignal, ParseOptions};
 
+use super::front_matter::Kind;
 use super::{
     Align, Block, CalloutKind, Document, Footnotes, Format, Ids, Inline, InlineStyle, MAX_DEPTH,
     push_inline,
@@ -89,7 +90,13 @@ pub fn parse(src: &str) -> Option<Document> {
     };
     let mut blocks = Vec::new();
     let mut lines = Vec::new();
+    let mut front = None;
     for node in root.children()? {
+        match node {
+            Node::Yaml(y) => front = Some((Kind::Yaml, y.value.as_str())),
+            Node::Toml(t) => front = Some((Kind::Toml, t.value.as_str())),
+            _ => {}
+        }
         let before = blocks.len();
         m.block(node, &mut blocks, 0);
         // mdast lines are 1-based.
@@ -98,7 +105,7 @@ pub fn parse(src: &str) -> Option<Document> {
             .map_or(0, |p| p.start.line.saturating_sub(1));
         lines.extend(std::iter::repeat_n(line, blocks.len() - before));
     }
-    Some(super::finish(blocks, lines, m.footnotes))
+    Some(super::finish(front, blocks, lines, m.footnotes))
 }
 
 struct Mapper<'a> {
@@ -238,7 +245,8 @@ impl Mapper<'_> {
                 out.push(Block::Label(format!("{{{}}}", e.value)));
             }
             Node::Html(h) => out.push(Block::Label(h.value.clone())),
-            // Front matter, ESM, comments and link definitions aren't shown.
+            // Front matter is read by `parse`; ESM, comments and link
+            // definitions aren't shown.
             Node::Yaml(_)
             | Node::Toml(_)
             | Node::MdxjsEsm(_)

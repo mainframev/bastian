@@ -138,10 +138,7 @@ impl Reader {
             },
             Target::External(target) => self.open_external(target),
             Target::Anchor(anchor) => {
-                match self.heading_line(&anchor) {
-                    Some(line) => self.scroll_to(line),
-                    None => self.message = Some(format!("no heading #{anchor}")),
-                }
+                self.go_to_heading(&anchor);
                 Action::None
             }
             Target::Missing(path) => {
@@ -173,6 +170,14 @@ impl Reader {
             None => {}
         }
         Action::None
+    }
+
+    /// Scroll to the heading whose slug is `anchor`, or say there's none.
+    pub(super) fn go_to_heading(&mut self, anchor: &str) {
+        match self.heading_line(anchor) {
+            Some(line) => self.scroll_to(line),
+            None => self.message = Some(format!("no heading #{anchor}")),
+        }
     }
 
     /// Rendered line of the heading whose GitHub-style slug is `anchor`.

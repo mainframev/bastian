@@ -603,10 +603,7 @@ impl Reader {
             }
         }
         if let Some(anchor) = self.pending_anchor.take() {
-            match self.heading_line(&anchor) {
-                Some(line) => self.scroll_to(line),
-                None => self.message = Some(format!("no heading #{anchor}")),
-            }
+            self.go_to_heading(&anchor);
         }
         self.follow_output();
         self.scroll = self.scroll.min(self.max_scroll());

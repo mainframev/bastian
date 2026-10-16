@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use ratatui::Terminal;
 use ratatui::crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use ratatui::crossterm::execute;
-use ratatui::crossterm::terminal::{EnterAlternateScreen, enable_raw_mode};
+use ratatui::crossterm::terminal::{self, EnterAlternateScreen, enable_raw_mode};
 
 use super::screen::Screen;
 
@@ -28,7 +28,8 @@ pub fn enter_terminal(mouse: bool) -> Result<Tui> {
             execute!(io::stdout(), EnableMouseCapture)?;
             MOUSE.store(true, Ordering::Relaxed);
         }
-        Terminal::new(Screen::new(io::stdout()))
+        let size = terminal::size()?.into();
+        Terminal::new(Screen::new(io::stdout(), size))
     };
     setup()
         .inspect_err(|_| leave_terminal(mouse))

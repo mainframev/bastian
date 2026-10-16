@@ -8,6 +8,7 @@ use crate::exec::Interpreters;
 use crate::reader::{self, Reader, Source};
 use crate::render;
 use crate::term::{self, Background};
+use crate::themes::Theme;
 use crate::{images, themes};
 
 /// Options shared by every document the app opens.
@@ -34,6 +35,8 @@ pub struct Settings {
     pub selector: config::Selector,
     /// How the file list lays out each file.
     pub list_layout: config::ListLayout,
+    /// Whether themes paint their page background.
+    pub background: config::PageBackground,
 }
 
 impl Settings {
@@ -71,7 +74,7 @@ impl Settings {
         let images = (tui && r.images.value).then(images::Support::detect);
         let settings = Settings {
             reader: reader::Options {
-                theme: themes::load(&name, themes_dir)?,
+                theme: on_page(r.background.value, themes::load(&name, themes_dir)?),
                 max_width: r.width.value,
                 assume_yes: r.confirm.value == Confirm::Never,
                 interpreters: Interpreters::new(r.interpreters),
@@ -101,8 +104,15 @@ impl Settings {
             show_images: r.images.value,
             selector: r.selector.value,
             list_layout: r.list_layout.value,
+            background: r.background.value,
         };
         Ok((settings, name))
+    }
+
+    /// `theme` as the app draws it: without its page background when the
+    /// terminal's is kept.
+    pub(super) fn on_page(&self, theme: Theme) -> Theme {
+        on_page(self.background, theme)
     }
 
     /// The support readers draw pictures with: `None` while they're off.
@@ -115,4 +125,11 @@ impl Settings {
         let opened = crate::open::open(path)?;
         Ok(Reader::new(Source::file(name, opened), &self.reader))
     }
+}
+
+fn on_page(background: config::PageBackground, mut theme: Theme) -> Theme {
+    if background == config::PageBackground::Terminal {
+        theme.background = ratatui::style::Color::Reset;
+    }
+    theme
 }

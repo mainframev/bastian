@@ -19,6 +19,7 @@ bastian --config ~/work/bastian.toml README.md   # another file (also BASTIAN_CO
 theme = "auto"        # "auto" (match the terminal), "dark", "light" or a theme name
 dark_theme = "rose-pine"        # used by "auto" on dark backgrounds, and "dark"
 light_theme = "rose-pine-dawn"  # used by "auto" on light backgrounds, and "light"
+background = "theme"  # paint the theme's background, or keep the "terminal"'s (--background)
 width = 100           # maximum document width
 line_numbers = false  # show line numbers in the reader (-n)
 images = true         # draw pictures; `i` toggles them (--images on|off)

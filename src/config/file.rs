@@ -63,6 +63,8 @@ pub const TEMPLATE: &str = r#"# bastian configuration. Every key is optional; co
 # pager = false         # show documents in $PAGER instead of the TUI
 # all = false           # also list hidden and gitignored files
 # mouse = false         # scroll with the mouse wheel
+# front_matter = "table"  # "table" shows front matter as a key/value table
+#                       # at the top of a document, "hide" leaves it out
 # logo = true           # show the logo at the top of the file browser
 # images = true         # show pictures for images in documents (`i` toggles)
 # history = true        # list the documents opened this session with `H`

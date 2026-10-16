@@ -30,6 +30,7 @@ fn precedence_is_default_file_env_flag() {
     assert_eq!(r.width.value, 100);
     assert_eq!(r.background.value, PageBackground::Theme);
     assert!(r.history.value);
+    assert_eq!(r.front_matter.value, FrontMatter::Table);
 
     let r = resolve(file(), &env(&[]), none.clone()).unwrap();
     assert_eq!(
@@ -62,6 +63,7 @@ fn precedence_is_default_file_env_flag() {
         width: Some(60),
         confirm: Some(Confirm::Never),
         line_numbers: Some(true),
+        front_matter: Some(FrontMatter::Hide),
         ..Config::default()
     };
     let r = resolve(file(), &e, cli).unwrap();
@@ -81,6 +83,7 @@ fn precedence_is_default_file_env_flag() {
     );
     assert_eq!(r.confirm.value, Confirm::Never);
     assert!(r.line_numbers.value);
+    assert_eq!(r.front_matter.source, Source::Flag);
 }
 
 #[test]
@@ -155,6 +158,7 @@ fn env_values_are_parsed_and_validated() {
         ("BASTIAN_EXTENSIONS", "md, txt,,"),
         ("BASTIAN_SORT", "name"),
         ("BASTIAN_BACKGROUND", "Terminal"),
+        ("BASTIAN_FRONT_MATTER", "hide"),
     ]);
     let r = resolve(Config::default(), &e, Config::default()).unwrap();
     assert_eq!(
@@ -176,6 +180,13 @@ fn env_values_are_parsed_and_validated() {
     assert_eq!(r.extensions.value, ["md", "txt"]);
     assert_eq!(r.sort.value, SortBy::Name);
     assert_eq!(r.background.value, PageBackground::Terminal);
+    assert_eq!(
+        r.front_matter,
+        Setting {
+            value: FrontMatter::Hide,
+            source: Source::Env
+        }
+    );
     // Empty means unset.
     assert_eq!(r.theme.source, Source::Default);
 
@@ -188,6 +199,17 @@ fn env_values_are_parsed_and_validated() {
     .to_string();
     assert!(
         err.contains("expected bar, thick, block, arrow or highlight"),
+        "{err}"
+    );
+    let err = resolve(
+        Config::default(),
+        &env(&[("BASTIAN_FRONT_MATTER", "show")]),
+        Config::default(),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        err.contains("BASTIAN_FRONT_MATTER") && err.contains("expected table or hide"),
         "{err}"
     );
 
@@ -228,6 +250,7 @@ fn parses_all_fields() {
             color = "never"
             pager = true
             mouse = true
+            front_matter = "hide"
             selector = "highlight"
             list_layout = "compact"
             sort = "created"
@@ -255,6 +278,7 @@ fn parses_all_fields() {
     assert_eq!(c.color, Some(ColorMode::Never));
     assert_eq!(c.pager, Some(true));
     assert_eq!(c.mouse, Some(true));
+    assert_eq!(c.front_matter, Some(FrontMatter::Hide));
     assert_eq!(c.selector, Some(Selector::Highlight));
     assert_eq!(c.list_layout, Some(ListLayout::Compact));
     assert_eq!(c.sort, Some(SortBy::Created));

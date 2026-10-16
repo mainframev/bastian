@@ -33,7 +33,7 @@ pub struct Browser {
     pub entries: Vec<Entry>,
     /// Indices into `entries` that match the filter, best first.
     pub visible: Vec<usize>,
-    pub selected: usize,
+    pub selected: nav::Selection,
     pub filter: String,
     pub prompt: Option<Prompt>,
     /// One-shot error shown in the status bar until the next key.
@@ -61,7 +61,7 @@ impl Browser {
             scan,
             visible: Vec::new(),
             entries: Vec::new(),
-            selected: 0,
+            selected: nav::Selection::default(),
             filter: String::new(),
             prompt: None,
             message: None,
@@ -112,7 +112,7 @@ impl Browser {
         }
         if received {
             // Until the user moves off the first row, stay at the top.
-            let selected = (self.selected > 0)
+            let selected = (self.selected.get() > 0)
                 .then(|| self.selected_entry().map(|e| e.path.clone()))
                 .flatten();
             scan::sort(&mut self.entries, self.scan.sort);
@@ -124,7 +124,7 @@ impl Browser {
                     .iter()
                     .position(|&i| self.entries[i].path == path)
             {
-                self.selected = pos;
+                self.selected = nav::Selection::at(pos);
             }
         }
         // While scanning, always redraw so the spinner animates; once done,
@@ -133,11 +133,13 @@ impl Browser {
     }
 
     pub fn selected_entry(&self) -> Option<&Entry> {
-        self.visible.get(self.selected).map(|&i| &self.entries[i])
+        self.visible
+            .get(self.selected.get())
+            .map(|&i| &self.entries[i])
     }
 
     fn refilter(&mut self) {
-        self.selected = 0;
+        self.selected = nav::Selection::default();
         if self.filter.is_empty() {
             self.visible = (0..self.entries.len()).collect();
             return;
@@ -159,8 +161,7 @@ impl Browser {
 
     /// Move the selection by `delta` entries.
     pub fn move_by(&mut self, delta: isize) {
-        let max = self.visible.len().saturating_sub(1);
-        self.selected = self.selected.saturating_add_signed(delta).min(max);
+        self.selected.by(delta, self.visible.len());
     }
 
     /// Set how many entries fit on a page. The list shows the page holding
@@ -178,14 +179,14 @@ impl Browser {
     /// Index of the first entry on the current page.
     pub fn offset(&self) -> usize {
         let per = self.height;
-        self.selected / per * per
+        self.selected.get() / per * per
     }
 
     /// Current page and page count, both 1-based.
     pub fn page(&self) -> (usize, usize) {
         let per = self.height;
         let pages = self.visible.len().div_ceil(per).max(1);
-        (self.selected / per + 1, pages)
+        (self.selected.get() / per + 1, pages)
     }
 }
 
@@ -215,7 +216,7 @@ pub(crate) mod tests {
         assert_eq!(b.visible.len(), 50);
 
         // A file appearing during a scan doesn't move the cursor off its file.
-        b.selected = 10;
+        b.selected = nav::Selection::at(10);
         let picked = b.selected_entry().unwrap().path.clone();
         let (tx, rx) = mpsc::channel();
         b.incoming = Some(rx);
@@ -241,7 +242,7 @@ pub(crate) mod tests {
         }
         let mut b = Browser::new(dir.path().to_path_buf(), Scan::default());
         wait_for_scan(&mut b);
-        assert_eq!(b.selected, 0);
+        assert_eq!(b.selected.get(), 0);
     }
 
     #[test]

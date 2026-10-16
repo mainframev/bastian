@@ -28,7 +28,7 @@ impl Browser {
         }
 
         if let Some(motion) = nav::list_motion(&key) {
-            self.selected = nav::step(self.selected, self.visible.len(), motion);
+            self.selected.apply(motion, self.visible.len());
             return Action::None;
         }
         let page = self.height as isize;
@@ -95,20 +95,20 @@ mod tests {
         b.layout(10);
         let ctrl = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
         b.on_key(ctrl('d'));
-        assert_eq!(b.selected, 5);
+        assert_eq!(b.selected.get(), 5);
         b.on_key(ctrl('f'));
-        assert_eq!(b.selected, 15);
+        assert_eq!(b.selected.get(), 15);
         b.on_key(ctrl('u'));
-        assert_eq!(b.selected, 10);
+        assert_eq!(b.selected.get(), 10);
         b.on_key(ctrl('b'));
-        assert_eq!(b.selected, 0);
+        assert_eq!(b.selected.get(), 0);
         // Clamped at both ends.
         b.on_key(ctrl('b'));
-        assert_eq!(b.selected, 0);
+        assert_eq!(b.selected.get(), 0);
         for _ in 0..10 {
             b.on_key(ctrl('f'));
         }
-        assert_eq!(b.selected, 39);
+        assert_eq!(b.selected.get(), 39);
     }
 
     #[test]
@@ -120,7 +120,7 @@ mod tests {
         let mut b = Browser::new(dir.path().to_path_buf(), Scan::default());
         wait_for_scan(&mut b);
         b.layout(10);
-        b.selected = 8;
+        b.selected = nav::Selection::at(8);
         b.on_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
         b.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE));
         b.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
@@ -158,29 +158,29 @@ mod tests {
         wait_for_scan(&mut b);
         b.layout(10);
         assert_eq!((b.offset(), b.page()), (0, (1, 3)));
-        b.selected = 9;
+        b.selected = nav::Selection::at(9);
         b.layout(10);
         assert_eq!((b.offset(), b.page()), (0, (1, 3)));
         // One step past the last row turns to the next page.
         b.on_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
         b.layout(10);
         assert_eq!((b.offset(), b.page()), (10, (2, 3)));
-        b.selected = 24;
+        b.selected = nav::Selection::at(24);
         b.layout(10);
         assert_eq!((b.offset(), b.page()), (20, (3, 3)));
 
         // h/l and ←/→ turn pages, keeping the row within the page.
-        b.selected = 12;
+        b.selected = nav::Selection::at(12);
         let press = |b: &mut Browser, code| {
             b.on_key(KeyEvent::new(code, KeyModifiers::NONE));
             b.layout(10);
         };
         press(&mut b, KeyCode::Char('h'));
-        assert_eq!((b.selected, b.page()), (2, (1, 3)));
+        assert_eq!((b.selected.get(), b.page()), (2, (1, 3)));
         press(&mut b, KeyCode::Char('l'));
-        assert_eq!((b.selected, b.page()), (12, (2, 3)));
+        assert_eq!((b.selected.get(), b.page()), (12, (2, 3)));
         press(&mut b, KeyCode::Right);
-        assert_eq!((b.selected, b.page()), (22, (3, 3)));
+        assert_eq!((b.selected.get(), b.page()), (22, (3, 3)));
         press(&mut b, KeyCode::Left);
         assert_eq!(b.page(), (2, 3));
     }
@@ -208,7 +208,7 @@ mod tests {
         b.on_key(key(KeyCode::Char('j'), KeyModifiers::CONTROL));
         assert!(b.prompt.is_none());
         assert_eq!(b.filter, "doc");
-        assert_eq!(b.selected, 1);
+        assert_eq!(b.selected.get(), 1);
 
         // ←/→ move the cursor and keep the input open.
         b.on_key(key(KeyCode::Char('/'), KeyModifiers::NONE));
@@ -221,7 +221,7 @@ mod tests {
         // the filter put the selection back at the top.)
         b.on_key(key(KeyCode::PageDown, KeyModifiers::NONE));
         assert!(b.prompt.is_none());
-        assert_eq!(b.selected, 10);
+        assert_eq!(b.selected.get(), 10);
 
         // ctrl-u still clears the text rather than paging.
         b.on_key(key(KeyCode::Char('/'), KeyModifiers::NONE));

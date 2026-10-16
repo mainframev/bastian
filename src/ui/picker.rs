@@ -29,12 +29,12 @@ const SWATCH_MIN: usize = 3;
 /// its colors as fit, on its own surface so they read as they will; the
 /// swatch goes first when the pane narrows.
 pub fn draw(frame: &mut Frame, t: &Theme, p: &ThemePicker, area: Rect) {
-    let info = format!("{}/{}", p.selected + 1, p.entries.len());
+    let info = format!("{}/{}", p.selected.get() + 1, p.entries.len());
     let Some(mut list) = pane::draw(frame, t, area, Side::Right, "Themes", &info) else {
         return;
     };
     // Why the selected theme doesn't load, under the list.
-    if let Err(e) = &p.entries[p.selected].theme {
+    if let Err(e) = &p.entries[p.selected.get()].theme {
         let rows = (list.height / 3).clamp(1, 4);
         list.height -= rows;
         let below = Rect {
@@ -64,7 +64,7 @@ pub fn draw(frame: &mut Frame, t: &Theme, p: &ThemePicker, area: Rect) {
         .min(SWATCH_MAX);
     let swatch = if swatch >= SWATCH_MIN { swatch } else { 0 };
     let rows = usize::from(list.height);
-    let first = pane::first_row(Some(p.selected), p.entries.len(), rows);
+    let first = pane::first_row(Some(p.selected.get()), p.entries.len(), rows);
     let lines: Vec<Line> = p
         .entries
         .iter()
@@ -78,7 +78,7 @@ pub fn draw(frame: &mut Frame, t: &Theme, p: &ThemePicker, area: Rect) {
                 Span::styled(mark, Style::default().fg(t.ok)),
                 Span::styled(
                     format!("{name}{}", " ".repeat(name_w - name.width())),
-                    status::row_style(t, i == p.selected),
+                    status::row_style(t, i == p.selected.get()),
                 ),
             ];
             if !kind {
@@ -162,7 +162,7 @@ mod tests {
         let p = ThemePicker::new(None, "nord", DEFAULT_WIDTH);
         let rows = pane(&p, DEFAULT_WIDTH, 30);
         let n = p.entries.len();
-        let at = p.selected + 1;
+        let at = p.selected.get() + 1;
         assert!(rows[0].starts_with("│ Themes"), "{rows:#?}");
         assert!(rows[0].ends_with(&format!("{at}/{n} < >  ")), "{rows:#?}");
         assert!(rows[1].contains("────"), "{rows:#?}");

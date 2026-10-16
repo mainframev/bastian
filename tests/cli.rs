@@ -337,3 +337,70 @@ fn a_fifo_is_refused_instead_of_blocking() {
     assert!(!out.status.success());
     assert!(stderr(&out).contains("is not a file"), "{}", stderr(&out));
 }
+
+/// With a terminal on stdout but no controlling terminal (a daemon, a
+/// `setsid` job), taking over the terminal fails: bastian says so and
+/// exits instead of panicking.
+#[cfg(unix)]
+#[test]
+fn no_controlling_terminal_is_an_error_not_a_panic() {
+    use std::os::fd::FromRawFd;
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::unix::process::CommandExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let doc = dir.path().join("doc.md");
+    std::fs::write(&doc, "# Title\n").unwrap();
+    // SAFETY: posix_openpt returns a new descriptor we take ownership of;
+    // fcntl, grantpt and unlockpt act on it. ptsname's static buffer is
+    // copied out at once, and nothing else in this test binary calls it.
+    let (master, slave_path) = unsafe {
+        let fd = libc::posix_openpt(libc::O_RDWR | libc::O_NOCTTY);
+        assert!(fd >= 0, "posix_openpt failed");
+        let master = std::fs::File::from_raw_fd(fd);
+        assert_eq!(libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC), 0);
+        assert_eq!(libc::grantpt(fd), 0, "grantpt failed");
+        assert_eq!(libc::unlockpt(fd), 0, "unlockpt failed");
+        let name = libc::ptsname(fd);
+        assert!(!name.is_null(), "ptsname failed");
+        let path = std::ffi::CStr::from_ptr(name).to_str().unwrap().to_owned();
+        (master, path)
+    };
+    let slave = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(libc::O_NOCTTY)
+        .open(&slave_path)
+        .unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_bastian"));
+    cmd.arg(&doc)
+        .env("XDG_CONFIG_HOME", dir.path())
+        .stdin(Stdio::null())
+        .stdout(slave)
+        .stderr(Stdio::piped());
+    // SAFETY: setsid is async-signal-safe and touches only the child, which
+    // leaves our session and so has no controlling terminal.
+    unsafe {
+        cmd.pre_exec(|| {
+            if libc::setsid() < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let mut child = cmd.spawn().unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while child.try_wait().unwrap().is_none() {
+        if std::time::Instant::now() > deadline {
+            child.kill().unwrap();
+            panic!("bastian didn't exit without a controlling terminal");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let out = child.wait_with_output().unwrap();
+    drop(master);
+    let err = stderr(&out);
+    assert_eq!(out.status.code(), Some(1), "{err}");
+    assert!(!err.contains("panicked"), "{err}");
+    assert!(err.contains("taking over the terminal"), "{err}");
+}

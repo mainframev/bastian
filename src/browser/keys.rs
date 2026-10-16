@@ -7,9 +7,10 @@ use crate::prompt::{self, Edited, Prompt};
 impl Browser {
     pub fn on_key(&mut self, key: KeyEvent) -> Action {
         self.message = None;
-        // Navigation keys end filter input and act right away, so moving
-        // through the results doesn't need an Enter first.
-        if self.prompt.is_some() && is_navigation(&key) {
+        // Navigation keys and Enter end filter input and act right away, so
+        // moving through the results or opening one doesn't need an extra
+        // Enter.
+        if self.prompt.is_some() && (is_navigation(&key) || key.code == KeyCode::Enter) {
             self.prompt = None;
         }
         if self.prompt.is_some() {
@@ -83,6 +84,44 @@ mod tests {
     use crate::browser::Scan;
     use crate::browser::tests::wait_for_scan;
     use ratatui::crossterm::event::KeyModifiers;
+
+    #[test]
+    fn enter_in_the_filter_opens_the_selected_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("alpha.md"), "x\n").unwrap();
+        std::fs::write(dir.path().join("beta.md"), "x\n").unwrap();
+        let mut b = Browser::new(dir.path().to_path_buf(), Scan::default());
+        wait_for_scan(&mut b);
+        b.layout(10);
+        let key = |c| KeyEvent::new(c, KeyModifiers::NONE);
+        b.on_key(key(KeyCode::Char('/')));
+        for c in "beta".chars() {
+            b.on_key(key(KeyCode::Char(c)));
+        }
+        let Action::Open(path) = b.on_key(key(KeyCode::Enter)) else {
+            panic!("one Enter should open the match");
+        };
+        assert_eq!(path.file_name().unwrap(), "beta.md");
+        // The filter stays, so going back shows the same results.
+        assert_eq!(b.filter, "beta");
+        assert!(b.prompt.is_none());
+    }
+
+    #[test]
+    fn enter_in_a_filter_without_matches_just_closes_it() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("alpha.md"), "x\n").unwrap();
+        let mut b = Browser::new(dir.path().to_path_buf(), Scan::default());
+        wait_for_scan(&mut b);
+        let key = |c| KeyEvent::new(c, KeyModifiers::NONE);
+        b.on_key(key(KeyCode::Char('/')));
+        for c in "zzz".chars() {
+            b.on_key(key(KeyCode::Char(c)));
+        }
+        assert!(matches!(b.on_key(key(KeyCode::Enter)), Action::None));
+        assert!(b.prompt.is_none());
+        assert_eq!(b.filter, "zzz");
+    }
 
     #[test]
     fn ctrl_paging_moves_selection() {

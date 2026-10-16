@@ -5,11 +5,11 @@
 
 use std::collections::HashMap;
 
-use markdown::mdast::{AlignKind, AttributeContent, AttributeValue, Node};
+use markdown::mdast::{AlignKind, AttributeContent, AttributeValue, MdxJsxFlowElement, Node};
 use markdown::{Constructs, MdxSignal, ParseOptions};
 
 use super::{
-    Align, Attrs, Block, CalloutKind, CodeBlock, Document, Footnotes, Inline, InlineStyle,
+    Align, Attrs, Block, CalloutKind, CodeBlock, Document, Footnotes, Ids, Inline, InlineStyle,
     MAX_DEPTH, push_inline,
 };
 
@@ -82,8 +82,10 @@ pub fn parse(src: &str) -> Option<Document> {
         return None;
     }
     let mut m = Mapper {
+        src,
+        ids: Ids::default(),
+        footnotes: Footnotes::default(),
         definitions: definitions(&root),
-        ..Mapper::default()
     };
     let mut blocks = Vec::new();
     let mut lines = Vec::new();
@@ -104,10 +106,10 @@ pub fn parse(src: &str) -> Option<Document> {
     })
 }
 
-#[derive(Default)]
-struct Mapper {
-    next_code_id: usize,
-    next_link_id: usize,
+struct Mapper<'a> {
+    /// The source, to tell a text node's literal brackets from escaped ones.
+    src: &'a str,
+    ids: Ids,
     footnotes: Footnotes,
     /// Link reference definitions by normalized identifier, for
     /// `[text][id]` links and `![alt][id]` images.
@@ -133,17 +135,7 @@ fn definitions(root: &Node) -> HashMap<String, String> {
     found
 }
 
-impl Mapper {
-    fn next_link_id(&mut self) -> usize {
-        self.next_link_id += 1;
-        self.next_link_id - 1
-    }
-
-    fn next_id(&mut self) -> usize {
-        self.next_code_id += 1;
-        self.next_code_id - 1
-    }
-
+impl Mapper<'_> {
     /// Map `nodes`, which sit inside `depth` quotes and list items.
     fn blocks(&mut self, nodes: &[Node], depth: usize) -> Vec<Block> {
         let mut out = Vec::new();
@@ -211,7 +203,7 @@ impl Mapper {
                     (Some(lang), None) => lang.clone(),
                     (None, _) => String::new(),
                 };
-                let id = self.next_id();
+                let id = self.ids.code();
                 out.push(Block::Code(CodeBlock {
                     id,
                     lang: super::parse::lang_of(&info),
@@ -220,7 +212,7 @@ impl Mapper {
                 }));
             }
             Node::Math(m) => out.push(Block::Code(CodeBlock {
-                id: self.next_id(),
+                id: self.ids.code(),
                 lang: Some("math".into()),
                 attrs: Attrs::default(),
                 src: format!("{}\n", m.value),
@@ -243,6 +235,13 @@ impl Mapper {
                 });
             }
             Node::ThematicBreak(_) => out.push(Block::Rule),
+            Node::MdxJsxFlowElement(el) if is_tag(el.name.as_deref(), "details") => {
+                if depth >= MAX_DEPTH {
+                    out.extend(self.blocks(&el.children, depth));
+                } else {
+                    out.push(self.details(el, depth));
+                }
+            }
             Node::MdxJsxFlowElement(el) => {
                 let tag = open_tag(el.name.as_deref(), &el.attributes, el.children.is_empty());
                 out.push(Block::Label(tag));
@@ -279,6 +278,51 @@ impl Mapper {
         }
     }
 
+    /// A `<details>` element: its `<summary>` (the first paragraph's, when
+    /// it opens with one) and the blocks after it.
+    fn details(&mut self, el: &MdxJsxFlowElement, depth: usize) -> Block {
+        let id = self.ids.details();
+        let open = el.attributes.iter().any(
+            |a| matches!(a, AttributeContent::Property(p) if p.name.eq_ignore_ascii_case("open")),
+        );
+        let (summary, rest) = match el.children.as_slice() {
+            [Node::Paragraph(p), rest @ ..] => match p.children.as_slice() {
+                [Node::MdxJsxTextElement(s), tail @ ..] if is_tag(s.name.as_deref(), "summary") => {
+                    let summary = self.inlines(&s.children);
+                    // Text after `</summary>` in the same paragraph stays.
+                    let tail = self.inlines(tail);
+                    let mut blocks = Vec::new();
+                    if !tail.iter().all(|i| i.text.trim().is_empty()) {
+                        blocks.push(Block::Paragraph(tail));
+                    }
+                    blocks.extend(self.blocks(rest, depth + 1));
+                    (Some(summary), blocks)
+                }
+                _ => (None, self.blocks(&el.children, depth + 1)),
+            },
+            [Node::MdxJsxFlowElement(s), rest @ ..] if is_tag(s.name.as_deref(), "summary") => {
+                let summary = match s.children.as_slice() {
+                    [Node::Paragraph(p)] => self.inlines(&p.children),
+                    other => self.inlines(other),
+                };
+                (Some(summary), self.blocks(rest, depth + 1))
+            }
+            children => (None, self.blocks(children, depth + 1)),
+        };
+        let summary = summary.unwrap_or_else(|| {
+            vec![Inline {
+                text: "Details".into(),
+                style: InlineStyle::default(),
+            }]
+        });
+        Block::Details {
+            id,
+            open,
+            summary,
+            blocks: rest,
+        }
+    }
+
     /// An item's blocks, at the `depth` of the item itself.
     fn list_item(&mut self, node: &Node, depth: usize) -> Vec<Block> {
         match node {
@@ -287,11 +331,48 @@ impl Mapper {
         }
     }
 
+    /// `text` with each `[[target]]` or `[[target|label]]` in it a link.
+    /// `literal` says, for each `[[` in `text` in turn, whether the source
+    /// wrote it as is rather than escaped.
+    fn wiki_text(
+        &mut self,
+        mut text: &str,
+        literal: &[bool],
+        style: &InlineStyle,
+        out: &mut Vec<Inline>,
+    ) {
+        let mut opens = literal.iter().copied();
+        while let Some(start) = text.find("[[") {
+            let Some(len) = text[start + 2..].find("]]") else {
+                break;
+            };
+            if !opens.next().unwrap_or(false) {
+                push_inline(out, &text[..start + 2], style);
+                text = &text[start + 2..];
+                continue;
+            }
+            let inner = &text[start + 2..start + 2 + len];
+            let (target, label) = inner.split_once('|').unwrap_or((inner, inner));
+            if target.trim().is_empty() {
+                push_inline(out, &text[..start + 2], style);
+                text = &text[start + 2..];
+                continue;
+            }
+            push_inline(out, &text[..start], style);
+            let mut s = style.clone();
+            s.link = Some(super::wiki_target(target));
+            s.link_id = Some(self.ids.link());
+            push_inline(out, label, &s);
+            text = &text[start + 4 + len..];
+        }
+        push_inline(out, text, style);
+    }
+
     /// `nodes` as the text of one link to `url`.
     fn link(&mut self, url: String, nodes: &[Node], style: &InlineStyle, out: &mut Vec<Inline>) {
         let mut s = style.clone();
         s.link = Some(url);
-        s.link_id = Some(self.next_link_id());
+        s.link_id = Some(self.ids.link());
         for n in nodes {
             self.inline(n, &s, out);
         }
@@ -317,10 +398,22 @@ impl Mapper {
             }
         };
         match node {
-            // A soft line break is a space, as in the Markdown front end;
-            // only `Break` is a hard one.
             Node::Text(t) => {
-                push_inline(out, &t.value.replace("\r\n", " ").replace('\n', " "), style);
+                // A soft line break is a space, as in the Markdown front end;
+                // only `Break` is a hard one.
+                let text = t.value.replace("\r\n", " ").replace('\n', " ");
+                // markdown-rs has no wiki links, so find them here, where
+                // the source wrote `[[` as is: `\[\[x]]` stays text.
+                if text.contains("[[") {
+                    let raw = t
+                        .position
+                        .as_ref()
+                        .and_then(|p| self.src.get(p.start.offset..p.end.offset))
+                        .unwrap_or("");
+                    self.wiki_text(&text, &literal_opens(raw), style, out);
+                } else {
+                    push_inline(out, &text, style);
+                }
             }
             Node::Strong(s) => children(self, &s.children, &with(&|s| s.strong = true), out),
             Node::Emphasis(e) => children(self, &e.children, &with(&|s| s.emphasis = true), out),
@@ -352,7 +445,7 @@ impl Mapper {
             Node::FootnoteReference(f) => {
                 let label = f.label.as_deref().unwrap_or(&f.identifier);
                 let mut r = self.footnotes.reference(label, style);
-                r.style.link_id = Some(self.next_link_id());
+                r.style.link_id = Some(self.ids.link());
                 out.push(r);
             }
             Node::MdxTextExpression(_) => {}
@@ -438,6 +531,36 @@ fn is_comment(expr: &str) -> bool {
 }
 
 /// `<Callout type="warning" open>`, or `<Badge />` when self-closing.
+/// For each `[[` that `raw` source text decodes to, in order, whether it
+/// was written as is (`\[\[`, `\[[` and `[\[` are escaped).
+fn literal_opens(raw: &str) -> Vec<bool> {
+    let b = raw.as_bytes();
+    // One bracket, maybe escaped: (escaped, bytes it takes).
+    let bracket = |i: usize| match (b.get(i), b.get(i + 1)) {
+        (Some(b'['), _) => Some((false, 1)),
+        (Some(b'\\'), Some(b'[')) => Some((true, 2)),
+        _ => None,
+    };
+    let mut opens = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        if let Some((e1, n1)) = bracket(i)
+            && let Some((e2, n2)) = bracket(i + n1)
+        {
+            opens.push(!e1 && !e2);
+            i += n1 + n2;
+        } else {
+            i += 1;
+        }
+    }
+    opens
+}
+
+/// Whether a JSX element is the HTML element `tag`, in any case.
+fn is_tag(name: Option<&str>, tag: &str) -> bool {
+    name.is_some_and(|n| n.eq_ignore_ascii_case(tag))
+}
+
 fn open_tag(name: Option<&str>, attrs: &[AttributeContent], self_closing: bool) -> String {
     let mut tag = format!("<{}", name.unwrap_or(""));
     for attr in attrs {

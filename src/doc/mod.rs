@@ -342,24 +342,40 @@ impl Footnotes {
     }
 }
 
-/// Next code block and details ids while renumbering.
+/// The next id of each numbered thing, handed out in document order. Both
+/// front ends number with it, as does renumbering after footnotes move.
 #[derive(Default)]
-struct Ids {
+pub(super) struct Ids {
     code: usize,
+    link: usize,
     details: usize,
+}
+
+impl Ids {
+    pub(super) fn code(&mut self) -> usize {
+        self.code += 1;
+        self.code - 1
+    }
+
+    /// One link occurrence, shared by every inline it spans.
+    pub(super) fn link(&mut self) -> usize {
+        self.link += 1;
+        self.link - 1
+    }
+
+    pub(super) fn details(&mut self) -> usize {
+        self.details += 1;
+        self.details - 1
+    }
 }
 
 /// Number code and details blocks in document order, as `visit` walks them.
 fn renumber(blocks: &mut [Block], next: &mut Ids) {
     for b in blocks {
         match b {
-            Block::Code(c) => {
-                c.id = next.code;
-                next.code += 1;
-            }
+            Block::Code(c) => c.id = next.code(),
             Block::Details { id, blocks, .. } => {
-                *id = next.details;
-                next.details += 1;
+                *id = next.details();
                 renumber(blocks, next);
             }
             Block::Quote(inner)
@@ -373,6 +389,25 @@ fn renumber(blocks: &mut [Block], next: &mut Ids) {
             _ => {}
         }
     }
+}
+
+/// The relative link a wiki link's target stands for: `Page` is
+/// `Page.md` next to the document, and a `#Heading` part becomes that
+/// heading's anchor. Targets with an extension are kept as they are.
+pub(super) fn wiki_target(target: &str) -> String {
+    let (path, heading) = match target.split_once('#') {
+        Some((path, heading)) => (path.trim(), Some(heading)),
+        None => (target.trim(), None),
+    };
+    let mut url = path.to_string();
+    if !path.is_empty() && Path::new(path).extension().is_none() {
+        url.push_str(".md");
+    }
+    if let Some(heading) = heading {
+        url.push('#');
+        url.push_str(&crate::links::slug(heading));
+    }
+    url
 }
 
 pub fn plain_text(inlines: &[Inline]) -> String {

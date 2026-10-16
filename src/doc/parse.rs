@@ -438,8 +438,9 @@ impl Builder {
 
     /// A footnote reference: `[n]`, linking to the footnote's anchor.
     fn footnote_ref(&mut self, label: &str) {
-        let mut r = self.footnotes.reference(label, &self.style);
-        r.style.link_id = Some(self.ids.link());
+        let r = self
+            .footnotes
+            .reference(label, &self.style, self.ids.link());
         push_inline(&mut self.inlines, &r.text, &r.style);
     }
 

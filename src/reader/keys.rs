@@ -64,6 +64,9 @@ impl Reader {
             KeyCode::Char('h') | KeyCode::Left => return Action::Back,
             KeyCode::Char('d') if ctrl => self.scroll_by(page / 2),
             KeyCode::Char('u') if ctrl => self.scroll_by(-page / 2),
+            // With the table of contents open, j and k move through it.
+            KeyCode::Char('j') | KeyCode::Down if self.toc => self.step_heading(true),
+            KeyCode::Char('k') | KeyCode::Up if self.toc => self.step_heading(false),
             KeyCode::Char('j') | KeyCode::Down => self.scroll_by(1),
             KeyCode::Char('k') | KeyCode::Up => self.scroll_by(-1),
             KeyCode::Char(' ' | 'f') | KeyCode::PageDown => self.scroll_by(page),

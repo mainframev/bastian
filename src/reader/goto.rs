@@ -57,7 +57,7 @@ impl Reader {
                 .count();
             start..start + 1 + more
         };
-        self.jump_to(rows.start);
+        self.scroll_to(rows.start);
         if !self.rendered.lines.is_empty() {
             self.goto_mark = Some(rows);
         }

@@ -67,7 +67,7 @@ impl Reader {
     /// Scroll entry `i`'s heading, at `line`, to the top, or as near as
     /// the end allows, and remember it as the heading jumped to.
     fn jump_to_heading(&mut self, i: usize, line: usize) {
-        self.jump_to(line);
+        self.scroll_to(line);
         self.toc_jump = Some((i, self.scroll));
     }
 

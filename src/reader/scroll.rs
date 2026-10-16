@@ -125,8 +125,9 @@ impl Reader {
         })
     }
 
-    /// Scroll so `line` is at the top, as far as the document allows.
-    pub(super) fn jump_to(&mut self, line: usize) {
+    /// Put rendered line `line` at the top of the view, as far as the
+    /// document allows. Counts as the user moving: it ends a restore.
+    pub fn scroll_to(&mut self, line: usize) {
         self.follow = None;
         self.move_view(line.min(self.max_scroll()));
     }

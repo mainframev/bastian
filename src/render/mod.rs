@@ -370,6 +370,7 @@ impl Renderer<'_> {
             Block::Label(text) => {
                 Out::from(wrap(&[(text.clone(), Style::default().fg(t.muted))], width))
             }
+            Block::Math(text) => self.math(text, width),
             Block::Table {
                 align,
                 header,
@@ -566,6 +567,24 @@ impl Renderer<'_> {
         (i.text.clone(), s)
     }
 
+    /// Display math: each row centered, italic as inline math is.
+    fn math(&self, text: &str, width: usize) -> Out {
+        let style = Style::default()
+            .fg(self.theme.text)
+            .add_modifier(Modifier::ITALIC);
+        let lines: Vec<_> = text
+            .lines()
+            .flat_map(|row| wrap(&[(row.to_string(), style)], width))
+            .map(|line| {
+                let pad = width.saturating_sub(line.width()) / 2;
+                let mut spans = vec![Span::raw(" ".repeat(pad))];
+                spans.extend(line.spans);
+                Line::from(spans)
+            })
+            .collect();
+        Out::from(lines)
+    }
+
     /// A details block: `▶ summary` when closed, `▼ summary` with its
     /// blocks indented underneath when open.
     fn details(
@@ -625,6 +644,14 @@ fn is_open_tag(label: &str) -> bool {
 mod tests {
     use super::*;
     use crate::doc::parse;
+
+    #[test]
+    fn display_math_is_centered_and_italic() {
+        let r = render(&parse("$$\na \\\\ b+c\n$$\n"), 21, &Theme::dark());
+        assert_eq!(to_plain(&r.lines), "          a\n         b+c");
+        let text = r.lines[0].spans.last().unwrap();
+        assert!(text.style.add_modifier.contains(Modifier::ITALIC));
+    }
 
     #[test]
     fn callouts_take_their_colour_from_the_theme() {

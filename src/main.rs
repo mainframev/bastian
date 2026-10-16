@@ -147,11 +147,16 @@ fn main() -> Result<()> {
     let remote = (!path.exists())
         .then(|| path.to_str().and_then(remote::classify))
         .flatten();
-    let print = |d: &doc::Document| out.print(d, &settings.reader.theme, settings.reader.render);
+    let print = |mut d: doc::Document| {
+        if !settings.reader.front_matter {
+            d.hide_front_matter();
+        }
+        out.print(&d, &settings.reader.theme, settings.reader.render)
+    };
     let mut app = if let Some(source) = remote {
         let fetched = remote::fetch(&source)?;
         if !tui {
-            return print(&fetched.parse());
+            return print(fetched.parse());
         }
         let reader = Reader::new(Source::remote(fetched), &settings.reader);
         app::App::read(reader, settings)
@@ -171,7 +176,7 @@ fn main() -> Result<()> {
         let src = text::decode(&bytes).context("reading stdin")?;
         let doc = doc::parse(&src);
         if !tui {
-            return print(&doc);
+            return print(doc);
         }
         let source = Source {
             text: src,
@@ -182,7 +187,7 @@ fn main() -> Result<()> {
     } else {
         if !tui {
             let opened = open::open(&path)?;
-            return print(&opened.doc);
+            return print(opened.doc);
         }
         let reader = settings.open(&path, path.display().to_string())?;
         app::App::read(reader, settings)

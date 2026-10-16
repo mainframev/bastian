@@ -13,7 +13,7 @@ use super::status;
 use super::text::highlight;
 use crate::picker::ThemePicker;
 use crate::reader::{Overlay, Reader};
-use media::{draw_hyperlinks, draw_images};
+use media::{draw_hyperlinks, draw_images, link_rect};
 use overlays::{draw_confirm, draw_history, draw_links, draw_location, draw_open_confirm};
 use toc::draw_toc;
 
@@ -111,11 +111,8 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
     }
     for link in focused.iter().map(|&i| &r.rendered().links[i]) {
         if (r.scroll()..end).contains(&link.line) {
-            let x = content.x + link.col as u16;
-            let width = (link.width as u16).min(content.right().saturating_sub(x));
-            let y = content.y + (link.line - r.scroll()) as u16;
             frame.buffer_mut().set_style(
-                Rect::new(x, y, width, 1),
+                link_rect(content, link, r.scroll()),
                 Style::default().fg(t.h1_fg).bg(t.current_bg),
             );
         }

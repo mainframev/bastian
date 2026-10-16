@@ -152,18 +152,30 @@ fn ask(query: &[u8], timeout: Duration, done: impl Fn(&[u8]) -> bool) -> Option<
         return None;
     }
 
-    // Raw mode so the reply isn't echoed or line-buffered; always restored.
-    // SAFETY: termios calls on a file descriptor we own, with a zeroed struct
-    // that tcgetattr fills before use.
+    // Raw mode so the reply isn't echoed or line-buffered.
+    // SAFETY: termios is a plain C struct of integers, for which all zeroes
+    // is a valid value.
     let mut saved: libc::termios = unsafe { std::mem::zeroed() };
+    // SAFETY: tcgetattr on a file descriptor we own, filling a termios we
+    // own.
     if unsafe { libc::tcgetattr(fd, &raw mut saved) } != 0 {
         return None;
     }
     let mut raw_mode = saved;
+    // SAFETY: cfmakeraw only edits the flags of a termios we own, which
+    // tcgetattr filled.
     unsafe { libc::cfmakeraw(&raw mut raw_mode) };
+    // SAFETY: tcsetattr on a file descriptor we own with a termios we own.
     if unsafe { libc::tcsetattr(fd, libc::TCSANOW, &raw const raw_mode) } != 0 {
         return None;
     }
+    // Declared after `tty`, so it restores before the descriptor closes,
+    // on every way out of here, a panic in `done` included.
+    let mut restore = Restore {
+        fd,
+        saved,
+        when: libc::TCSANOW,
+    };
 
     let mut reply = Vec::new();
     if tty.write_all(query).is_ok() && tty.flush().is_ok() {
@@ -182,13 +194,36 @@ fn ask(query: &[u8], timeout: Duration, done: impl Fn(&[u8]) -> bool) -> Option<
     }
     // A reply cut off by the timeout would be read later as keystrokes;
     // TCSAFLUSH drops whatever of it has arrived.
-    let when = if done(&reply) {
-        libc::TCSANOW
-    } else {
-        libc::TCSAFLUSH
-    };
-    unsafe { libc::tcsetattr(fd, when, &raw const saved) };
+    if !done(&reply) {
+        restore.when = libc::TCSAFLUSH;
+    }
     Some(reply)
+}
+
+/// Puts back the terminal mode `ask` found when dropped.
+#[cfg(unix)]
+struct Restore {
+    fd: std::os::fd::RawFd,
+    saved: libc::termios,
+    /// `TCSANOW`, or `TCSAFLUSH` to drop unread input too.
+    when: libc::c_int,
+}
+
+#[cfg(unix)]
+impl Drop for Restore {
+    fn drop(&mut self) {
+        // Nothing to report to from a drop; a failure other than an
+        // interrupted call leaves the terminal as it is.
+        loop {
+            // SAFETY: tcsetattr on `fd`, which the `/dev/tty` file in `ask`
+            // keeps open until after this guard drops, with the termios
+            // tcgetattr filled.
+            let r = unsafe { libc::tcsetattr(self.fd, self.when, &raw const self.saved) };
+            if r == 0 || std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
+                break;
+            }
+        }
+    }
 }
 
 /// Wait up to `timeout` for input on `fd`. Uses select(2): on macOS,
@@ -436,7 +471,8 @@ mod tests {
 
     /// The session leader: start a background job that asks the terminal,
     /// check it finished without being stopped and left the terminal mode
-    /// alone, then ask from the foreground as a control.
+    /// alone, then ask from the foreground as a control, and once more
+    /// with a reply check that panics.
     #[cfg(unix)]
     fn pty_leader() {
         use std::os::fd::AsRawFd;
@@ -501,5 +537,17 @@ mod tests {
             ask(b"FG-QUERY", Duration::from_millis(50), |_| false),
             Some(Vec::new())
         );
+
+        // A panic while in raw mode still restores the terminal. Compare
+        // the line discipline only: going back to canonical mode without a
+        // flush sets PENDIN on macOS.
+        let canonical = |a: &(_, _, _, libc::tcflag_t, _)| a.3 & (libc::ICANON | libc::ECHO);
+        let panicked = std::panic::catch_unwind(|| {
+            ask(b"PANIC-QUERY", Duration::from_millis(50), |_| {
+                panic!("reply check failed")
+            })
+        });
+        assert!(panicked.is_err());
+        assert_eq!(canonical(&attrs()), canonical(&before), "raw mode left on");
     }
 }

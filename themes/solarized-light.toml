@@ -3,6 +3,7 @@
 appearance = "light"
 
 [ui]
+background = "#fdf6e3"
 text = "#657b83"
 muted = "#93a1a1"
 subtle = "#839496"

@@ -173,6 +173,18 @@ fn missing_interpreter_is_an_error_status() {
 }
 
 #[test]
+fn a_missing_cwd_is_blamed_not_the_interpreter() {
+    let mut r = yes("```sh {cwd=does-not-exist}\necho x\n```\n");
+    key(&mut r, KeyCode::Enter);
+    let statuses = settle(&mut r);
+    let Some(Status::Error(e)) = &statuses[0] else {
+        panic!("{statuses:?}");
+    };
+    assert!(e.starts_with("working directory "), "{e}");
+    assert!(e.contains("does-not-exist"), "{e}");
+}
+
+#[test]
 fn backtab_from_bottom_focuses_last_visible_block() {
     let src = std::fs::read_to_string("tests/fixtures/runbook.md").unwrap();
     let mut r = Reader::new(

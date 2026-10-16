@@ -77,12 +77,20 @@ impl Browser {
 
     /// Forget the current list and scan `root` again in the background.
     pub fn rescan(&mut self) {
+        self.entries.clear();
+        self.refilter();
+        self.incoming = None;
+        // Said here, on the screen: the walk can only skip an unreadable
+        // root, which would look like an empty directory.
+        if let Err(e) = scan::check_root(&self.root) {
+            self.message = Some(format!("{e:#}"));
+            return;
+        }
         let (tx, rx) = mpsc::channel();
         let root = self.root.clone();
         let opts = self.scan.clone();
-        std::thread::spawn(move || scan::scan(&root, &opts, &tx));
-        self.entries.clear();
-        self.refilter();
+        // A root that became unreadable since the check lists nothing.
+        std::thread::spawn(move || scan::scan(&root, &opts, &tx).ok());
         self.incoming = Some(rx);
         self.started = std::time::Instant::now();
     }
@@ -232,6 +240,36 @@ pub(crate) mod tests {
         b.tick();
         assert_eq!(b.selected_entry().unwrap().path, picked);
         assert!(!b.is_scanning());
+    }
+
+    /// An unreadable root says so instead of looking empty. Root reads
+    /// every directory regardless, so there's nothing to see as root.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_root_shows_a_message() {
+        use std::os::unix::fs::PermissionsExt;
+
+        // SAFETY: geteuid has no preconditions and can't fail.
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("docs");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("a.md"), "# A\n").unwrap();
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let mut b = Browser::new(root.clone(), Scan::default());
+        wait_for_scan(&mut b);
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let message = b.message.clone().unwrap_or_default();
+        assert!(message.starts_with("reading "), "{message}");
+        assert!(b.entries.is_empty());
+        // Readable again, a rescan lists it.
+        b.message = None;
+        b.rescan();
+        wait_for_scan(&mut b);
+        assert_eq!(b.entries.len(), 1);
+        assert!(b.message.is_none());
     }
 
     #[test]

@@ -231,8 +231,14 @@ fn popup_rect(
         .chain(std::iter::once(title.width()))
         .max()
         .unwrap_or(20);
-    let width = (inner_w as u16 + 4).min(area.width);
-    let height = (lines.len().min(rows) as u16 + 2).min(area.height);
+    let fit = |n: usize, pad: u16, max: u16| {
+        u16::try_from(n)
+            .unwrap_or(u16::MAX)
+            .saturating_add(pad)
+            .min(max)
+    };
+    let width = fit(inner_w, 4, area.width);
+    let height = fit(lines.len().min(rows), 2, area.height);
     // Half the spare space on each side, moved back on screen when the
     // box is bigger than `over`.
     let mid = |start: u16, len: u16, size: u16, lo: u16, hi: u16| {
@@ -399,6 +405,16 @@ mod tests {
         let move_row = screen.iter().position(|r| r.contains("Move"));
         let search_row = screen.iter().position(|r| r.contains("Search"));
         assert!(move_row < search_row, "{screen:#?}");
+    }
+
+    /// A line nearly `u16::MAX` wide (a run confirmation for a block with
+    /// a huge name, say) fills the screen rather than overflowing.
+    #[test]
+    fn popups_wider_than_u16_fit_the_screen() {
+        let area = Rect::new(0, 0, 80, 20);
+        let lines = [Line::raw("a".repeat(65_532))];
+        let rect = popup_rect(area, area, " t ", &lines, 2, 10);
+        assert_eq!((rect.width, rect.height), (80, 3));
     }
 
     #[test]

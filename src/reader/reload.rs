@@ -26,7 +26,7 @@ impl Reader {
                 self.text = opened.text;
                 self.message = Some("reloaded".into());
             }
-            Err(e) => self.message = Some(format!("reload failed: {e}")),
+            Err(e) => self.message = Some(format!("reload failed: {e:#}")),
         }
         true
     }

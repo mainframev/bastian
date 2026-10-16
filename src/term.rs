@@ -122,20 +122,9 @@ fn da1_end(reply: &[u8]) -> Option<usize> {
 /// Pixel width and height of one character cell, from the terminal's
 /// window size.
 pub(crate) fn cell_pixels() -> Option<(u16, u16)> {
-    #[cfg(unix)]
-    {
-        use std::os::fd::AsRawFd;
-        let tty = std::fs::File::open("/dev/tty").ok()?;
-        // SAFETY: TIOCGWINSZ fills a winsize struct we own, on an open fd.
-        let mut ws: libc::winsize = unsafe { std::mem::zeroed() };
-        if unsafe { libc::ioctl(tty.as_raw_fd(), libc::TIOCGWINSZ, &raw mut ws) } != 0 {
-            return None;
-        }
-        (ws.ws_xpixel > 0 && ws.ws_ypixel > 0 && ws.ws_col > 0 && ws.ws_row > 0)
-            .then(|| (ws.ws_xpixel / ws.ws_col, ws.ws_ypixel / ws.ws_row))
-    }
-    #[cfg(not(unix))]
-    None
+    let ws = crossterm::terminal::window_size().ok()?;
+    (ws.width > 0 && ws.height > 0 && ws.columns > 0 && ws.rows > 0)
+        .then(|| (ws.width / ws.columns, ws.height / ws.rows))
 }
 
 /// Write `query` to the terminal and read its reply until `done` says it's

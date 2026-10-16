@@ -9,8 +9,8 @@ use markdown::mdast::{AlignKind, AttributeContent, AttributeValue, MdxJsxFlowEle
 use markdown::{Constructs, MdxSignal, ParseOptions};
 
 use super::{
-    Align, Attrs, Block, CalloutKind, CodeBlock, Document, Footnotes, Ids, Inline, InlineStyle,
-    MAX_DEPTH, push_inline,
+    Align, Block, CalloutKind, Document, Footnotes, Ids, Inline, InlineStyle, MAX_DEPTH,
+    push_inline,
 };
 
 /// The GitHub alert a quote is, when its first line is just a marker like
@@ -98,12 +98,7 @@ pub fn parse(src: &str) -> Option<Document> {
             .map_or(0, |p| p.start.line.saturating_sub(1));
         lines.extend(std::iter::repeat_n(line, blocks.len() - before));
     }
-    m.footnotes.append_to(&mut blocks, &mut lines);
-    Some(Document {
-        blocks,
-        lines,
-        code_file: false,
-    })
+    Some(super::finish(blocks, lines, m.footnotes))
 }
 
 struct Mapper<'a> {
@@ -203,20 +198,9 @@ impl Mapper<'_> {
                     (Some(lang), None) => lang.clone(),
                     (None, _) => String::new(),
                 };
-                let id = self.ids.code();
-                out.push(Block::Code(CodeBlock {
-                    id,
-                    lang: super::parse::lang_of(&info),
-                    attrs: Attrs::parse(&info),
-                    src: format!("{}\n", c.value),
-                }));
+                out.push(super::code_block(&info, format!("{}\n", c.value)));
             }
-            Node::Math(m) => out.push(Block::Code(CodeBlock {
-                id: self.ids.code(),
-                lang: Some("math".into()),
-                attrs: Attrs::default(),
-                src: format!("{}\n", m.value),
-            })),
+            Node::Math(m) => out.push(super::code_block("math", format!("{}\n", m.value))),
             Node::Table(t) => {
                 let mut rows = t.children.iter().filter_map(|r| match r {
                     Node::TableRow(row) => Some(
@@ -281,7 +265,6 @@ impl Mapper<'_> {
     /// A `<details>` element: its `<summary>` (the first paragraph's, when
     /// it opens with one) and the blocks after it.
     fn details(&mut self, el: &MdxJsxFlowElement, depth: usize) -> Block {
-        let id = self.ids.details();
         let open = el.attributes.iter().any(
             |a| matches!(a, AttributeContent::Property(p) if p.name.eq_ignore_ascii_case("open")),
         );
@@ -309,18 +292,7 @@ impl Mapper<'_> {
             }
             children => (None, self.blocks(children, depth + 1)),
         };
-        let summary = summary.unwrap_or_else(|| {
-            vec![Inline {
-                text: "Details".into(),
-                style: InlineStyle::default(),
-            }]
-        });
-        Block::Details {
-            id,
-            open,
-            summary,
-            blocks: rest,
-        }
+        super::details(open, summary, rest)
     }
 
     /// An item's blocks, at the `depth` of the item itself.
@@ -444,9 +416,7 @@ impl Mapper<'_> {
             }
             Node::FootnoteReference(f) => {
                 let label = f.label.as_deref().unwrap_or(&f.identifier);
-                let mut r = self.footnotes.reference(label, style);
-                r.style.link_id = Some(self.ids.link());
-                out.push(r);
+                out.push(self.footnotes.reference(label, style, self.ids.link()));
             }
             Node::MdxTextExpression(_) => {}
             // Containers that can't appear inline: render their text.

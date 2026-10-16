@@ -71,6 +71,7 @@ impl Reader {
             KeyCode::Char('k') | KeyCode::Up => self.scroll_by(-1),
             KeyCode::Char(' ' | 'f') | KeyCode::PageDown => self.scroll_by(page),
             KeyCode::Char('b') | KeyCode::PageUp => self.scroll_by(-page),
+            KeyCode::Char('g') if ctrl => self.open_goto(),
             KeyCode::Char('g') | KeyCode::Home => self.scroll_to(0),
             KeyCode::Char('G') | KeyCode::End => self.scroll_to(usize::MAX),
             KeyCode::Char('/') => self.overlay = Some(Overlay::Prompt(Prompt::new(""))),

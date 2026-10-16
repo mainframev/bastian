@@ -18,7 +18,7 @@ its note.
 | `ctrl-d/u`                  | scroll half a page                                           |
 | `space/b`, `PageDown/Up`    | scroll a page                                                |
 | `g/G`, `Home/End`           | top/bottom                                                   |
-| `:`                         | go to a line: type its number, `Enter`                       |
+| `:`, `ctrl-g`               | go to a line: type its number, `Enter`                       |
 | `/`, `n/N`                  | search, next/previous match                                  |
 | `t`                         | show/hide the table of contents                              |
 | `J/K`                       | jump to the next/previous heading                            |

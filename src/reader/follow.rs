@@ -163,14 +163,14 @@ impl Reader {
     }
 
     pub(super) fn on_open_confirm_key(&mut self, key: KeyEvent) -> Action {
-        match key.code {
-            KeyCode::Char('y' | 'Y') | KeyCode::Enter => {
+        match nav::yes_no(&key) {
+            Some(true) => {
                 if let Some(Overlay::OpenConfirm(target)) = self.overlay.take() {
                     return Action::OpenExternal(target);
                 }
             }
-            KeyCode::Char('n' | 'N' | 'q') | KeyCode::Esc => self.overlay = None,
-            _ => {}
+            Some(false) => self.overlay = None,
+            None => {}
         }
         Action::None
     }

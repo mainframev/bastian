@@ -531,6 +531,14 @@ impl Renderer<'_> {
         if i.style.strike {
             s = s.add_modifier(Modifier::CROSSED_OUT);
         }
+        if i.style.underline {
+            s = s.add_modifier(Modifier::UNDERLINED);
+        }
+        // A colour, not a background: backgrounds mark search matches and
+        // code, and code keeps its own colour.
+        if i.style.mark {
+            s = s.fg(t.warn);
+        }
         if i.style.code {
             s = s.fg(t.code).bg(t.surface);
         }

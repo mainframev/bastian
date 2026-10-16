@@ -374,3 +374,28 @@ fn escaped_wiki_brackets_stay_text_beside_real_wiki_links() {
         ]
     );
 }
+
+#[test]
+fn html_formatting_elements_style_like_markdown() {
+    let src = "a <b>x</b> <kbd>K</kbd> <mark>m</mark> <u>u</u><br />==y== <Badge>z</Badge>\n";
+    let mdx = crate::doc::parse_for(src, Some(std::path::Path::new("x.mdx")));
+    let md = crate::doc::parse_for(src, Some(std::path::Path::new("x.md")));
+    let Block::Paragraph(inl) = &mdx.blocks[0] else {
+        panic!("{:?}", mdx.blocks);
+    };
+    let style = |t: &str| &inl.iter().find(|i| i.text == t).unwrap().style;
+    assert!(style("x").strong);
+    assert!(style("K").code);
+    assert!(style("m").mark);
+    assert!(style("u").underline);
+    assert!(style("y").mark);
+    // Components stay labelled.
+    assert!(style("<Badge>").muted);
+    assert_eq!(plain_text(inl), "a x K m u\ny <Badge>z</Badge>");
+    // The Markdown front end reads the same tags the same way, bar the
+    // component, which is just an unknown tag there.
+    let Block::Paragraph(md) = &md.blocks[0] else {
+        panic!("{:?}", md.blocks);
+    };
+    assert_eq!(plain_text(md), plain_text(inl));
+}

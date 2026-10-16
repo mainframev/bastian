@@ -9,6 +9,12 @@ pub enum Background {
     Light,
 }
 
+impl Background {
+    fn light_if(light: bool) -> Self {
+        if light { Self::Light } else { Self::Dark }
+    }
+}
+
 /// How long to wait for the terminal to answer before giving up. Every
 /// query ends with a device-attributes request, which all terminals answer,
 /// so a responsive terminal ends the wait at once; this bounds slow links
@@ -21,7 +27,7 @@ const QUERY_TIMEOUT: Duration = Duration::from_secs(1);
 /// `/dev/tty`.
 pub fn background(query: bool) -> Option<Background> {
     query
-        .then(|| query_background(QUERY_TIMEOUT))
+        .then(query_background)
         .flatten()
         .or_else(|| from_colorfgbg(std::env::var("COLORFGBG").ok().as_deref()?))
 }
@@ -41,29 +47,22 @@ fn parse_osc11(reply: &str) -> Option<Background> {
         .collect::<Option<_>>()?;
     let [r, g, b] = channels[..] else { return None };
     let luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    Some(if luminance > 0.5 {
-        Background::Light
-    } else {
-        Background::Dark
-    })
+    Some(Background::light_if(luminance > 0.5))
 }
 
 /// `COLORFGBG` is `fg;bg` (or `fg;default;bg`) with ANSI color indices; set by
 /// rxvt, Konsole and some others. Backgrounds 7 and 9–15 are light.
 fn from_colorfgbg(value: &str) -> Option<Background> {
     let bg: u8 = value.rsplit(';').next()?.trim().parse().ok()?;
-    Some(if bg == 7 || (9..=15).contains(&bg) {
-        Background::Light
-    } else {
-        Background::Dark
-    })
+    Some(Background::light_if(bg == 7 || (9..=15).contains(&bg)))
 }
 
 /// Ask OSC 11, then the device attributes: terminals answer in order, so the
 /// DA1 reply marks the end, and a terminal that ignores OSC 11 still ends
 /// the wait at once.
-fn query_background(timeout: Duration) -> Option<Background> {
-    let reply = ask(b"\x1b]11;?\x1b\\\x1b[c", timeout, |r| da1_end(r).is_some())?;
+fn query_background() -> Option<Background> {
+    const QUERY: &[u8] = b"\x1b]11;?\x1b\\\x1b[c";
+    let reply = ask(QUERY, QUERY_TIMEOUT, |r| da1_end(r).is_some())?;
     parse_osc11(&String::from_utf8_lossy(&reply))
 }
 

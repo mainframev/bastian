@@ -60,10 +60,6 @@ impl Support {
         Self(Rc::new(picker))
     }
 
-    fn picker(&self) -> &Picker {
-        &self.0
-    }
-
     /// Pixel width and height of a cell, never zero.
     fn cell_px(&self) -> (u32, u32) {
         let font = self.0.font_size();
@@ -78,12 +74,6 @@ pub struct Images {
     entries: HashMap<String, Entry>,
     tx: Sender<(String, Result<DynamicImage>)>,
     rx: Receiver<(String, Result<DynamicImage>)>,
-}
-
-impl Default for Images {
-    fn default() -> Self {
-        Self::new(None)
-    }
 }
 
 impl Images {
@@ -177,7 +167,7 @@ impl Images {
                 u32::from(rows) * ch,
                 image::imageops::FilterType::Triangle,
             );
-            Box::new(support.picker().new_resize_protocol(fitted))
+            Box::new(support.0.new_resize_protocol(fitted))
         });
         Some(protocol)
     }
@@ -306,7 +296,7 @@ mod tests {
         assert!(err.to_string().contains("not a file"), "{err}");
 
         // Off: nothing is loaded.
-        let mut off = Images::default();
+        let mut off = Images::new(None);
         off.request("dot.png", ImageOrigin::File(dir.path().join("dot.png")));
         assert!(off.entries.is_empty());
     }

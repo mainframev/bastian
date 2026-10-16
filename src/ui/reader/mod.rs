@@ -276,13 +276,13 @@ const HELP: &[status::HelpSection] = &[
     (
         "Navigation",
         &[
-            ("j/k  ↓/↑", "scroll"),
+            ("j/k  ↓/↑", "scroll; ToC: heading"),
             ("ctrl-d/u", "half page"),
             ("space/b", "page down/up"),
-            ("g/G, :", "top/bottom, go to line"),
+            ("g/G", "top/bottom"),
+            (":, ctrl-g", "go to line"),
             ("J/K", "next/previous heading"),
-            ("Esc", "clear, then back"),
-            ("h", "back"),
+            ("h, Esc", "back; Esc clears first"),
         ],
     ),
     ("Search", &[("/", "search"), ("n/N", "next/previous match")]),

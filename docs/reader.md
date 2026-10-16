@@ -14,11 +14,11 @@ its note.
 
 | Key                         | Action                                                       |
 | --------------------------- | ------------------------------------------------------------ |
-| `j/k`, `↓/↑`                | scroll a line                                                |
+| `j/k`, `↓/↑`                | scroll a line; table of contents open: next/previous heading |
 | `ctrl-d/u`                  | scroll half a page                                           |
 | `space/b`, `PageDown/Up`    | scroll a page                                                |
 | `g/G`, `Home/End`           | top/bottom                                                   |
-| `:`                         | go to a line: type its number, `Enter`                       |
+| `:`, `ctrl-g`               | go to a line: type its number, `Enter`                       |
 | `/`, `n/N`                  | search, next/previous match                                  |
 | `t`                         | show/hide the table of contents                              |
 | `J/K`                       | jump to the next/previous heading                            |
@@ -64,7 +64,9 @@ prompt (`←/→`, `alt-b/f`, `ctrl-w`, `ctrl-u`, …).
 
 `t` shows the document's headings in a pane on the left. The document
 narrows and re-wraps beside it, and the usual keys keep working, so you can
-read with it open. The section you're reading is highlighted as you scroll.
+read with it open, except that `j`/`k` (and `↓`/`↑`) step to the next or
+previous heading instead of scrolling a line; `ctrl-d/u` and `space/b` still
+scroll. The section you're reading is highlighted as you scroll.
 
 The outermost level with more than one heading is numbered `01`, `02`, …, so
 a single title leaves the numbers to its sections; a document where no level

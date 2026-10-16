@@ -292,8 +292,8 @@ mod tests {
         assert_eq!(current(&r).as_deref(), Some("C"));
         // Scrolling away drops the mark, also when the view comes back.
         key(&mut r, '3');
-        key(&mut r, 'k');
-        key(&mut r, 'j');
+        r.scroll_by(-1);
+        r.scroll_by(1);
         assert_eq!(r.scroll(), r.max_scroll());
         // A's filler still fills the top of the last screen.
         assert_eq!(current(&r).as_deref(), Some("A"), "the top's section");
@@ -366,6 +366,32 @@ mod tests {
         key(&mut r, 'J');
         key(&mut r, '3');
         assert_eq!(current(&r).as_deref(), Some("C"));
+    }
+
+    #[test]
+    fn j_and_k_step_through_headings_while_the_toc_is_open() {
+        let mut r = reader(&sections());
+        let current = |r: &Reader| {
+            let e = r.toc_entries();
+            toc::current(&e, r.toc_line()).map(|i| e[i].text.clone())
+        };
+        // Closed, j scrolls a line.
+        key(&mut r, 'j');
+        assert_eq!(r.scroll(), 1);
+        key(&mut r, 'g');
+        key(&mut r, 't');
+        key(&mut r, 'j');
+        assert_eq!(current(&r).as_deref(), Some("S2"));
+        key(&mut r, 'j');
+        assert_eq!(current(&r).as_deref(), Some("S3"));
+        key(&mut r, 'k');
+        assert_eq!(current(&r).as_deref(), Some("S2"));
+        let down = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
+        r.on_key(down);
+        assert_eq!(current(&r).as_deref(), Some("S3"));
+        let up = KeyEvent::new(KeyCode::Up, KeyModifiers::NONE);
+        r.on_key(up);
+        assert_eq!(current(&r).as_deref(), Some("S2"));
     }
 
     #[test]

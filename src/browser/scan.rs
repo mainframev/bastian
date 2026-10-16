@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::mpsc::{self, Sender};
 
+use anyhow::Context;
 use ignore::WalkState;
 
 use super::Entry;
@@ -45,15 +46,23 @@ impl Scan {
 }
 
 /// Markdown files under `root`, honoring .gitignore and skipping hidden
-/// paths unless `opts.all`, in `opts.sort` order.
-pub fn discover(root: &Path, opts: &Scan) -> Vec<Entry> {
+/// paths unless `opts.all`, in `opts.sort` order. Fails when `root`
+/// itself can't be read.
+pub fn discover(root: &Path, opts: &Scan) -> anyhow::Result<Vec<Entry>> {
     let (tx, rx) = mpsc::channel();
-    scan(root, opts, &tx);
+    scan(root, opts, &tx)?;
     // The receiver below ends once every sender is gone.
     drop(tx);
     let mut entries: Vec<Entry> = rx.into_iter().collect();
     sort(&mut entries, opts.sort);
-    entries
+    Ok(entries)
+}
+
+/// Whether `root` can be listed. The walk skips what it can't read, the
+/// root included, which would make an unreadable root look empty.
+pub(super) fn check_root(root: &Path) -> anyhow::Result<()> {
+    std::fs::read_dir(root).with_context(|| format!("reading {}", root.display()))?;
+    Ok(())
 }
 
 /// Newest first by `modified` or `created` time, or by name A to Z; ties
@@ -74,8 +83,10 @@ pub(super) fn sort(entries: &mut [Entry], by: SortBy) {
 /// Walk `root` on several threads, sending each listed file as it's found.
 /// Returns when the walk is done. Hidden and gitignored paths are skipped
 /// unless `opts.all` is set, `opts.ignore` matches always are; unreadable
-/// entries and broken symlinks are skipped.
-pub fn scan(root: &Path, opts: &Scan, tx: &Sender<Entry>) {
+/// entries below `root` and broken symlinks are skipped, but an unreadable
+/// `root` is an error.
+pub fn scan(root: &Path, opts: &Scan, tx: &Sender<Entry>) -> anyhow::Result<()> {
+    check_root(root)?;
     let all = opts.all;
     // Globs were checked at startup.
     let overrides = opts
@@ -126,6 +137,7 @@ pub fn scan(root: &Path, opts: &Scan, tx: &Sender<Entry>) {
                 WalkState::Continue
             })
         });
+    Ok(())
 }
 
 #[cfg(test)]
@@ -153,6 +165,7 @@ mod tests {
 
         let rels = |all| {
             let mut r: Vec<String> = discover(root, &all_files(all))
+                .unwrap()
                 .into_iter()
                 .map(|e| e.rel)
                 .collect();
@@ -167,6 +180,7 @@ mod tests {
 
         // A hidden directory given as the root is still browsed.
         let inner: Vec<String> = discover(&root.join(".config"), &all_files(false))
+            .unwrap()
             .into_iter()
             .map(|e| e.rel)
             .collect();
@@ -188,6 +202,7 @@ mod tests {
         std::fs::create_dir(root.join(".git")).unwrap();
 
         let mut rels: Vec<String> = discover(root, &all_files(false))
+            .unwrap()
             .into_iter()
             .map(|e| e.rel)
             .collect();
@@ -198,6 +213,7 @@ mod tests {
         std::fs::create_dir_all(root.join(".notes")).unwrap();
         std::fs::write(root.join(".notes/todo.mkd"), "# todo\n").unwrap();
         let mut rels: Vec<String> = discover(root, &all_files(true))
+            .unwrap()
             .into_iter()
             .map(|e| e.rel)
             .collect();
@@ -215,7 +231,11 @@ mod tests {
 
     /// Listed paths under `root` with `opts`, in list order.
     fn listed(root: &Path, opts: &Scan) -> Vec<String> {
-        discover(root, opts).into_iter().map(|e| e.rel).collect()
+        discover(root, opts)
+            .unwrap()
+            .into_iter()
+            .map(|e| e.rel)
+            .collect()
     }
 
     #[test]

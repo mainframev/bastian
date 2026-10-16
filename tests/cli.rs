@@ -404,3 +404,27 @@ fn no_controlling_terminal_is_an_error_not_a_panic() {
     assert!(!err.contains("panicked"), "{err}");
     assert!(err.contains("taking over the terminal"), "{err}");
 }
+
+/// An unreadable directory is an error, not an empty listing. Root reads
+/// every directory regardless, so there's nothing to see as root.
+#[cfg(unix)]
+#[test]
+fn an_unreadable_directory_is_an_error() {
+    use std::os::unix::fs::PermissionsExt;
+
+    // SAFETY: geteuid has no preconditions and can't fail.
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let docs = dir.path().join("docs");
+    std::fs::create_dir(&docs).unwrap();
+    std::fs::write(docs.join("a.md"), "# A\n").unwrap();
+    std::fs::set_permissions(&docs, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let out = bastian(dir.path(), &["-p", docs.to_str().unwrap()], &[]);
+    std::fs::set_permissions(&docs, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(!out.status.success());
+    assert!(stdout(&out).is_empty(), "{}", stdout(&out));
+    let err = stderr(&out);
+    assert!(err.contains("reading") && err.contains("docs"), "{err}");
+}

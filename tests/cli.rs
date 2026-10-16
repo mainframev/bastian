@@ -337,3 +337,94 @@ fn a_fifo_is_refused_instead_of_blocking() {
     assert!(!out.status.success());
     assert!(stderr(&out).contains("is not a file"), "{}", stderr(&out));
 }
+
+/// With a terminal on stdout but no controlling terminal (a daemon, a
+/// `setsid` job), taking over the terminal fails: bastian says so and
+/// exits instead of panicking.
+#[cfg(unix)]
+#[test]
+fn no_controlling_terminal_is_an_error_not_a_panic() {
+    use std::os::fd::FromRawFd;
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::unix::process::CommandExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let doc = dir.path().join("doc.md");
+    std::fs::write(&doc, "# Title\n").unwrap();
+    // SAFETY: posix_openpt returns a new descriptor we take ownership of;
+    // fcntl, grantpt and unlockpt act on it. ptsname's static buffer is
+    // copied out at once, and nothing else in this test binary calls it.
+    let (master, slave_path) = unsafe {
+        let fd = libc::posix_openpt(libc::O_RDWR | libc::O_NOCTTY);
+        assert!(fd >= 0, "posix_openpt failed");
+        let master = std::fs::File::from_raw_fd(fd);
+        assert_eq!(libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC), 0);
+        assert_eq!(libc::grantpt(fd), 0, "grantpt failed");
+        assert_eq!(libc::unlockpt(fd), 0, "unlockpt failed");
+        let name = libc::ptsname(fd);
+        assert!(!name.is_null(), "ptsname failed");
+        let path = std::ffi::CStr::from_ptr(name).to_str().unwrap().to_owned();
+        (master, path)
+    };
+    let slave = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(libc::O_NOCTTY)
+        .open(&slave_path)
+        .unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_bastian"));
+    cmd.arg(&doc)
+        .env("XDG_CONFIG_HOME", dir.path())
+        .stdin(Stdio::null())
+        .stdout(slave)
+        .stderr(Stdio::piped());
+    // SAFETY: setsid is async-signal-safe and touches only the child, which
+    // leaves our session and so has no controlling terminal.
+    unsafe {
+        cmd.pre_exec(|| {
+            if libc::setsid() < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let mut child = cmd.spawn().unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while child.try_wait().unwrap().is_none() {
+        if std::time::Instant::now() > deadline {
+            child.kill().unwrap();
+            panic!("bastian didn't exit without a controlling terminal");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let out = child.wait_with_output().unwrap();
+    drop(master);
+    let err = stderr(&out);
+    assert_eq!(out.status.code(), Some(1), "{err}");
+    assert!(!err.contains("panicked"), "{err}");
+    assert!(err.contains("taking over the terminal"), "{err}");
+}
+
+/// An unreadable directory is an error, not an empty listing. Root reads
+/// every directory regardless, so there's nothing to see as root.
+#[cfg(unix)]
+#[test]
+fn an_unreadable_directory_is_an_error() {
+    use std::os::unix::fs::PermissionsExt;
+
+    // SAFETY: geteuid has no preconditions and can't fail.
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let docs = dir.path().join("docs");
+    std::fs::create_dir(&docs).unwrap();
+    std::fs::write(docs.join("a.md"), "# A\n").unwrap();
+    std::fs::set_permissions(&docs, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let out = bastian(dir.path(), &["-p", docs.to_str().unwrap()], &[]);
+    std::fs::set_permissions(&docs, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(!out.status.success());
+    assert!(stdout(&out).is_empty(), "{}", stdout(&out));
+    let err = stderr(&out);
+    assert!(err.contains("reading") && err.contains("docs"), "{err}");
+}

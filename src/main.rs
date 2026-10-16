@@ -153,7 +153,7 @@ fn main() -> Result<()> {
         app::App::read(reader, settings)
     } else if path.is_dir() {
         if !tui {
-            for e in browser::discover(&path, &settings.scan) {
+            for e in browser::discover(&path, &settings.scan)? {
                 println!("{}", e.rel);
             }
             return Ok(());

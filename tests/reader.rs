@@ -437,6 +437,42 @@ fn reloads_when_file_changes() {
 }
 
 #[test]
+fn a_failed_reload_says_why() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("doc.md");
+    std::fs::write(&path, "# One\n").unwrap();
+    let source = Source {
+        file: Some(path.clone()),
+        ..Source::in_memory("t.md", parse("# One\n"))
+    };
+    thread_local!(static NOW: std::cell::Cell<Option<std::time::Instant>> = const { std::cell::Cell::new(None) });
+    fn now() -> std::time::Instant {
+        NOW.with(|n| *n.get().get_or_insert_with(std::time::Instant::now))
+    }
+    let opts = Options {
+        now,
+        ..Options::default()
+    };
+    let mut r = Reader::new(source, &opts);
+    r.layout(80, 10);
+    std::fs::write(&path, b"# Two \xFF\n").unwrap();
+    let later = std::time::SystemTime::now() + Duration::from_secs(10);
+    std::fs::File::options()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_modified(later)
+        .unwrap();
+    NOW.with(|n| n.set(Some(now() + Duration::from_secs(1))));
+    assert!(r.tick());
+    // Where it failed, and the cause under it.
+    let message = r.message().unwrap_or_default();
+    assert!(message.starts_with("reload failed: reading "), "{message}");
+    assert!(message.contains("not valid UTF-8"), "{message}");
+    assert_eq!(r.doc().title().as_deref(), Some("One"));
+}
+
+#[test]
 fn esc_returns_to_plain_reading_in_one_step() {
     let mut r = reader("[a](#a) and [b](#b)\n\nmore text here\n");
     key(&mut r, KeyCode::Char('/'));

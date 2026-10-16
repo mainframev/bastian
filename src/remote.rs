@@ -169,14 +169,16 @@ fn agent() -> &'static ureq::Agent {
 }
 
 /// GET `url` as text, with clear errors for HTTP failures and GitHub's rate
-/// limit. `GITHUB_TOKEN` is sent to api.github.com when set.
+/// limit. `GITHUB_TOKEN` is sent to api.github.com when set. Decoded as
+/// local files are: a byte-order mark is dropped, and UTF-16 with one read.
 fn get(url: &str, accept: &str) -> Result<String> {
-    respond(url, accept)?
+    let bytes = respond(url, accept)?
         .body_mut()
         .with_config()
         .limit(MAX_BYTES)
-        .read_to_string()
-        .with_context(|| format!("reading {url}"))
+        .read_to_vec()
+        .with_context(|| format!("reading {url}"))?;
+    crate::text::decode(&bytes).with_context(|| format!("reading {url}"))
 }
 
 /// GET `url` as raw bytes (e.g. an image), up to `limit` bytes.
@@ -387,6 +389,31 @@ mod tests {
         assert_eq!(doc.text, "# Remote\n\nSee [guide](guide.md).\n");
         let guide = resolve_link(&doc.base, "guide.md").unwrap();
         assert!(guide.as_str().ends_with("/docs/guide.md"));
+    }
+
+    #[test]
+    fn decodes_like_a_local_file() {
+        // A UTF-8 byte-order mark doesn't hide the heading.
+        let (base, _) = serve("200 OK", "", b"\xEF\xBB\xBF# Remote\n");
+        let doc = fetch(&classify(&format!("{base}/README.md")).unwrap()).unwrap();
+        assert_eq!(doc.text, "# Remote\n");
+        assert!(
+            matches!(doc.parse().blocks.first(), Some(doc::Block::Heading { .. })),
+            "{:?}",
+            doc.parse().blocks
+        );
+        // UTF-16 with a byte-order mark.
+        let (base, _) = serve("200 OK", "", b"\xFF\xFE#\0 \0A\0\n\0");
+        let doc = fetch(&classify(&format!("{base}/README.md")).unwrap()).unwrap();
+        assert_eq!(doc.text, "# A\n");
+        // Neither: the error says why, after where.
+        let (base, _) = serve("200 OK", "", b"\xFF\xFF");
+        let err = fetch(&classify(&format!("{base}/README.md")).unwrap()).unwrap_err();
+        let err = format!("{err:#}");
+        assert!(
+            err.contains("reading http://") && err.contains("UTF-8"),
+            "{err}"
+        );
     }
 
     /// 4 KiB of zeros, gzipped: 38 bytes on the wire.

@@ -801,6 +801,7 @@ fn settings(assume_yes: bool, positions: Option<std::path::PathBuf>) -> Settings
         show_images: false,
         selector: bastian::config::Selector::Bar,
         list_layout: bastian::config::ListLayout::Cards,
+        background: bastian::config::PageBackground::Theme,
     }
 }
 
@@ -1590,4 +1591,47 @@ fn the_line_gone_to_is_highlighted() {
     terminal.draw(|f| draw(f, &mut r)).unwrap();
     let y = row_of(&terminal, "para 48");
     assert_ne!(terminal.backend().buffer()[(x, y)].bg, current_bg);
+}
+
+/// Cells of a drawn frame that show the terminal's own background. A
+/// hyperlink's cells after its first are skipped: the first draws them.
+fn unpainted(buf: &ratatui::buffer::Buffer) -> Vec<(u16, u16)> {
+    use ratatui::buffer::CellDiffOption;
+    let area = buf.area;
+    (0..area.height)
+        .flat_map(|y| (0..area.width).map(move |x| (x, y)))
+        .filter(|&(x, y)| {
+            let cell = &buf[(x, y)];
+            cell.bg == ratatui::style::Color::Reset && cell.diff_option != CellDiffOption::Skip
+        })
+        .collect()
+}
+
+#[test]
+fn the_theme_paints_the_page_behind_everything() {
+    let src = "# Title\n\nSome `code` and a [link](https://x.dev).\n\n> quoted\n\n\
+               ## Part\n\n```rust\nfn main() {}\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n\
+               - one\n- two\n";
+    let mut r = in_memory(src);
+    let mut t = term(60, 20);
+    // The document, then with the table of contents and the help over it.
+    for k in [None, Some('t'), Some('?')] {
+        if let Some(c) = k {
+            key(&mut r, KeyCode::Char(c));
+        }
+        let frame = t.draw(|f| draw(f, &mut r)).unwrap();
+        assert_eq!(unpainted(frame.buffer), [], "after {k:?}");
+    }
+    key(&mut r, KeyCode::Esc);
+
+    // With the terminal's background kept, the text sits on it.
+    r.set_theme(Theme {
+        background: ratatui::style::Color::Reset,
+        ..Theme::dark()
+    });
+    let frame = t.draw(|f| draw(f, &mut r)).unwrap();
+    assert!(
+        unpainted(frame.buffer).len() > 60 * 10,
+        "most of the page is the terminal's"
+    );
 }

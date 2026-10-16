@@ -56,3 +56,7 @@ dates.
 
 **Theme**: a named set of colors for the document and for highlighted code,
 built from a theme file; built-in or the user's own.
+
+**Page background**: the color a Theme paints behind the whole reader and
+browser screen. `background = "terminal"` leaves the terminal's own color
+showing instead; printed output never paints it.

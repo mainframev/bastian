@@ -54,6 +54,8 @@ pub const TEMPLATE: &str = r#"# bastian configuration. Every key is optional; co
 #                       # own go in themes/<name>.toml next to this file
 # dark_theme = "rose-pine"        # used by "auto" and "dark"
 # light_theme = "rose-pine-dawn"  # used by "auto" and "light"
+# background = "theme"  # "theme" paints the theme's background, "terminal"
+#                       # keeps the terminal's (and its transparency)
 # width = 100           # maximum document width
 # confirm = "always"    # "never" runs code blocks without asking, like --yes
 # line_numbers = false  # show line numbers in the reader

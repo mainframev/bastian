@@ -40,7 +40,9 @@ pub fn draw(
             .borders(Borders::LEFT)
             .padding(Padding::horizontal(1)),
     }
-    .border_style(Style::default().fg(t.muted));
+    .border_style(Style::default().fg(t.muted))
+    // `Clear` resets the cells, so the page background goes back on.
+    .style(Style::default().bg(t.background));
     let inner = block.inner(area);
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);

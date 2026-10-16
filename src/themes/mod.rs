@@ -246,9 +246,9 @@ mod tests {
                 .map(|k| format!("{k} = \"#101010\"\n"))
                 .collect::<String>()
             + "heading = \"#202020\"\nmuted = \"#303030\"\n[syntax]\n"
-            + &build::SYNTAX_KEYS
+            + &build::SCOPES
                 .iter()
-                .map(|k| format!("{k} = \"#101010\"\n"))
+                .map(|(k, _)| format!("{k} = \"#101010\"\n"))
                 .collect::<String>();
         // TOML rejects the repeated keys, so drop the first `heading` and `muted`.
         let src =

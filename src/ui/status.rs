@@ -152,12 +152,7 @@ pub fn scrollbar(
 /// while editing, else the `query` last searched for.
 pub fn find_prompt(t: &Theme, prompt: Option<&Prompt>, query: &str) -> Line<'static> {
     let text = prompt.map_or(query, Prompt::text);
-    find_line(t, text, prompt.map(Prompt::cursor))
-}
-
-/// `Find: text`, with a block cursor at character `cursor` while editing.
-pub fn find_line(t: &Theme, text: &str, cursor: Option<usize>) -> Line<'static> {
-    prompt_line(t, "Find: ", text, cursor)
+    prompt_line(t, "Find: ", text, prompt.map(Prompt::cursor))
 }
 
 /// `label` then `text`, with a block cursor at character `cursor` while

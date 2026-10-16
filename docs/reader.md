@@ -175,6 +175,20 @@ wider than the window or takes over 250 ms to lay out shows its source
 instead, and `v` switches the focused block between the two. The feature is
 off by default as it adds about 8 MB to the binary.
 
+## Math
+
+TeX math reads as Unicode text: `$\alpha^2 \leq \frac{a+b}{2}$` shows as
+`α² ≤ (a+b)/2`, in italics like emphasis. `$$…$$` and ` ```math ` blocks are
+display math, centered on lines of their own (`\\` starts a new row).
+Greek letters, common operators, relations and arrows become their symbols;
+superscripts and subscripts use Unicode's small digits and letters where they
+exist and fall back to `^(…)` and `_(…)`; `\frac{a}{b}` is `a/b` and
+`\sqrt{x}` is `√x`, parenthesizing parts of more than one term. `\left`,
+`\right`, `\mathrm`, `\text` and the like are dropped, leaving their
+content. Commands bastian doesn't know stay as their source text. A single `$`
+with a space just inside it, as in `$5 and $10`, is a dollar sign. ` ```latex `
+and ` ```tex ` blocks stay code.
+
 ## History
 
 `H` lists the documents read this session, most recent first, with the one

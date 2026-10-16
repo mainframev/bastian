@@ -20,7 +20,7 @@ position, search, focus, Overlays and running code. One Reader per open
 document; going Back returns to the previous Reader.
 
 **Block**: one unit of a Document: heading, paragraph, list, quote, callout,
-code block, footnote, table, rule, image, label, details.
+code block, display math, footnote, table, rule, image, label, details.
 
 **Front matter**: the YAML (`---`) or TOML (`+++`) block a Document's source
 may open with. It is shown as the Document's first Block, a key/value table

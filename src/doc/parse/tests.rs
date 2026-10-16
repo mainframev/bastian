@@ -708,3 +708,55 @@ fn double_equals_outside_marks_stay_text() {
     assert_eq!(text, "a == b");
     assert!(r.iter().all(|(_, s)| s.mark));
 }
+
+#[test]
+fn inline_math_reads_as_unicode_emphasis() {
+    let doc = parse("Since $\\alpha^2 \\leq \\frac{a+b}{2}$, done.\n");
+    let Block::Paragraph(inl) = &doc.blocks[0] else {
+        panic!("expected paragraph, got {:?}", doc.blocks[0]);
+    };
+    assert_eq!(plain_text(inl), "Since α² ≤ (a+b)/2, done.");
+    assert_eq!(inl[1].text, "α² ≤ (a+b)/2");
+    assert!(inl[1].style.emphasis && !inl[1].style.code);
+}
+
+#[test]
+fn display_math_is_a_block_of_its_own() {
+    let doc = parse("$$\n\\sum_{i=1}^{n} i\n$$\n\nBefore $$\\sqrt{x}$$ after.\n");
+    assert_eq!(
+        doc.blocks,
+        [
+            Block::Math("∑ᵢ₌₁ⁿ i".into()),
+            Block::Paragraph(vec![Inline {
+                text: "Before".into(),
+                style: InlineStyle::default(),
+            }]),
+            Block::Math("√x".into()),
+            Block::Paragraph(vec![Inline {
+                text: "after.".into(),
+                style: InlineStyle::default(),
+            }]),
+        ]
+    );
+    assert_eq!(doc.lines, [0, 4, 4, 4]);
+}
+
+#[test]
+fn math_fences_are_display_math() {
+    let doc = parse("```math\nx \\to \\infty\n```\n\n```latex\n\\alpha\n```\n");
+    assert_eq!(doc.blocks[0], Block::Math("x → ∞".into()));
+    // Other fences hold TeX source to read as code.
+    assert!(matches!(&doc.blocks[1], Block::Code(c) if c.lang.as_deref() == Some("latex")));
+}
+
+#[test]
+fn dollar_amounts_stay_text() {
+    let doc = parse("It costs $5 and $10.\n");
+    assert_eq!(
+        plain_text(match &doc.blocks[0] {
+            Block::Paragraph(inl) => inl,
+            b => panic!("expected paragraph, got {b:?}"),
+        }),
+        "It costs $5 and $10."
+    );
+}

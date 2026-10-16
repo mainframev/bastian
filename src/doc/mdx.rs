@@ -70,6 +70,8 @@ pub fn parse(src: &str) -> Option<Document> {
             gfm_autolink_literal: true,
             gfm_footnote_definition: true,
             gfm_label_start_footnote: true,
+            math_flow: true,
+            math_text: true,
             ..Constructs::mdx()
         },
         // ESM is only recognized with a parser; accept every import/export
@@ -164,7 +166,7 @@ impl Mapper<'_> {
                         url: self.definitions[&i.identifier].clone(),
                     });
                 }
-                children => out.push(Block::Paragraph(self.inlines(children))),
+                children => self.paragraph(children, out),
             },
             // Past `MAX_DEPTH`, quotes and lists are flattened into their
             // parent, as the plain Markdown parser does.
@@ -207,7 +209,7 @@ impl Mapper<'_> {
                 };
                 out.push(super::code_block(&info, format!("{}\n", c.value)));
             }
-            Node::Math(m) => out.push(super::code_block("math", format!("{}\n", m.value))),
+            Node::Math(m) => out.push(super::math_block(&m.value)),
             Node::Table(t) => {
                 let mut rows = t.children.iter().filter_map(|r| match r {
                     Node::TableRow(row) => Some(
@@ -268,6 +270,43 @@ impl Mapper<'_> {
                 }
             }
         }
+    }
+
+    /// A paragraph of `children`. Display math written inline (`$$…$$`)
+    /// splits it into a block of its own, as in the Markdown front end.
+    fn paragraph(&mut self, children: &[Node], out: &mut Vec<Block>) {
+        let mut rest = children;
+        let mut split = false;
+        while let Some(at) = rest.iter().position(|n| self.is_display_math(n)) {
+            let mut inlines = self.inlines(&rest[..at]);
+            super::trim_inlines(&mut inlines);
+            if !inlines.is_empty() {
+                out.push(Block::Paragraph(inlines));
+            }
+            if let Node::InlineMath(m) = &rest[at] {
+                out.push(super::math_block(&m.value));
+            }
+            rest = &rest[at + 1..];
+            split = true;
+        }
+        let mut inlines = self.inlines(rest);
+        if split {
+            super::trim_inlines(&mut inlines);
+        }
+        if !split || !inlines.is_empty() {
+            out.push(Block::Paragraph(inlines));
+        }
+    }
+
+    /// Whether `node` is text math the source wrote with `$$`.
+    fn is_display_math(&self, node: &Node) -> bool {
+        let Node::InlineMath(m) = node else {
+            return false;
+        };
+        m.position
+            .as_ref()
+            .and_then(|p| self.src.get(p.start.offset..))
+            .is_some_and(|s| s.starts_with("$$"))
     }
 
     /// A `<details>` element: its `<summary>` (the first paragraph's, when
@@ -399,7 +438,18 @@ impl Mapper<'_> {
             Node::Emphasis(e) => children(self, &e.children, &with(&|s| s.emphasis = true), out),
             Node::Delete(d) => children(self, &d.children, &with(&|s| s.strike = true), out),
             Node::InlineCode(c) => push_inline(out, &c.value, &with(&|s| s.code = true)),
-            Node::InlineMath(m) => push_inline(out, &m.value, &with(&|s| s.code = true)),
+            Node::InlineMath(m) => {
+                let raw = m
+                    .position
+                    .as_ref()
+                    .and_then(|p| self.src.get(p.start.offset..p.end.offset));
+                match raw {
+                    Some(raw) if !is_math_span(raw) => {
+                        push_inline(out, &raw.replace("\r\n", " ").replace('\n', " "), style);
+                    }
+                    _ => super::push_math(out, &m.value, style),
+                }
+            }
             Node::Break(_) => push_inline(out, "\n", style),
             Node::Link(l) => self.link(l.url.clone(), &l.children, style, out),
             Node::LinkReference(l) => match self.definitions.get(&l.identifier).cloned() {
@@ -516,6 +566,19 @@ fn drop_iteratively(root: Node) {
             stack.append(children);
         }
     }
+}
+
+/// Whether `raw`, text math as markdown-rs found it, is math to the
+/// Markdown front end too: a single `$` must not have whitespace inside
+/// it, so `$5 and $10` stays prices there and here.
+fn is_math_span(raw: &str) -> bool {
+    if raw.starts_with("$$") {
+        return true;
+    }
+    let inner = raw.strip_prefix('$').and_then(|r| r.strip_suffix('$'));
+    inner.is_some_and(|i| {
+        !i.is_empty() && !i.starts_with(char::is_whitespace) && !i.ends_with(char::is_whitespace)
+    })
 }
 
 /// `{/* ... */}` holds only a comment.

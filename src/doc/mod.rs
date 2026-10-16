@@ -315,12 +315,14 @@ struct Footnotes {
 }
 
 impl Footnotes {
-    /// The `[n]` text for a reference to `label`, linking to its note.
-    fn reference(&mut self, label: &str, style: &InlineStyle) -> Inline {
+    /// The `[n]` text for a reference to `label`, linking to its note as
+    /// link occurrence `link_id`.
+    fn reference(&mut self, label: &str, style: &InlineStyle, link_id: usize) -> Inline {
         let next = self.refs.len() + 1;
         let n = *self.refs.entry(label.to_lowercase()).or_insert(next);
         let mut style = style.clone();
         style.link = Some(format!("#{}", footnote_anchor(label)));
+        style.link_id = Some(link_id);
         style.footnote = true;
         Inline {
             text: format!("[{n}]"),

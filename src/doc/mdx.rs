@@ -416,9 +416,7 @@ impl Mapper<'_> {
             }
             Node::FootnoteReference(f) => {
                 let label = f.label.as_deref().unwrap_or(&f.identifier);
-                let mut r = self.footnotes.reference(label, style);
-                r.style.link_id = Some(self.ids.link());
-                out.push(r);
+                out.push(self.footnotes.reference(label, style, self.ids.link()));
             }
             Node::MdxTextExpression(_) => {}
             // Containers that can't appear inline: render their text.

@@ -41,35 +41,68 @@ Homebrew also installs the shell completions. With Cargo
 `--features mermaid` to draw Mermaid diagrams (see
 [diagrams](docs/reader.md#diagrams)).
 
-## The TUI
+## Features
+
+`?` shows every key in the app, `Esc` goes back one step and `q` quits. The
+linked docs pages show most features in short GIFs.
+
+### Browsing a folder
 
 Run `bastian` in a folder (or `bastian docs/`) to see its Markdown files,
-newest first:
+newest first. More in [the file list](docs/file-list.md).
 
-- `j/k` to move, `/` to filter by path or title, `Enter` to open, `e` to edit;
-- hidden and gitignored files are skipped unless you pass `-a`;
-- choose how the list looks and sorts: a compact one-row layout, several
-  selection styles, sorting by modified or created date or by name.
+- `j/k` to move, `/` to [filter](docs/file-list.md#filtering) by path or
+  title, `Enter` to open, `e` to edit.
+- Hidden and gitignored files are skipped unless you pass `-a`.
+- [Shape the list](docs/file-list.md#shaping-the-list): cards or a compact
+  one-row layout, several selection styles, sorted by modified or created
+  date or by name.
 
-In a document:
+### Reading
 
-- `/` searches, `n/N` jump between matches;
-- `t` shows a table of contents beside the document; `1`–`9` and `0` jump
-  to its sections and `J/K` step through headings;
-- `L` lists the links to follow (`[[wiki links]]` included), and links are
-  clickable in terminals that support it;
-- images are drawn as pictures where the terminal can; `i` toggles them;
-- `<details>` blocks fold: `d` focuses one and `Enter` opens or closes it;
-- `#` shows line numbers, `y`/`c` copy a code block or the whole document,
-  `p` shows and copies the file path;
-- `ctrl-e` opens your editor at the line you're reading, and the document reloads
-  when the file changes;
-- `T` switches the theme;
-- `?` shows every key, `Esc` goes back, `q` quits.
+Everything below is in [the reader](docs/reader.md).
 
-![Switching themes with T while reading](demo/reader-themes.gif)
+- [Table of contents](docs/reader.md#table-of-contents): `t` shows it beside
+  the document. `1`–`9` and `0` jump to its sections, pressing the same number
+  again walks into that section, and `J/K` step through headings.
+- [Search](docs/reader.md#search) with `/` and `n/N`. `:` or `ctrl-g`
+  [goes to a line](docs/reader.md#line-numbers), and `#` shows line numbers.
+- [Links](docs/reader.md#links): `L` lists them, filterable, and `s/S` step
+  through them in place. Markdown files open in bastian, `[[wiki links]]`
+  included, and links are clickable in terminals that support it.
+  [History](docs/reader.md#history): `H` lists the documents read this session.
+- [Editing and live reload](docs/reader.md#editing-and-live-reload): `ctrl-e`
+  opens your editor at the line you're reading, and the document reloads when
+  the file changes.
+- [Reading position](docs/reader.md#reading-position): reopening a file
+  scrolls back to the section you left.
+- [Copying](docs/reader.md#copying): `y` copies a code block, `c` the whole
+  document, and `p` shows and copies the file path. It uses OSC 52, so it
+  works over ssh.
+- Mouse (`mouse` setting): the wheel scrolls, and the link under the pointer
+  is shaded ([keys](docs/reader.md#keys)).
+- [Themes](docs/themes.md#picking-one): `T` switches the theme without
+  leaving the document.
 
-More in [the file list](docs/file-list.md) and [the reader](docs/reader.md).
+### Markdown it lays out
+
+- Tables fitted to the width, highlighted code, task lists, footnotes, GitHub
+  alerts (`> [!NOTE]`, …) and CJK text wrapped between characters.
+- [Front matter](docs/reader.md#mdx-and-front-matter) as a table of keys and
+  values.
+- [Inline HTML and `==highlights==`](docs/reader.md#inline-html-and-highlights):
+  `<kbd>`, `<mark>`, `<b>`, `<s>` and friends are styled, and HTML comments
+  are hidden.
+- [Math](docs/reader.md#math): TeX in `$…$`, `$$…$$` and ` ```math ` reads as
+  Unicode text.
+- [`<details>`](docs/reader.md#details) blocks fold: `d` focuses one and
+  `Enter` opens or closes it.
+- [Images](docs/reader.md#images) are drawn as pictures where the terminal
+  can, and `i` toggles them.
+- [MDX](docs/reader.md#mdx-and-front-matter) files and source files are
+  supported too.
+- [Mermaid diagrams](docs/reader.md#diagrams) are drawn with box-drawing
+  characters when built with `--features mermaid`, and `v` shows their source.
 
 ## The CLI
 
@@ -88,8 +121,9 @@ bastian --pager README.md            # page it through $PAGER
 bastian --color always README.md | less -R
 ```
 
-MDX files are supported, and source files are shown highlighted. Every input
-form, option and command is in [the command line](docs/cli.md).
+Every input form, option and command is in [the command line](docs/cli.md),
+and [remote documents](docs/reader.md#remote-documents) covers URLs and
+repositories.
 
 ## Running code blocks
 
@@ -102,6 +136,9 @@ echo "hello from $(basename "$PWD")"
 uname -sm
 ```
 
+`R` runs every block from the focused one, stopping at a failure, and `x`
+stops them. Blocks ask before running unless you pass `--yes`.
+
 Attributes like `{cwd=./infra timeout=5m confirm}` control how a block runs;
 see [code blocks](docs/code-blocks.md).
 
@@ -110,14 +147,13 @@ see [code blocks](docs/code-blocks.md).
 Built in: `terminal` (your terminal's own colors), neutral dark and light,
 high contrast, and Tokyo Night, Rosé Pine, Kanagawa, Catppuccin, Gruvbox,
 Nord, Dracula, Everforest and Solarized, each with its variants. By default
-bastian follows your terminal's light or dark background.
+bastian follows your terminal's light or dark background and paints the
+theme's [page background](docs/themes.md#background).
 
 ```sh {norun}
 bastian themes               # pick one with a live preview; Enter saves it
 bastian -t nord README.md    # use a theme just this once
 ```
-
-![The theme picker previewing themes on a sample document](demo/themes.gif)
 
 You can also write your own, or tweak a built-in one; see [themes](docs/themes.md).
 

@@ -3,7 +3,7 @@
 Besides the TUI, bastian reads single documents from anywhere and can print
 them instead of opening the reader, for pipes, pagers and scripts.
 
-![Printing a document and a GitHub README, then reading piped input](../demo/cli.gif)
+![Printing a document and a GitHub README, then reading piped input](https://upnsbzkykttnbdp1.public.blob.vercel-storage.com/demo/cli.gif)
 
 ← [README](../README.md)
 

@@ -1,6 +1,6 @@
 # bastian
 
-![bastian: a terminal Markdown reader](assets/bastian.png)
+![bastian: a terminal Markdown reader](https://upnsbzkykttnbdp1.public.blob.vercel-storage.com/assets/bastian.png)
 
 [![Latest release](https://img.shields.io/crates/v/bastian.svg)](https://crates.io/crates/bastian)
 [![Downloads](https://img.shields.io/crates/d/bastian.svg)](https://crates.io/crates/bastian)
@@ -19,7 +19,7 @@ contents, search and live reload. It also reads single documents from a
 file, stdin, a URL or a GitHub/GitLab repository, and can run a runbook's
 code blocks in place.
 
-![Browsing, filtering, searching and the table of contents in bastian](demo/usage.gif)
+![Browsing, filtering, searching and the table of contents in bastian](https://upnsbzkykttnbdp1.public.blob.vercel-storage.com/demo/usage.gif)
 
 ## Install
 

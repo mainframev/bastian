@@ -9,7 +9,7 @@ readme = "README.md"
 keywords = ["markdown", "terminal", "tui", "reader", "cli"]
 categories = ["command-line-utilities"]
 # README images and repo tooling, not needed to build the crate.
-exclude = ["assets/", "demo/", ".github/", ".githooks/", "justfile", "cliff.toml"]
+exclude = [".github/", ".githooks/", "justfile", "cliff.toml"]
 
 # Prebuilt archives from the release workflow, for `cargo binstall bastian`.
 [package.metadata.binstall]

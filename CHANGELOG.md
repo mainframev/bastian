@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-10-17
+
+### Features
+
+- *(config)* Capture the mouse by default and set the wheel step  by @mainframev in [#82](https://github.com/mainframev/bastian/pull/82) ([dcd9c56](https://github.com/mainframev/bastian/commit/dcd9c56db20435885c166ba6a8cb0a3b7c8f92b9))
 ## [0.4.0] - 2026-10-16
 
 ### Features

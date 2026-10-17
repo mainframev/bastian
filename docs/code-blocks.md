@@ -28,6 +28,8 @@ bastian asks before each run. `-y` (or `confirm = "never"`) skips the
 question, except for blocks marked `confirm`. Try it on bastian's own README:
 `bastian README.md`, then `Tab` and `Enter`.
 
+![Running a runbook's code blocks one by one, then the rest in order](../demo/run.gif)
+
 ## Attributes
 
 Put attributes in braces after the language:

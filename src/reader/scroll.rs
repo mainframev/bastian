@@ -1,7 +1,29 @@
 use super::Reader;
 use crate::positions::Position;
 
+/// What a scroll can change on screen, to tell one that moved the view
+/// from one that changed nothing (at the end of the document, say).
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct ScrollView {
+    scroll: usize,
+    /// A scroll key clears the status bar message.
+    message: bool,
+    goto_mark: bool,
+    toc_jump: Option<(usize, usize)>,
+    follow: Option<usize>,
+}
+
 impl Reader {
+    pub(crate) fn scroll_view(&self) -> ScrollView {
+        ScrollView {
+            scroll: self.scroll,
+            message: self.message.is_some(),
+            goto_mark: self.goto_mark.is_some(),
+            toc_jump: self.toc_jump,
+            follow: self.follow,
+        }
+    }
+
     pub fn max_scroll(&self) -> usize {
         self.rendered.lines.len().saturating_sub(self.height)
     }

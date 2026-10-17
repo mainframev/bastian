@@ -46,11 +46,11 @@ contents open, both stay while the document keeps 40 columns between them;
 otherwise the table of contents is hidden until the picker closes. On screens
 narrower than 40 columns the picker covers the screen.
 
-![Switching themes with T while reading](../demo/reader-themes.gif)
+![Switching themes with T while reading](https://upnsbzkykttnbdp1.public.blob.vercel-storage.com/demo/reader-themes.gif)
 
 Piped, `bastian themes` prints the list with each theme's colors.
 
-![The theme picker previewing themes on a sample document](../demo/themes.gif)
+![The theme picker previewing themes on a sample document](https://upnsbzkykttnbdp1.public.blob.vercel-storage.com/demo/themes.gif)
 
 ## Light and dark
 

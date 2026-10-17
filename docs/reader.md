@@ -9,7 +9,7 @@ the end. A
 footnote reference is a link: use `L` to list it, then `Enter` to jump to
 its note.
 
-![Tables, alerts, tasks, highlights, math, footnotes and a details block](../demo/markdown.gif)
+![Tables, alerts, tasks, highlights, math, footnotes and a details block](https://upnsbzkykttnbdp1.public.blob.vercel-storage.com/demo/markdown.gif)
 
 ← [README](../README.md)
 
@@ -74,7 +74,7 @@ into arrow keys, which scroll a line at a time.
 edits like a shell
 prompt (`←/→`, `alt-b/f`, `ctrl-w`, `ctrl-u`, …).
 
-![Searching, line numbers and going to a line](../demo/search.gif)
+![Searching, line numbers and going to a line](https://upnsbzkykttnbdp1.public.blob.vercel-storage.com/demo/search.gif)
 
 ## Table of contents
 
@@ -84,7 +84,7 @@ read with it open, except that `j`/`k` (and `↓`/`↑`) step to the next or
 previous heading instead of scrolling a line; `ctrl-d/u` and `space/b` still
 scroll. The section you're reading is highlighted as you scroll.
 
-![The table of contents: jumping to sections and walking into one](../demo/toc.gif)
+![The table of contents: jumping to sections and walking into one](https://upnsbzkykttnbdp1.public.blob.vercel-storage.com/demo/toc.gif)
 
 The outermost level with more than one heading is numbered `01`, `02`, …, so
 a single title leaves the numbers to its sections; a document where no level
@@ -130,7 +130,7 @@ Wiki links work too: `[[Page]]` opens `Page.md` next to the document,
 `[[Page#Heading]]` or `[[#Heading]]` scroll to that heading. Pages are found
 by their path from the document, not searched for across folders.
 
-![Following links, wiki links and the history list](../demo/links.gif)
+![Following links, wiki links and the history list](https://upnsbzkykttnbdp1.public.blob.vercel-storage.com/demo/links.gif)
 
 `s` and `S` step through the links in place instead, starting from the ones
 in view. The status bar shows where the focused link leads before you follow
@@ -194,7 +194,7 @@ wider than the window or takes over 250 ms to lay out shows its source
 instead, and `v` switches the focused block between the two. The feature is
 off by default as it adds about 8 MB to the binary.
 
-![Mermaid flowchart and sequence diagrams](../demo/mermaid.gif)
+![Mermaid flowchart and sequence diagrams](https://upnsbzkykttnbdp1.public.blob.vercel-storage.com/demo/mermaid.gif)
 
 ## Math
 

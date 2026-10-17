@@ -46,6 +46,8 @@ contents open, both stay while the document keeps 40 columns between them;
 otherwise the table of contents is hidden until the picker closes. On screens
 narrower than 40 columns the picker covers the screen.
 
+![Switching themes with T while reading](../demo/reader-themes.gif)
+
 Piped, `bastian themes` prints the list with each theme's colors.
 
 ![The theme picker previewing themes on a sample document](../demo/themes.gif)

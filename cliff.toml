@@ -18,9 +18,10 @@ body = """
     {% for commit in commits %}
         - {% if commit.scope %}*({{ commit.scope }})* {% endif %}\
             {% if commit.breaking %}[**breaking**] {% endif %}\
-            {{ commit.message | upper_first }}\
+            {{ commit.message | split(pat=" (#") | first | upper_first }}\
             {% if commit.remote.username %} by @{{ commit.remote.username }}{%- endif %}\
-            {% if commit.remote.pr_number %} in [#{{ commit.remote.pr_number }}](https://github.com/mainframev/bastian/pull/{{ commit.remote.pr_number }}){%- endif %} \
+            {% if commit.links %}{% set pr = commit.links | first %} in [{{ pr.text }}]({{ pr.href }})\
+            {%- elif commit.remote.pr_number %} in [#{{ commit.remote.pr_number }}](https://github.com/mainframev/bastian/pull/{{ commit.remote.pr_number }}){%- endif %} \
             ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/mainframev/bastian/commit/{{ commit.id }}))\
     {% endfor %}
 {% endfor %}
@@ -36,8 +37,11 @@ trim = true
 conventional_commits = true
 filter_unconventional = true
 split_commits = false
-commit_preprocessors = [
-    { pattern = '\((\w+\s)?#([0-9]+)\)', replace = "" },
+# PR numbers come from the "(#12)" that squash merges add to the subject
+# (the first match: a body can mention other PRs), not from the GitHub API,
+# which can't map commits rewritten after merging.
+link_parsers = [
+    { pattern = '\(#([0-9]+)\)', href = "https://github.com/mainframev/bastian/pull/$1", text = "#$1" },
 ]
 
 commit_parsers = [

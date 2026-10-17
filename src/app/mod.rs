@@ -1,15 +1,15 @@
 mod run;
+mod screen;
 mod settings;
 mod terminal;
 
 pub use run::run;
 pub use settings::Settings;
-pub use terminal::{enter_terminal, leave_terminal};
+pub use terminal::{Tui, enter_terminal, leave_terminal};
 
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
-use ratatui::DefaultTerminal;
 use ratatui::crossterm::clipboard::CopyToClipboard;
 use ratatui::crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEventKind,
@@ -213,6 +213,25 @@ impl App {
         }
     }
 
+    /// Whether `event` only moves the open reader's view: the wheel, or a
+    /// scroll key with no Overlay or theme picker open. It changes no
+    /// layout, so the next event can be handled before a draw.
+    fn only_moves(&self, event: &Event) -> bool {
+        let Some(r) = &self.reader else {
+            return false;
+        };
+        match event {
+            Event::Mouse(m) => matches!(
+                m.kind,
+                MouseEventKind::ScrollDown | MouseEventKind::ScrollUp
+            ),
+            Event::Key(k) => {
+                k.kind == KeyEventKind::Press && self.picker.is_none() && r.only_scrolls(k)
+            }
+            _ => false,
+        }
+    }
+
     /// Returns false when the app should exit.
     fn on_event(&mut self, event: &Event) -> bool {
         if let Event::Mouse(m) = event {
@@ -362,12 +381,7 @@ impl App {
 
     /// Hand the terminal to the user's editor, then take it back. An open
     /// reader picks up the changes through its file watch.
-    fn run_editor(
-        &mut self,
-        terminal: &mut DefaultTerminal,
-        path: &Path,
-        line: Option<usize>,
-    ) -> Result<()> {
+    fn run_editor(&mut self, terminal: &mut Tui, path: &Path, line: Option<usize>) -> Result<()> {
         let cmd = editor::command(self.settings.editor.as_deref());
         let result = with_terminal_released(terminal, self.settings.mouse, || {
             editor::open_with(&cmd, path, line)

@@ -64,10 +64,16 @@ pub struct Cli {
     #[arg(long, value_name = "PATH")]
     pub config: Option<String>,
 
-    /// Scroll with the mouse wheel. Captures the mouse, so selecting text in
-    /// the terminal needs a modifier key (often shift or option).
-    #[arg(long)]
+    /// Scroll with the mouse wheel or trackpad [default: on]. Captures the
+    /// mouse, so selecting text in the terminal needs a modifier key: shift
+    /// in most terminals, option in iTerm2 and macOS Terminal.
+    #[arg(long, overrides_with = "no_mouse")]
     pub mouse: bool,
+
+    /// Leave the mouse to the terminal: plain text selection, and the wheel
+    /// sends arrow keys that scroll a line at a time.
+    #[arg(long, overrides_with = "mouse")]
+    pub no_mouse: bool,
 
     /// Hide the logo at the top of the file browser.
     #[arg(long)]
@@ -176,7 +182,11 @@ impl Cli {
             color: self.color,
             pager: self.pager.then_some(true),
             all: self.all.then_some(true),
-            mouse: self.mouse.then_some(true),
+            mouse: if self.no_mouse {
+                Some(false)
+            } else {
+                self.mouse.then_some(true)
+            },
             front_matter: self.front_matter,
             logo: self.no_logo.then_some(false),
             images: self.images.map(|s| s == Switch::On),

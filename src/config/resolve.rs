@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 
 use super::value::Value;
 use super::{
@@ -54,6 +54,7 @@ pub struct Resolved {
     pub pager: Setting<bool>,
     pub all: Setting<bool>,
     pub mouse: Setting<bool>,
+    pub wheel_lines: Setting<u16>,
     pub front_matter: Setting<FrontMatter>,
     pub logo: Setting<bool>,
     pub images: Setting<bool>,
@@ -85,6 +86,14 @@ pub fn resolve(file: Config, env: &EnvMap, cli: Config) -> Result<Resolved> {
             setting(stringify!($key), $default, file.$key, cli.$key, env)?
         };
     }
+    let wheel_lines = set!(wheel_lines, 3);
+    if wheel_lines.value == 0 {
+        let from = match wheel_lines.source {
+            Source::Env => format!("{}=\"0\"", env_var("wheel_lines")),
+            _ => "wheel_lines = 0 in the config file".to_string(),
+        };
+        bail!("{from} is not valid; the wheel scrolls at least 1 line");
+    }
     Ok(Resolved {
         theme: set!(theme, "auto".into()),
         dark_theme: set!(dark_theme, themes::DEFAULT_DARK.into()),
@@ -96,7 +105,8 @@ pub fn resolve(file: Config, env: &EnvMap, cli: Config) -> Result<Resolved> {
         color: set!(color, ColorMode::Auto),
         pager: set!(pager, false),
         all: set!(all, false),
-        mouse: set!(mouse, false),
+        mouse: set!(mouse, true),
+        wheel_lines,
         front_matter: set!(front_matter, FrontMatter::default()),
         logo: set!(logo, true),
         images: set!(images, true),

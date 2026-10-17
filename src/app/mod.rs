@@ -240,7 +240,8 @@ impl App {
                 _ => return true,
             };
             if let Some(r) = &mut self.reader {
-                r.scroll_by(step * WHEEL_LINES);
+                let lines = isize::try_from(self.settings.wheel_lines).unwrap_or(isize::MAX);
+                r.scroll_by(step * lines);
             } else if let Some(b) = &mut self.browser {
                 b.move_by(step);
             }
@@ -385,9 +386,6 @@ impl App {
         Ok(())
     }
 }
-
-/// Lines the reader scrolls per mouse-wheel step.
-const WHEEL_LINES: isize = 3;
 
 #[cfg(test)]
 mod tests;

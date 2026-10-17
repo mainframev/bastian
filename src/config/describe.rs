@@ -34,6 +34,7 @@ pub fn describe(r: &Resolved, file: Option<&Path>) -> String {
         row("pager", &r.pager),
         row("all", &r.all),
         row("mouse", &r.mouse),
+        row("wheel_lines", &r.wheel_lines),
         row("front_matter", &r.front_matter),
         row("logo", &r.logo),
         row("images", &r.images),

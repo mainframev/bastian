@@ -31,6 +31,13 @@ fn precedence_is_default_file_env_flag() {
     assert_eq!(r.background.value, PageBackground::Theme);
     assert!(r.history.value);
     assert_eq!(r.front_matter.value, FrontMatter::Table);
+    assert_eq!(
+        r.mouse,
+        Setting {
+            value: true,
+            source: Source::Default
+        }
+    );
 
     let r = resolve(file(), &env(&[]), none.clone()).unwrap();
     assert_eq!(
@@ -227,6 +234,89 @@ fn env_values_are_parsed_and_validated() {
 }
 
 #[test]
+fn mouse_can_be_turned_off_from_the_file_and_the_environment() {
+    let file = Config {
+        mouse: Some(false),
+        ..Config::default()
+    };
+    let r = resolve(file, &env(&[]), Config::default()).unwrap();
+    assert_eq!(
+        r.mouse,
+        Setting {
+            value: false,
+            source: Source::File
+        }
+    );
+    let e = env(&[("BASTIAN_MOUSE", "false")]);
+    let r = resolve(Config::default(), &e, Config::default()).unwrap();
+    assert_eq!(
+        r.mouse,
+        Setting {
+            value: false,
+            source: Source::Env
+        }
+    );
+}
+
+#[test]
+fn wheel_lines_defaults_to_3_and_rejects_0() {
+    let r = resolve(Config::default(), &env(&[]), Config::default()).unwrap();
+    assert_eq!(
+        r.wheel_lines,
+        Setting {
+            value: 3,
+            source: Source::Default
+        }
+    );
+    let file = |n| Config {
+        wheel_lines: Some(n),
+        ..Config::default()
+    };
+    let r = resolve(file(1), &env(&[]), Config::default()).unwrap();
+    assert_eq!(
+        r.wheel_lines,
+        Setting {
+            value: 1,
+            source: Source::File
+        }
+    );
+    let e = env(&[("BASTIAN_WHEEL_LINES", "5")]);
+    let r = resolve(file(1), &e, Config::default()).unwrap();
+    assert_eq!(
+        r.wheel_lines,
+        Setting {
+            value: 5,
+            source: Source::Env
+        }
+    );
+
+    let err = resolve(file(0), &env(&[]), Config::default())
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("wheel_lines = 0 in the config file") && err.contains("at least 1"),
+        "{err}"
+    );
+    let e = env(&[("BASTIAN_WHEEL_LINES", "0")]);
+    let err = resolve(file(3), &e, Config::default())
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("BASTIAN_WHEEL_LINES=\"0\"") && err.contains("at least 1"),
+        "{err}"
+    );
+    // A valid environment value overrides a bad file one.
+    let e = env(&[("BASTIAN_WHEEL_LINES", "2")]);
+    assert_eq!(
+        resolve(file(0), &e, Config::default())
+            .unwrap()
+            .wheel_lines
+            .value,
+        2
+    );
+}
+
+#[test]
 fn history_can_be_turned_off_from_the_environment() {
     let e = env(&[("BASTIAN_HISTORY", "false")]);
     let r = resolve(Config::default(), &e, Config::default()).unwrap();
@@ -250,6 +340,7 @@ fn parses_all_fields() {
             color = "never"
             pager = true
             mouse = true
+            wheel_lines = 5
             front_matter = "hide"
             selector = "highlight"
             list_layout = "compact"
@@ -278,6 +369,7 @@ fn parses_all_fields() {
     assert_eq!(c.color, Some(ColorMode::Never));
     assert_eq!(c.pager, Some(true));
     assert_eq!(c.mouse, Some(true));
+    assert_eq!(c.wheel_lines, Some(5));
     assert_eq!(c.front_matter, Some(FrontMatter::Hide));
     assert_eq!(c.selector, Some(Selector::Highlight));
     assert_eq!(c.list_layout, Some(ListLayout::Compact));

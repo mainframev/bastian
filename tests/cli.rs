@@ -85,6 +85,39 @@ fn print_config_names_every_source() {
     assert!(line("width").ends_with("# config file"), "{text}");
     assert!(line("logo").ends_with("# environment"), "{text}");
     assert!(line("mouse").ends_with("# default"), "{text}");
+    assert!(line("mouse").starts_with("mouse = true"), "{text}");
+}
+
+#[test]
+fn no_mouse_turns_capture_off_and_the_last_flag_wins() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("bastian")).unwrap();
+    let mouse = |args: &[&str], env: &[(&str, &str)]| {
+        let mut all = vec!["--print-config"];
+        all.extend(args);
+        let out = bastian(dir.path(), &all, env);
+        stdout(&out)
+            .lines()
+            .find(|l| l.starts_with("mouse ="))
+            .unwrap()
+            .to_string()
+    };
+    assert!(mouse(&[], &[]).starts_with("mouse = true"));
+    let off = mouse(&["--no-mouse"], &[]);
+    assert!(
+        off.starts_with("mouse = false") && off.ends_with("# flag"),
+        "{off}"
+    );
+    let env = mouse(&[], &[("BASTIAN_MOUSE", "false")]);
+    assert!(
+        env.starts_with("mouse = false") && env.ends_with("# environment"),
+        "{env}"
+    );
+    std::fs::write(dir.path().join("bastian/config.toml"), "mouse = false\n").unwrap();
+    assert!(mouse(&[], &[]).starts_with("mouse = false"));
+    assert!(mouse(&["--mouse"], &[]).starts_with("mouse = true"));
+    assert!(mouse(&["--mouse", "--no-mouse"], &[]).starts_with("mouse = false"));
+    assert!(mouse(&["--no-mouse", "--mouse"], &[]).starts_with("mouse = true"));
 }
 
 #[test]
@@ -129,6 +162,16 @@ fn bad_settings_say_where_they_came_from() {
     assert!(!out.status.success());
     assert!(
         stderr(&out).contains("unknown theme \"nope\" (from BASTIAN_THEME)"),
+        "{}",
+        stderr(&out)
+    );
+
+    std::fs::create_dir_all(dir.path().join("bastian")).unwrap();
+    std::fs::write(dir.path().join("bastian/config.toml"), "wheel_lines = 0\n").unwrap();
+    let out = bastian(dir.path(), &["-p", doc], &[]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("wheel_lines = 0 in the config file is not valid"),
         "{}",
         stderr(&out)
     );

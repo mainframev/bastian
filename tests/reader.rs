@@ -900,6 +900,7 @@ fn settings(assume_yes: bool, positions: Option<std::path::PathBuf>) -> Settings
         date_format: Some(bastian::config::DATE_FORMAT.into()),
         editor: None,
         mouse: false,
+        wheel_lines: 3,
         logo: true,
         images: None,
         show_images: false,

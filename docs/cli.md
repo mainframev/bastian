@@ -60,7 +60,8 @@ instead of opening the TUI.
 | `-n`, `--line-numbers`     | show line numbers in the reader                                      |
 | `-a`, `--all`              | also list hidden and gitignored files                                |
 | `-y`, `--yes`              | run code blocks without asking ([code blocks](code-blocks.md))       |
-| `--mouse`                  | scroll with the mouse wheel                                          |
+| `--no-mouse`               | leave the mouse to the terminal ([reader](reader.md#mouse))          |
+| `--mouse`                  | capture the mouse (the default), over `mouse = false`                |
 | `--images <on\|off>`       | draw pictures, or keep alt text                                      |
 | `--front-matter <HOW>`     | `table` or `hide` ([front matter](reader.md#mdx-and-front-matter))   |
 | `--no-logo`                | hide the logo above the file list                                    |

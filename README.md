@@ -43,7 +43,8 @@ Homebrew also installs the shell completions. With Cargo
 
 ## Features
 
-`?` shows every key in the app, `Esc` goes back one step and `q` quits.
+`?` shows every key in the app, `Esc` goes back one step and `q` quits. The
+linked docs pages show most features in short GIFs.
 
 ### Browsing a folder
 
@@ -64,21 +65,12 @@ Everything below is in [the reader](docs/reader.md).
 - [Table of contents](docs/reader.md#table-of-contents): `t` shows it beside
   the document. `1`–`9` and `0` jump to its sections, pressing the same number
   again walks into that section, and `J/K` step through headings.
-
-  ![The table of contents: jumping to sections and walking into one](demo/toc.gif)
-
 - [Search](docs/reader.md#search) with `/` and `n/N`. `:` or `ctrl-g`
   [goes to a line](docs/reader.md#line-numbers), and `#` shows line numbers.
-
-  ![Searching, line numbers and going to a line](demo/search.gif)
-
 - [Links](docs/reader.md#links): `L` lists them, filterable, and `s/S` step
   through them in place. Markdown files open in bastian, `[[wiki links]]`
   included, and links are clickable in terminals that support it.
   [History](docs/reader.md#history): `H` lists the documents read this session.
-
-  ![Following links, wiki links and the history list](demo/links.gif)
-
 - [Editing and live reload](docs/reader.md#editing-and-live-reload): `ctrl-e`
   opens your editor at the line you're reading, and the document reloads when
   the file changes.
@@ -89,6 +81,8 @@ Everything below is in [the reader](docs/reader.md).
   works over ssh.
 - Mouse (`mouse` setting): the wheel scrolls, and the link under the pointer
   is shaded ([keys](docs/reader.md#keys)).
+- [Themes](docs/themes.md#picking-one): `T` switches the theme without
+  leaving the document.
 
 ### Markdown it lays out
 
@@ -107,19 +101,8 @@ Everything below is in [the reader](docs/reader.md).
   can, and `i` toggles them.
 - [MDX](docs/reader.md#mdx-and-front-matter) files and source files are
   supported too.
-
-![Tables, alerts, tasks, highlights, math, footnotes and a details block](demo/markdown.gif)
-
 - [Mermaid diagrams](docs/reader.md#diagrams) are drawn with box-drawing
   characters when built with `--features mermaid`, and `v` shows their source.
-
-  ![Mermaid flowchart and sequence diagrams](demo/mermaid.gif)
-
-### Themes while reading
-
-`T` switches the theme without leaving the document; see [Themes](#themes).
-
-![Switching themes with T while reading](demo/reader-themes.gif)
 
 ## The CLI
 
@@ -137,8 +120,6 @@ bastian -p -w 80 README.md           # at most 80 columns wide
 bastian --pager README.md            # page it through $PAGER
 bastian --color always README.md | less -R
 ```
-
-![Printing a document and a GitHub README, then reading piped input](demo/cli.gif)
 
 Every input form, option and command is in [the command line](docs/cli.md),
 and [remote documents](docs/reader.md#remote-documents) covers URLs and
@@ -158,8 +139,6 @@ uname -sm
 `R` runs every block from the focused one, stopping at a failure, and `x`
 stops them. Blocks ask before running unless you pass `--yes`.
 
-![Running a runbook's code blocks one by one, then the rest in order](demo/run.gif)
-
 Attributes like `{cwd=./infra timeout=5m confirm}` control how a block runs;
 see [code blocks](docs/code-blocks.md).
 
@@ -175,8 +154,6 @@ theme's [page background](docs/themes.md#background).
 bastian themes               # pick one with a live preview; Enter saves it
 bastian -t nord README.md    # use a theme just this once
 ```
-
-![The theme picker previewing themes on a sample document](demo/themes.gif)
 
 You can also write your own, or tweak a built-in one; see [themes](docs/themes.md).
 

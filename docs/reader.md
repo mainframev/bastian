@@ -69,10 +69,12 @@ into arrow keys, which scroll a line at a time.
 
 ## Search
 
-`/` searches the rendered text as you type; `Enter` keeps the search, `n` and
-`N` move between matches and `Esc` clears it along with any focus. The input
-edits like a shell
-prompt (`←/→`, `alt-b/f`, `ctrl-w`, `ctrl-u`, …).
+`/` searches the rendered text as you type, from where you were reading. A
+lowercase query ignores case; one with a capital letter matches it exactly.
+`Enter` keeps the search, `n` and `N` move between matches and `Esc` clears it
+along with any focus; `Esc` while typing also goes back to where the search
+started. The input edits like a shell prompt (`←/→`, `alt-b/f`, `ctrl-w`,
+`ctrl-u`, …).
 
 ![Searching, line numbers and going to a line](https://upnsbzkykttnbdp1.public.blob.vercel-storage.com/demo/search.gif)
 

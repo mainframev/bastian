@@ -250,6 +250,9 @@ pub struct Reader {
     rendered: Rendered,
     scroll: usize,
     pub search: Option<Search>,
+    /// Scroll row where the open search prompt started: matches are taken
+    /// from here, and cancelling comes back to it.
+    search_origin: usize,
     /// The open Overlay, if any.
     pub overlay: Option<Overlay>,
     /// Focused code block id.
@@ -384,6 +387,7 @@ impl Reader {
             rendered: Rendered::default(),
             scroll: 0,
             search: None,
+            search_origin: 0,
             overlay: None,
             focus: None,
             link_focus: None,

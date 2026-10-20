@@ -245,4 +245,17 @@ mod tests {
         assert!((r.scroll..r.scroll + 10).contains(&current_line(&r)));
         assert!(r.scroll > 0);
     }
+
+    #[test]
+    fn where_the_search_started_survives_a_new_width() {
+        let para = "words that wrap ".repeat(12);
+        let src: String = (0..40).map(|i| format!("{i} {para}\n\n")).collect();
+        let mut r = Reader::new(Source::in_memory("t", parse(&src)), &Options::default());
+        r.layout(80, 10);
+        r.scroll = r.rendered.block_starts[10];
+        find_typed(&mut r, "39 words");
+        r.layout(40, 10);
+        press(&mut r, KeyCode::Esc);
+        assert_eq!(r.scroll, r.rendered.block_starts[10]);
+    }
 }

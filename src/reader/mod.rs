@@ -564,10 +564,10 @@ impl Reader {
         // A new width (a resized terminal or the table of contents opening,
         // closing or resizing) rewraps the text: keep the same part of the
         // source at the top rather than the same rendered row.
-        let keep = if width != self.width && self.width != 0 {
-            self.position()
+        let (keep, origin) = if width != self.width && self.width != 0 {
+            (self.position(), self.position_at(self.search_origin))
         } else {
-            None
+            (None, None)
         };
         if width != self.width || self.dirty {
             let images = self.images.sizes();
@@ -585,6 +585,10 @@ impl Reader {
             self.goto_mark = None;
             self.width = width;
             self.dirty = false;
+            // Where a search started moves with the text, as the view does.
+            if let Some(row) = origin.and_then(|p| self.row_of(p)) {
+                self.search_origin = row;
+            }
             self.refind();
             if self.hyperlinks {
                 self.hyperlink_targets = self

@@ -48,16 +48,22 @@ impl Reader {
     /// its line (blocks aren't always drawn in source order; footnotes go
     /// last), then as far into that block as it was.
     pub(super) fn scroll_to_position(&mut self, p: Position) {
-        if let Some(&(start, _)) = self
+        if let Some(row) = self.row_of(p) {
+            self.scroll = row;
+        }
+    }
+
+    /// The rendered row a remembered position is at now, if any block
+    /// starts before it.
+    pub(super) fn row_of(&self, p: Position) -> Option<usize> {
+        let &(start, _) = self
             .rendered
             .anchors
             .iter()
             .filter(|(_, src)| *src < p.line)
-            .max_by_key(|&&(rendered, src)| (src, std::cmp::Reverse(rendered)))
-        {
-            let rows = self.block_rows(start);
-            self.scroll = start + ((rows as f32 * p.within) as usize).min(rows.saturating_sub(1));
-        }
+            .max_by_key(|&&(rendered, src)| (src, std::cmp::Reverse(rendered)))?;
+        let rows = self.block_rows(start);
+        Some(start + ((rows as f32 * p.within) as usize).min(rows.saturating_sub(1)))
     }
 
     /// Rendered rows of the block starting at row `start`, up to the next
@@ -78,16 +84,21 @@ impl Reader {
     /// Where this document is being read: the block at the top of the view
     /// and how far into it.
     pub fn position(&self) -> Option<Position> {
+        self.position_at(self.scroll)
+    }
+
+    /// The block rendered row `row` is in, and how far into it.
+    pub(super) fn position_at(&self, row: usize) -> Option<Position> {
         let &(start, src) = self
             .rendered
             .anchors
             .iter()
-            .filter(|(row, _)| *row <= self.scroll)
-            .max_by_key(|(row, _)| *row)?;
+            .filter(|(r, _)| *r <= row)
+            .max_by_key(|(r, _)| *r)?;
         let rows = self.block_rows(start).max(1);
         Some(Position {
             line: src + 1,
-            within: (self.scroll - start) as f32 / rows as f32,
+            within: (row - start) as f32 / rows as f32,
         })
     }
 

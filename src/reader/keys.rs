@@ -9,8 +9,8 @@ impl Reader {
     pub fn on_key(&mut self, key: KeyEvent) -> Action {
         self.message = None;
         self.goto_mark = None;
-        // Only the key right after a jump by number walks or goes into its
-        // section, whether or not the keys between could move the view.
+        // Only the key right after a jump by number walks its section,
+        // whether or not the keys between could move the view.
         let walk = self.toc_walk.take();
         match &mut self.overlay {
             Some(Overlay::Help(help)) => {

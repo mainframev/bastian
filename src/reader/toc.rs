@@ -75,10 +75,9 @@ impl Reader {
     /// after a jump by number (`walk`: the number pressed and the entry
     /// whose section it walks), the same `n` steps to the next heading of
     /// that section in document order, so `1 1 1` goes A, A1, A1a, and
-    /// past its last heading back to the section's own; another `n` goes
-    /// to the `n`th heading under the one just reached, so `2` then `1` is
-    /// the first under the second. Else, or when that heading has no
-    /// `n`th, the `n`th of the numbered level.
+    /// past its last heading back to the section's own. Any other `n`
+    /// goes to the `n`th of the numbered level, so `2` then `3` is the
+    /// third section, not a heading inside the second.
     pub(super) fn jump_to_entry(&mut self, n: usize, walk: Option<(usize, usize)>) {
         let entries = self.toc_entries();
         let Some(top) = toc::numbered_depth(&entries) else {
@@ -99,16 +98,9 @@ impl Reader {
             self.toc_walk = Some((n, root));
             return;
         }
-        let inside = mark.and_then(|p| {
-            entries
-                .iter()
-                .position(|e| e.parent == Some(p) && e.number == Some(n))
-        });
-        let i = inside.or_else(|| {
-            entries
-                .iter()
-                .position(|e| e.depth == top && e.number == Some(n))
-        });
+        let i = entries
+            .iter()
+            .position(|e| e.depth == top && e.number == Some(n));
         match i {
             Some(i) => {
                 self.jump_to_heading(i, entries[i].line);
@@ -345,7 +337,7 @@ mod tests {
     }
 
     #[test]
-    fn numbers_again_go_into_the_section_jumped_to() {
+    fn another_number_goes_to_the_numbered_level() {
         let filler: String = (0..40).map(|i| format!("p{i}\n\n")).collect();
         let mut r = reader(&format!(
             "# A\n\n{filler}# B\n\n{filler}## B1\n\n{filler}## B2\n\n{filler}### B2a\n\n{filler}# C\n\n{filler}"
@@ -363,16 +355,15 @@ mod tests {
         assert_eq!(current(&r).as_deref(), Some("B1"));
         key(&mut r, '2');
         assert_eq!(current(&r).as_deref(), Some("B2"));
-        // Another number goes into the heading reached.
+        // Another number goes to the numbered level, not into B2.
         key(&mut r, '1');
-        assert_eq!(current(&r).as_deref(), Some("B2a"));
-        // No headings under B2a: back to the numbered level.
+        assert_eq!(current(&r).as_deref(), Some("A"));
+        key(&mut r, '2');
         key(&mut r, '3');
         assert_eq!(current(&r).as_deref(), Some("C"));
-        // A section without that many: the numbered level too.
         key(&mut r, '2');
         key(&mut r, '1');
-        assert_eq!(current(&r).as_deref(), Some("B1"));
+        assert_eq!(current(&r).as_deref(), Some("A"));
         key(&mut r, '2');
         key(&mut r, '9');
         assert_eq!(r.message(), Some("no heading 09"));
@@ -465,10 +456,11 @@ mod tests {
         assert_eq!(walk(nested, "11111"), ["A", "A1", "A1a", "A2", "A2a"]);
         assert_eq!(walk(nested, "111111"), ["A", "A1", "A1a", "A2", "A2a", "A"]);
 
-        // Another number still goes into the heading reached: A1 has no
-        // second, so the numbered level's.
+        // Another number goes to the numbered level, even when the
+        // heading reached has one of that number under it.
         assert_eq!(walk(nested, "112"), ["A", "A1", "B"]);
-        assert_eq!(walk(nested, "12"), ["A", "A2"]);
+        assert_eq!(walk(nested, "12"), ["A", "B"]);
+        assert_eq!(walk(nested, "121"), ["A", "B", "A"]);
         // A section with nothing under it stays put.
         assert_eq!(walk(flat, "22"), ["B", "B"]);
     }

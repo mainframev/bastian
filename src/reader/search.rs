@@ -5,23 +5,33 @@ impl Reader {
     pub(super) fn set_query(&mut self, query: &str) {
         if query.is_empty() {
             self.search = None;
+            self.return_to_search_origin();
             return;
         }
         let matches = find(&self.rendered, query);
-        // Start from the first hit at or below the current view.
+        // Start from the first hit at or below where the search started,
+        // not where the last keystroke's match moved the view.
         let current = matches
             .iter()
-            .position(|m| m.line >= self.scroll)
+            .position(|m| m.line >= self.search_origin)
             .unwrap_or(0);
         if let Some(m) = matches.get(current) {
             let line = m.line;
+            self.scroll = self.search_origin;
             self.reveal(line);
+        } else {
+            self.return_to_search_origin();
         }
         self.search = Some(Search {
             query: query.to_string(),
             matches,
             current,
         });
+    }
+
+    /// Back to where the search prompt opened, as if it never moved.
+    pub(super) fn return_to_search_origin(&mut self) {
+        self.scroll = self.search_origin.min(self.max_scroll());
     }
 
     pub(super) fn step_match(&mut self, forward: bool) {
@@ -96,6 +106,8 @@ pub fn find(rendered: &Rendered, query: &str) -> Vec<Match> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
     use crate::doc::parse;
     use crate::reader::{Options, Reader, Source};
     use crate::render::theme::Theme;
@@ -162,5 +174,88 @@ mod tests {
         assert_eq!(n, 11);
         r.step_match(false);
         assert_eq!(r.search.as_ref().unwrap().current, n - 1);
+    }
+
+    fn press(r: &mut Reader, code: KeyCode) {
+        r.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    /// 100 paragraphs, `line {i}` on row `2 * i`, at the top of a short view.
+    fn lines() -> Reader {
+        let src: String = (0..100).map(|i| format!("line {i}\n\n")).collect();
+        let mut r = Reader::new(Source::in_memory("t", parse(&src)), &Options::default());
+        r.layout(80, 10);
+        r
+    }
+
+    fn find_typed(r: &mut Reader, text: &str) {
+        press(r, KeyCode::Char('/'));
+        for c in text.chars() {
+            press(r, KeyCode::Char(c));
+        }
+    }
+
+    fn current_line(r: &Reader) -> usize {
+        let s = r.search.as_ref().expect("searching");
+        s.matches[s.current].line
+    }
+
+    #[test]
+    fn cancel_returns_to_where_the_search_started() {
+        let mut r = lines();
+        find_typed(&mut r, "line 50");
+        assert!(r.scroll > 0);
+        press(&mut r, KeyCode::Esc);
+        assert_eq!(r.scroll, 0);
+        assert!(r.search.is_none());
+    }
+
+    #[test]
+    fn emptying_the_query_returns_to_where_the_search_started() {
+        let mut r = lines();
+        find_typed(&mut r, "line 50");
+        for _ in 0.."line 50".len() {
+            press(&mut r, KeyCode::Backspace);
+        }
+        assert_eq!(r.scroll, 0);
+        assert!(r.search.is_none());
+    }
+
+    #[test]
+    fn a_query_with_no_matches_returns_to_where_the_search_started() {
+        let mut r = lines();
+        find_typed(&mut r, "line 50x");
+        assert_eq!(r.scroll, 0);
+    }
+
+    #[test]
+    fn a_refined_query_matches_from_where_the_search_started() {
+        let mut r = lines();
+        find_typed(&mut r, "line 50");
+        press(&mut r, KeyCode::Backspace);
+        // "line 5", on row 10, not "line 50" where the view had moved.
+        assert_eq!(current_line(&r), 10);
+    }
+
+    #[test]
+    fn submit_keeps_the_view_on_the_match() {
+        let mut r = lines();
+        find_typed(&mut r, "line 50");
+        press(&mut r, KeyCode::Enter);
+        assert!((r.scroll..r.scroll + 10).contains(&current_line(&r)));
+        assert!(r.scroll > 0);
+    }
+
+    #[test]
+    fn where_the_search_started_survives_a_new_width() {
+        let para = "words that wrap ".repeat(12);
+        let src: String = (0..40).map(|i| format!("{i} {para}\n\n")).collect();
+        let mut r = Reader::new(Source::in_memory("t", parse(&src)), &Options::default());
+        r.layout(80, 10);
+        r.scroll = r.rendered.block_starts[10];
+        find_typed(&mut r, "39 words");
+        r.layout(40, 10);
+        press(&mut r, KeyCode::Esc);
+        assert_eq!(r.scroll, r.rendered.block_starts[10]);
     }
 }

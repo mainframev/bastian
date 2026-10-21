@@ -41,6 +41,7 @@ impl Reader {
                     PromptEvent::Cancel => {
                         self.overlay = None;
                         self.search = None;
+                        self.return_to_search_origin();
                     }
                     PromptEvent::None => {}
                 }
@@ -74,7 +75,10 @@ impl Reader {
             KeyCode::Char('g') if ctrl => self.open_goto(),
             KeyCode::Char('g') | KeyCode::Home => self.scroll_to(0),
             KeyCode::Char('G') | KeyCode::End => self.scroll_to(usize::MAX),
-            KeyCode::Char('/') => self.overlay = Some(Overlay::Prompt(Prompt::new(""))),
+            KeyCode::Char('/') => {
+                self.search_origin = self.scroll;
+                self.overlay = Some(Overlay::Prompt(Prompt::new("")));
+            }
             KeyCode::Char(':') => self.open_goto(),
             KeyCode::Char('n') => self.step_match(true),
             KeyCode::Char('N') => self.step_match(false),

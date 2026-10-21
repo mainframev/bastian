@@ -1,14 +1,19 @@
 #!/bin/sh
-# Lint before each commit. Enable with `just install-hooks`
-# (git config core.hooksPath .githooks).
+# Run `just lint`'s checks before each commit, on a toolchain as new as CI's.
+# Enable with `just install-hooks` (git config core.hooksPath .githooks).
 set -eu
+
+.github/scripts/toolchain-check.sh
 
 if ! cargo fmt --check >/dev/null 2>&1; then
     echo "pre-commit: code isn't formatted; run \`cargo fmt\` (or \`just fmt\`)." >&2
     exit 1
 fi
 
-if ! cargo clippy --all-targets --quiet -- -D warnings; then
-    echo "pre-commit: fix the clippy warnings above." >&2
-    exit 1
-fi
+for features in "" "--features mermaid"; do
+    # shellcheck disable=SC2086 # $features is empty or two words.
+    if ! cargo clippy --all-targets $features --quiet -- -D warnings; then
+        echo "pre-commit: fix the clippy warnings above${features:+ ($features)}." >&2
+        exit 1
+    fi
+done

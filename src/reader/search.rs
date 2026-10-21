@@ -395,9 +395,10 @@ mod tests {
     #[test]
     fn separate_blocks_and_hard_breaks_are_not_joined() {
         let r = rendered("one\n\ntwo\n\n- three\n- four\n\nfive  \nsix\n");
-        assert!(find(&r, "one two").is_empty());
-        assert!(find(&r, "three four").is_empty());
-        assert!(find(&r, "five six").is_empty());
+        for query in ["one two", "three four", "five six"] {
+            let found = find(&r, query);
+            assert!(found.is_empty(), "{query:?}: {found:?}");
+        }
     }
 
     #[test]

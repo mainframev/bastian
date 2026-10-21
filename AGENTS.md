@@ -64,4 +64,4 @@ Clippy runs `pedantic` with the exceptions listed in `Cargo.toml`; fix a lint ra
 
 ## Release
 
-Run by workflows, not by hand: Prepare Release opens a version-bump PR with the changelog, merging it creates the tag, and Release builds the archives, publishes to crates.io and creates the GitHub release. Don't edit `CHANGELOG.md` or the version in `Cargo.toml` in feature PRs.
+Run by workflows, not by hand: Prepare Release opens a version-bump PR with the changelog, merging it creates the tag, and Release builds the archives, publishes to crates.io and creates the GitHub release. Don't edit `CHANGELOG.md` or the version in `Cargo.toml` in feature PRs. When a Release run fails, follow `.agents/skills/release-recovery/SKILL.md`.

@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1] - 2026-10-21
+
+### Fixes
+
+- *(search)* Return to where the search started on cancel by @mainframev in [#90](https://github.com/mainframev/bastian/pull/90) ([b5d6f88](https://github.com/mainframev/bastian/commit/b5d6f884dc055c30c69d538a0d66c4b2e8e5f6b0))
+- *(search)* Find phrases that a line wrap splits by @mainframev in [#91](https://github.com/mainframev/bastian/pull/91) ([3020a8d](https://github.com/mainframev/bastian/commit/3020a8de8de73281cdf5eaad6beb2123c6e3952d))
+- *(toc)* Jump to the numbered heading for any other number by @mainframev in [#92](https://github.com/mainframev/bastian/pull/92) ([786be2c](https://github.com/mainframev/bastian/commit/786be2c9b1ac340be8c3319cca5e19df7281c49d))
 ## [0.4.0] - 2026-10-17
 
 ### Features

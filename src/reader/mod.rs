@@ -283,8 +283,7 @@ pub struct Reader {
     goto_mark: Option<std::ops::Range<usize>>,
     /// Set when the last key was a jump by number: the number pressed and
     /// the entry whose section it walks. The same number next steps on
-    /// through that section, another goes into the heading reached. Any
-    /// other key or a turn of the wheel clears it.
+    /// through that section; any other key or a turn of the wheel clears it.
     toc_walk: Option<(usize, usize)>,
     /// Width of the screen at the last draw, which the table of contents
     /// is sized against.

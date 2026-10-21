@@ -127,10 +127,9 @@ pub fn find(rendered: &Rendered, query: &str) -> Vec<Match> {
             if join.line < next {
                 continue;
             }
-            // Padding at the end of the line isn't part of the text.
-            while hay.last().is_some_and(|(c, _)| c.is_whitespace()) {
-                hay.pop();
-            }
+            // Decoration at the end of the line isn't part of the text;
+            // spaces that are (an inline code chip's padding) stay.
+            hay.truncate(hay.len().saturating_sub(join.pad));
             if join.space {
                 hay.push((' ', None));
             }
@@ -426,5 +425,14 @@ mod tests {
         assert_eq!(r.search.as_ref().unwrap().current, 1);
         r.step_match(true);
         assert_eq!(r.search.as_ref().unwrap().current, 0);
+    }
+
+    #[test]
+    fn an_inline_code_chip_keeps_its_padding_at_a_wrap() {
+        let doc = parse("Run `cargo build` now\n");
+        for width in [17, 40] {
+            let r = crate::render::render(&doc, width, &Theme::dark());
+            assert_eq!(hits(&r, "cargo build  now").len(), 1, "width {width}");
+        }
     }
 }

@@ -57,11 +57,13 @@ pub struct Rendered {
 
 /// A line that carries on the text of the line before it, where wrapping
 /// broke a paragraph: past its first `skip` chars (a quote bar, a list
-/// indent), after the space the break replaced, if `space`.
+/// indent), after the space the break replaced, if `space`. The line before
+/// ends in `pad` chars of decoration (a heading's band) that aren't text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Join {
     pub line: usize,
     pub skip: usize,
+    pub pad: usize,
     pub space: bool,
 }
 
@@ -265,6 +267,7 @@ impl Out {
                 .map(|(line, space)| Join {
                     line,
                     skip: 0,
+                    pad: 0,
                     space,
                 })
                 .collect(),
@@ -439,6 +442,7 @@ impl Renderer<'_> {
             }
             for join in &mut out.joins {
                 join.skip += 1;
+                join.pad += 1;
             }
             return out;
         }

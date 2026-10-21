@@ -86,10 +86,8 @@ pub fn draw_with(frame: &mut Frame, r: &mut Reader, mut picker: Option<&mut Them
             let last = s.matches.partition_point(|m| m.line <= i);
             let ranges: Vec<_> = s.matches[first..last]
                 .iter()
-                .enumerate()
-                .map(|(k, m)| {
-                    let n = first + k;
-                    let style = if n == s.current {
+                .map(|m| {
+                    let style = if m.hit == s.current {
                         Style::default().fg(t.h1_fg).bg(t.current_bg)
                     } else {
                         Style::default().bg(t.match_bg)
@@ -357,7 +355,7 @@ fn draw_find(frame: &mut Frame, r: &Reader, area: Rect) {
     };
     let count = match &r.search {
         Some(s) if s.matches.is_empty() => "no matches".to_string(),
-        Some(s) => format!("{}/{}", s.current + 1, s.matches.len()),
+        Some(s) => format!("{}/{}", s.current + 1, s.hits()),
         None => String::new(),
     };
     let [left, right] = Layout::horizontal([

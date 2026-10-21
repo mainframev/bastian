@@ -647,7 +647,7 @@ impl Reader {
     fn refind(&mut self) {
         if let Some(s) = &mut self.search {
             s.matches = find(&self.rendered, &s.query);
-            s.current = s.current.min(s.matches.len().saturating_sub(1));
+            s.current = s.current.min(s.hits().saturating_sub(1));
         }
     }
 

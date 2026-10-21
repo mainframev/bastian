@@ -70,7 +70,8 @@ into arrow keys, which scroll a line at a time.
 ## Search
 
 `/` searches the rendered text as you type, from where you were reading. A
-lowercase query ignores case; one with a capital letter matches it exactly.
+lowercase query ignores case; one with a capital letter matches it exactly. A
+phrase is found even where the paragraph wraps in the middle of it.
 `Enter` keeps the search, `n` and `N` move between matches and `Esc` clears it
 along with any focus; `Esc` while typing also goes back to where the search
 started. The input edits like a shell prompt (`←/→`, `alt-b/f`, `ctrl-w`,

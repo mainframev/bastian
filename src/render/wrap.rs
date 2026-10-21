@@ -12,6 +12,15 @@ pub const PAD: char = '\u{FDD0}';
 /// across style changes, so a styled part of a word (or of CJK text with
 /// its punctuation) stays with the rest.
 pub fn wrap(runs: &[(String, Style)], width: usize) -> Vec<Line<'static>> {
+    wrap_joined(runs, width).0
+}
+
+/// `wrap`, also giving the soft breaks it made: each line that carries on
+/// the one before it, and whether the break took the place of a space.
+pub fn wrap_joined(
+    runs: &[(String, Style)],
+    width: usize,
+) -> (Vec<Line<'static>>, Vec<(usize, bool)>) {
     let width = width.max(1);
     let text: String = runs.iter().map(|(t, _)| t.as_str()).collect();
     let mut ends = Vec::with_capacity(runs.len());
@@ -55,7 +64,7 @@ pub fn wrap(runs: &[(String, Style)], width: usize) -> Vec<Line<'static>> {
             let tw = token.width();
             let gap = usize::from(space.is_some() && w.cur_w > 0);
             if w.cur_w > 0 && w.cur_w + gap + tw > width {
-                w.newline();
+                w.soft_break(space.is_some());
             } else if gap == 1 {
                 w.push(" ".to_string(), space.unwrap_or_default(), 1);
             }
@@ -70,7 +79,8 @@ pub fn wrap(runs: &[(String, Style)], width: usize) -> Vec<Line<'static>> {
         }
         offset += line.len() + 1;
     }
-    w.finish()
+    let breaks = std::mem::take(&mut w.breaks);
+    (w.finish(), breaks)
 }
 
 /// Split spans at `width` columns without regard for words. Used for code.
@@ -87,6 +97,8 @@ struct Wrapper {
     lines: Vec<Line<'static>>,
     cur: Vec<Span<'static>>,
     cur_w: usize,
+    /// Lines started by a soft break, and whether it replaced a space.
+    breaks: Vec<(usize, bool)>,
 }
 
 impl Wrapper {
@@ -96,6 +108,7 @@ impl Wrapper {
             lines: Vec::new(),
             cur: Vec::new(),
             cur_w: 0,
+            breaks: Vec::new(),
         }
     }
 
@@ -110,6 +123,12 @@ impl Wrapper {
     fn newline(&mut self) {
         self.lines.push(Line::from(std::mem::take(&mut self.cur)));
         self.cur_w = 0;
+    }
+
+    /// Break a line that's full, noting that the text carries on.
+    fn soft_break(&mut self, space: bool) {
+        self.newline();
+        self.breaks.push((self.lines.len(), space));
     }
 
     fn push(&mut self, mut text: String, style: Style, w: usize) {
@@ -151,7 +170,7 @@ impl Wrapper {
                         carry.reverse();
                     }
                     self.push_chars(&chunk);
-                    self.newline();
+                    self.soft_break(false);
                     chunk = carry;
                     chunk_w = chunk.iter().map(|(c, ..)| c.width().unwrap_or(0)).sum();
                 }

@@ -28,7 +28,7 @@ use crate::doc::{Block, CalloutKind, Document, Inline, plain_text};
 use crate::exec::{BlockRun, Interpreters};
 use links::{LinkRun, is_link_style, locate_links};
 use theme::Theme;
-use wrap::{PAD, wrap};
+use wrap::{PAD, wrap, wrap_joined};
 
 /// A document laid out for a given width.
 #[derive(Debug, Default)]
@@ -51,6 +51,20 @@ pub struct Rendered {
     pub images: Vec<ImageSlot>,
     /// Summary line of each details block shown, in document order.
     pub details: Vec<DetailsSpan>,
+    /// Lines a soft wrap split off the line before, ascending.
+    pub joins: Vec<Join>,
+}
+
+/// A line that carries on the text of the line before it, where wrapping
+/// broke a paragraph: past its first `skip` chars (a quote bar, a list
+/// indent), after the space the break replaced, if `space`. The line before
+/// ends in `pad` chars of decoration (a heading's band) that aren't text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Join {
+    pub line: usize,
+    pub skip: usize,
+    pub pad: usize,
+    pub space: bool,
 }
 
 /// Where a details block's summary landed.
@@ -218,6 +232,7 @@ pub(crate) fn render_with_runs(doc: &Document, width: u16, theme: &Theme, cx: Co
         code_blocks: out.codes,
         links,
         details: out.details,
+        joins: out.joins,
     }
 }
 
@@ -229,6 +244,7 @@ struct Out {
     /// Rendered line where each block passed to `blocks` begins.
     starts: Vec<usize>,
     details: Vec<DetailsSpan>,
+    joins: Vec<Join>,
 }
 
 impl From<Vec<Line<'static>>> for Out {
@@ -241,6 +257,24 @@ impl From<Vec<Line<'static>>> for Out {
 }
 
 impl Out {
+    /// `runs` wrapped to `width`, remembering where the text carries on.
+    fn wrapped(runs: &[(String, Style)], width: usize) -> Out {
+        let (lines, breaks) = wrap_joined(runs, width);
+        Out {
+            lines,
+            joins: breaks
+                .into_iter()
+                .map(|(line, space)| Join {
+                    line,
+                    skip: 0,
+                    pad: 0,
+                    space,
+                })
+                .collect(),
+            ..Out::default()
+        }
+    }
+
     fn blank(&mut self) {
         self.lines.push(Line::default());
     }
@@ -265,6 +299,13 @@ impl Out {
                 self.lines.push(Line::from(spans).style(line.style));
             }
         }
+        // Only lines after the first carry on another, so only `rest` is skipped.
+        let skip: usize = rest.iter().map(|s| s.content.chars().count()).sum();
+        self.joins.extend(other.joins.into_iter().map(|j| Join {
+            line: j.line + offset,
+            skip: j.skip + skip,
+            ..j
+        }));
         // Prefixes are as wide on every line of a block, so either will do.
         let indent: usize = rest.iter().chain(first).map(Span::width).max().unwrap_or(0);
         self.codes
@@ -322,10 +363,9 @@ impl Renderer<'_> {
         let t = self.theme;
         match block {
             Block::Heading { level, inlines } => self.heading(*level, inlines, width),
-            Block::Paragraph(inlines) => Out::from(wrap(
-                &self.runs(inlines, Style::default().fg(t.text)),
-                width,
-            )),
+            Block::Paragraph(inlines) => {
+                Out::wrapped(&self.runs(inlines, Style::default().fg(t.text)), width)
+            }
             Block::List {
                 start,
                 items,
@@ -368,7 +408,7 @@ impl Renderer<'_> {
             }
             Block::Code(c) => self.code(c, width),
             Block::Label(text) => {
-                Out::from(wrap(&[(text.clone(), Style::default().fg(t.muted))], width))
+                Out::wrapped(&[(text.clone(), Style::default().fg(t.muted))], width)
             }
             Block::Math(text) => self.math(text, width),
             Block::Table {
@@ -392,37 +432,36 @@ impl Renderer<'_> {
 
     fn heading(&self, level: u8, inlines: &[Inline], width: usize) -> Out {
         let t = self.theme;
-        let lines = if level == 1 {
+        if level == 1 {
             // Pad each wrapped line inside the colored band.
             let style = Style::default().fg(t.h1_fg).bg(t.h1_bg).bold();
-            wrap(&[(plain_text(inlines), style)], width.saturating_sub(2))
-                .into_iter()
-                .map(|line| {
-                    let mut spans = vec![Span::styled(" ", style)];
-                    spans.extend(line.spans);
-                    spans.push(Span::styled(" ", style));
-                    Line::from(spans)
-                })
-                .collect()
-        } else {
-            // Color tells the levels apart; bold down to 5, italic for 6.
-            let mut style = Style::default().fg(t.heading_color(level));
-            style = if level < 6 {
-                style.bold()
-            } else {
-                style.italic()
-            };
-            let mut lines = wrap(&self.runs(inlines, style), width);
-            if level == 2 {
-                let w = lines.iter().map(Line::width).max().unwrap_or(0);
-                lines.push(Line::styled(
-                    "─".repeat(w),
-                    Style::default().fg(t.heading_underline),
-                ));
+            let mut out = Out::wrapped(&[(plain_text(inlines), style)], width.saturating_sub(2));
+            for line in &mut out.lines {
+                line.spans.insert(0, Span::styled(" ", style));
+                line.spans.push(Span::styled(" ", style));
             }
-            lines
+            for join in &mut out.joins {
+                join.skip += 1;
+                join.pad += 1;
+            }
+            return out;
+        }
+        // Color tells the levels apart; bold down to 5, italic for 6.
+        let mut style = Style::default().fg(t.heading_color(level));
+        style = if level < 6 {
+            style.bold()
+        } else {
+            style.italic()
         };
-        Out::from(lines)
+        let mut out = Out::wrapped(&self.runs(inlines, style), width);
+        if level == 2 {
+            let w = out.lines.iter().map(Line::width).max().unwrap_or(0);
+            out.lines.push(Line::styled(
+                "─".repeat(w),
+                Style::default().fg(t.heading_underline),
+            ));
+        }
+        out
     }
 
     fn list(
@@ -605,14 +644,14 @@ impl Renderer<'_> {
             Style::default().fg(t.accent),
         );
         let pad = [Span::raw("  ")];
-        let summary = wrap(
+        let summary = Out::wrapped(
             &self.runs(
                 summary,
                 Style::default().fg(t.text).add_modifier(Modifier::BOLD),
             ),
             width.saturating_sub(2).max(1),
         );
-        let mut out = Out::prefixed(Out::from(summary), &[marker], &pad);
+        let mut out = Out::prefixed(summary, &[marker], &pad);
         out.details.push(DetailsSpan { id, line: 0 });
         if shown {
             out.append(

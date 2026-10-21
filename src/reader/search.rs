@@ -11,11 +11,12 @@ impl Reader {
         let matches = find(&self.rendered, query);
         // Start from the first hit at or below where the search started,
         // not where the last keystroke's match moved the view.
-        let current = matches
+        let first = matches
             .iter()
-            .position(|m| m.line >= self.search_origin)
-            .unwrap_or(0);
-        if let Some(m) = matches.get(current) {
+            .find(|m| m.line >= self.search_origin)
+            .or(matches.first());
+        let current = first.map_or(0, |m| m.hit);
+        if let Some(m) = first {
             let line = m.line;
             self.scroll = self.search_origin;
             self.reveal(line);
@@ -36,7 +37,7 @@ impl Reader {
 
     pub(super) fn step_match(&mut self, forward: bool) {
         let Some(s) = &mut self.search else { return };
-        let n = s.matches.len();
+        let n = s.hits();
         if n == 0 {
             return;
         }
@@ -45,28 +46,48 @@ impl Reader {
         } else {
             (s.current + n - 1) % n
         };
-        let line = s.matches[s.current].line;
+        let line = s.current_line();
         self.reveal(line);
     }
 }
 
-/// A search hit in rendered text, in char offsets within the line.
+/// Part of a search hit in rendered text, in char offsets within the line.
+/// A hit that a soft wrap splits has a part on each line, with the same
+/// `hit`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Match {
     pub line: usize,
     pub start: usize,
     pub end: usize,
+    /// Which hit this is part of, counting from 0.
+    pub hit: usize,
 }
 
 #[derive(Debug, Default)]
 pub struct Search {
     pub query: String,
+    /// The parts of every hit, in line order.
     pub matches: Vec<Match>,
+    /// The current hit.
     pub current: usize,
 }
 
+impl Search {
+    /// How many hits there are.
+    pub fn hits(&self) -> usize {
+        self.matches.last().map_or(0, |m| m.hit + 1)
+    }
+
+    /// The line where the current hit starts.
+    fn current_line(&self) -> usize {
+        let i = self.matches.partition_point(|m| m.hit < self.current);
+        self.matches[i].line
+    }
+}
+
 /// Find `query` in the rendered lines. Smart case: a lowercase query matches
-/// case-insensitively. Matches don't cross wrapped line boundaries.
+/// case-insensitively. A paragraph wrapped over several lines is searched
+/// as one, so a hit can go on past the end of a line.
 pub fn find(rendered: &Rendered, query: &str) -> Vec<Match> {
     let insensitive = !query.chars().any(char::is_uppercase);
     let fold = |c: char| {
@@ -81,24 +102,72 @@ pub fn find(rendered: &Rendered, query: &str) -> Vec<Match> {
         return Vec::new();
     }
 
-    let mut out = Vec::new();
-    let mut hay = Vec::new();
-    for (i, line) in rendered.lines.iter().enumerate() {
+    let mut out: Vec<Match> = Vec::new();
+    let mut hits = 0;
+    // The text of a run of joined lines, each char with the line and
+    // column it's drawn at: `None` for the space a soft break took.
+    let mut hay: Vec<(char, Option<(usize, usize)>)> = Vec::new();
+    let mut joins = rendered.joins.iter().peekable();
+    let lines = &rendered.lines;
+    let mut i = 0;
+    while i < lines.len() {
         hay.clear();
-        hay.extend(line.spans.iter().flat_map(|s| s.content.chars()).map(fold));
+        let push = |line: usize, skip: usize, hay: &mut Vec<_>| {
+            let chars = lines[line].spans.iter().flat_map(|s| s.content.chars());
+            hay.extend(
+                chars
+                    .enumerate()
+                    .skip(skip)
+                    .map(|(col, c)| (fold(c), Some((line, col)))),
+            );
+        };
+        push(i, 0, &mut hay);
+        let mut next = i + 1;
+        while let Some(join) = joins.next_if(|j| j.line <= next) {
+            if join.line < next {
+                continue;
+            }
+            // Decoration at the end of the line isn't part of the text;
+            // spaces that are (an inline code chip's padding) stay.
+            hay.truncate(hay.len().saturating_sub(join.pad));
+            if join.space {
+                hay.push((' ', None));
+            }
+            push(next, join.skip, &mut hay);
+            next += 1;
+        }
+
         let mut start = 0;
         while start + needle.len() <= hay.len() {
-            if hay[start..start + needle.len()] == needle[..] {
-                out.push(Match {
-                    line: i,
-                    start,
-                    end: start + needle.len(),
-                });
-                start += needle.len();
-            } else {
+            let found = &hay[start..start + needle.len()];
+            if !found.iter().map(|h| h.0).eq(needle.iter().copied()) {
                 start += 1;
+                continue;
             }
+            // One part per line the hit is drawn on.
+            let before = out.len();
+            for (line, col) in found.iter().filter_map(|h| h.1) {
+                if out.len() > before
+                    && let Some(m) = out.last_mut()
+                    && m.line == line
+                {
+                    m.end = col + 1;
+                } else {
+                    out.push(Match {
+                        line,
+                        start: col,
+                        end: col + 1,
+                        hit: hits,
+                    });
+                }
+            }
+            // A query of just a space can land on a break, drawn nowhere.
+            if out.len() > before {
+                hits += 1;
+            }
+            start += needle.len();
         }
+        i = next;
     }
     out
 }
@@ -131,7 +200,8 @@ mod tests {
             [Match {
                 line: 0,
                 start: 6,
-                end: 9
+                end: 9,
+                hit: 0
             }]
         );
     }
@@ -146,7 +216,8 @@ mod tests {
             [Match {
                 line: 0,
                 start: 3,
-                end: 7
+                end: 7,
+                hit: 0
             }]
         );
         let text: String = crate::render::plain(&r.lines[0])
@@ -169,7 +240,7 @@ mod tests {
             r.scroll
         );
         r.set_query("line 1");
-        let n = r.search.as_ref().unwrap().matches.len();
+        let n = r.search.as_ref().unwrap().hits();
         // "line 1" plus "line 10".."line 19"
         assert_eq!(n, 11);
         r.step_match(false);
@@ -196,8 +267,7 @@ mod tests {
     }
 
     fn current_line(r: &Reader) -> usize {
-        let s = r.search.as_ref().expect("searching");
-        s.matches[s.current].line
+        r.search.as_ref().expect("searching").current_line()
     }
 
     #[test]
@@ -257,5 +327,112 @@ mod tests {
         r.layout(40, 10);
         press(&mut r, KeyCode::Esc);
         assert_eq!(r.scroll, r.rendered.block_starts[10]);
+    }
+
+    /// Each hit's text as drawn, its parts on different lines joined by `|`.
+    fn hits(r: &Rendered, query: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for m in find(r, query) {
+            let line = crate::render::plain(&r.lines[m.line]);
+            let part: String = line.chars().skip(m.start).take(m.end - m.start).collect();
+            if m.hit < out.len() {
+                out[m.hit] = format!("{}|{part}", out[m.hit]);
+            } else {
+                out.push(part);
+            }
+        }
+        out
+    }
+
+    const LONG: &str = "The quick brown fox jumps over the lazy dog and keeps running";
+
+    #[test]
+    fn a_hit_goes_on_past_a_soft_wrap() {
+        // At 40 columns "lazy" ends the first line.
+        let r = rendered(&format!("{LONG}\n"));
+        assert_eq!(hits(&r, "lazy dog and keeps"), ["lazy|dog and keeps"]);
+        let parts = find(&r, "lazy dog");
+        assert_eq!(parts.len(), 2);
+        assert_eq!((parts[0].line, parts[1].line), (0, 1));
+        assert!(parts.iter().all(|m| m.hit == 0));
+    }
+
+    #[test]
+    fn a_hit_goes_on_past_a_quote_bar_and_a_list_indent() {
+        let r = rendered(&format!("> {LONG}\n\n- {LONG}\n\n1. {LONG}\n"));
+        assert_eq!(
+            hits(&r, "keeps running").len(),
+            3,
+            "{:?}",
+            hits(&r, "keeps running")
+        );
+        let found = hits(&r, "brown fox jumps over the lazy dog and");
+        assert_eq!(found.len(), 3, "{found:?}");
+        for h in found {
+            assert!(h.contains('|'), "{h}");
+            assert_eq!(h.replace('|', " "), "brown fox jumps over the lazy dog and");
+        }
+    }
+
+    #[test]
+    fn a_hit_goes_on_past_a_wrapped_heading() {
+        let r = rendered(&format!("# {LONG}\n\n### {LONG}\n"));
+        assert_eq!(hits(&r, "over the lazy dog and keeps").len(), 2);
+    }
+
+    #[test]
+    fn a_word_split_by_the_wrap_is_still_found() {
+        let word = "x".repeat(30) + "needle" + &"y".repeat(30);
+        let r = rendered(&format!("{word}\n"));
+        // The line breaks inside the run of y's, 40 chars in.
+        let query = format!("needle{}", "y".repeat(10));
+        assert_eq!(
+            hits(&r, &query),
+            [format!("needle{}|{}", "y".repeat(4), "y".repeat(6))]
+        );
+    }
+
+    #[test]
+    fn separate_blocks_and_hard_breaks_are_not_joined() {
+        let r = rendered("one\n\ntwo\n\n- three\n- four\n\nfive  \nsix\n");
+        assert!(find(&r, "one two").is_empty());
+        assert!(find(&r, "three four").is_empty());
+        assert!(find(&r, "five six").is_empty());
+    }
+
+    #[test]
+    fn a_space_query_never_lands_only_on_a_break() {
+        let r = rendered(&format!("{LONG}\n"));
+        let n = hits(&r, " ").len();
+        assert_eq!(
+            n,
+            LONG.matches(' ').count() - 1,
+            "the break's space is drawn nowhere"
+        );
+        assert!(hits(&r, " ").iter().all(|h| h == " "));
+    }
+
+    #[test]
+    fn stepping_counts_a_split_hit_once() {
+        let src = format!("{LONG}\n\n{LONG}\n");
+        let mut r = Reader::new(Source::in_memory("t", parse(&src)), &Options::default());
+        r.layout(40, 10);
+        // Long enough to cross the break wherever the reader's width puts it.
+        r.set_query("over the lazy dog and keeps");
+        let s = r.search.as_ref().unwrap();
+        assert_eq!((s.hits(), s.matches.len()), (2, 4));
+        r.step_match(true);
+        assert_eq!(r.search.as_ref().unwrap().current, 1);
+        r.step_match(true);
+        assert_eq!(r.search.as_ref().unwrap().current, 0);
+    }
+
+    #[test]
+    fn an_inline_code_chip_keeps_its_padding_at_a_wrap() {
+        let doc = parse("Run `cargo build` now\n");
+        for width in [17, 40] {
+            let r = crate::render::render(&doc, width, &Theme::dark());
+            assert_eq!(hits(&r, "cargo build  now").len(), 1, "width {width}");
+        }
     }
 }

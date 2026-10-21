@@ -8,8 +8,9 @@ default:
 fmt:
     cargo fmt
 
-# Check formatting and clippy lints (warnings fail).
+# Check the toolchain is current, formatting and clippy lints (warnings fail).
 lint:
+    .github/scripts/toolchain-check.sh
     cargo fmt --check
     cargo clippy --all-targets -- -D warnings
     cargo clippy --all-targets --features mermaid -- -D warnings

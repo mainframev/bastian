@@ -12,7 +12,7 @@ Terminal Markdown reader (Rust, edition 2024, ratatui + crossterm). `CONTEXT.md`
 - One test: `cargo test --lib <name>` for unit tests, `cargo test --test reader <name>` for an interface test file.
 - `just fmt`: format. `just bench`: divan render benches (not in CI). `just size`: release build against `.github/size-budget`.
 - `cargo run -- <file.md>` reads a file; `cargo run -- -` reads stdin.
-- `just install-hooks` enables `.githooks/pre-commit` (fmt and clippy).
+- `just install-hooks` enables `.githooks/pre-commit` (toolchain check, fmt, clippy with and without `mermaid`).
 
 ## Layout
 
@@ -47,7 +47,7 @@ Terminal Markdown reader (Rust, edition 2024, ratatui + crossterm). `CONTEXT.md`
 
 ## Checks
 
-`just check` is what CI runs. CI (`.github/workflows/ci.yml`) doesn't run on pull requests or pushes, to save Actions minutes: Release runs it before building, and it can be started by hand (Actions, CI, Run workflow). So `just check` before pushing is the gate for a PR. Local Rust may lag CI's stable; a lint CI reports that `just check` did not is still a failure to fix.
+`just check` is what CI runs. CI (`.github/workflows/ci.yml`) doesn't run on pull requests or pushes, to save Actions minutes: Release runs it before building, and it can be started by hand (Actions, CI, Run workflow). So `just check` before pushing is the gate for a PR. CI uses the latest stable Rust, and an older local clippy misses its new lints: `just lint` and the pre-commit hook run `.github/scripts/toolchain-check.sh`, which fails when local `rustc` is behind stable. A lint CI reports that `just check` did not is still a failure to fix.
 
 CI also runs, with `RUSTFLAGS=-D warnings`:
 
